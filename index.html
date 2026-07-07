@@ -129,6 +129,7 @@
             <div class="nav-item" data-page="laporan" data-menu="laporan" onclick="switchPage('laporan')"><i class="fa-solid fa-file-lines"></i><span>Laporan Harian</span></div>
             <div class="nav-item" data-page="aset" data-menu="aset" onclick="switchPage('aset')"><i class="fa-solid fa-boxes-stacked"></i><span>Aset</span></div>
             <div class="nav-item" data-page="tools" data-menu="tools" onclick="switchPage('tools')"><i class="fa-solid fa-screwdriver-wrench"></i><span>Tools Teknisi</span></div>
+            <div class="nav-item" data-page="aset-alat" data-menu="tools" onclick="switchPage('aset-alat')" style="display: flex !important;"><i class="fa-solid fa-toolbox"></i><span>Aset Alat Baru</span></div>
             <div class="nav-item" data-page="preventive" data-menu="preventive" onclick="switchPage('preventive')"><i class="fa-solid fa-shield-halved"></i><span>Preventive Maint.</span></div>
             <div class="nav-item" data-page="performa" data-menu="performa" onclick="switchPage('performa')"><i class="fa-solid fa-chart-line"></i><span>Performa Teknisi</span></div>
             <div class="nav-item" data-page="water" data-menu="water" onclick="switchPage('water')"><i class="fa-solid fa-droplet"></i><span>Air PAM</span></div>
@@ -347,6 +348,73 @@
             </div>
             <div id="asetList" class="space-y-3"><p class="text-xs text-navy-300 text-center py-10">Memuat...</p></div>
         </div>
+      
+
+<!-- HALAMAN ASET ALAT BARU -->
+<div id="page-aset-alat" class="page-content hidden p-4 md:p-7 space-y-5">
+    <div class="bg-white rounded-2xl border border-navy-100 p-4 flex flex-wrap items-center gap-3">
+        <div class="relative flex-1 min-w-[180px]"><i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-navy-300 text-xs"></i><input type="text" id="alatSearch" class="form-input pl-9" placeholder="Cari nama alat..." oninput="loadAlat()"></div>
+        <div class="flex-1"></div>
+        <button onclick="openAlatForm()" class="gold-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-plus text-[10px]"></i>Tambah Alat</button>
+    </div>
+    <div id="alatList" class="space-y-3"><p class="text-xs text-navy-300 text-center py-10">Memuat...</p></div>
+</div>
+
+<!-- MODAL FORM ASET ALAT BARU -->
+<!-- MODAL FORM ASET ALAT BARU -->
+<div id="alatModal" class="modal-overlay">
+    <div class="modal-content max-w-lg">
+        <div class="px-5 py-4 border-b border-navy-100 flex items-center justify-between">
+            <h3 class="font-700 text-navy-800">Tambah Aset Alat</h3>
+            <button onclick="closeModal('alatModal')" class="w-8 h-8 rounded-lg hover:bg-navy-50 flex items-center justify-center text-navy-300 hover:text-navy-600 transition"><i class="fa-solid fa-xmark text-sm"></i></button>
+        </div>
+        <div class="p-5 space-y-4">
+            <input type="hidden" id="alatEditId">
+            <div class="grid sm:grid-cols-2 gap-3">
+                <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Kode Alat *</label><input type="text" id="alatCode" class="form-input" placeholder="AL-001" readonly></div>
+                <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Nama Alat *</label><input type="text" id="alatName" class="form-input" placeholder="Bor Listrik"></div>
+            </div>
+            <div class="grid sm:grid-cols-2 gap-3">
+                <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Kategori</label><input type="text" id="alatCategory" class="form-input" placeholder="Alat Listrik"></div>
+                <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Merek / Model</label><input type="text" id="alatBrand" class="form-input" placeholder="Bosch GWS 750"></div>
+            </div>
+            <div class="grid sm:grid-cols-3 gap-3">
+                <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Jumlah *</label><input type="number" id="alatQty" class="form-input" min="1" value="1"></div>
+                <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Kondisi *</label><select id="alatCondition" class="form-input"><option value="Baik">Baik</option><option value="Cukup">Cukup</option><option value="Rusak">Rusak</option></select></div>
+                <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Status *</label><select id="alatStatus" class="form-input"><option value="Aktif">Aktif</option><option value="Tidak Aktif">Tidak Aktif</option></select></div>
+            </div>
+            <div>
+                <label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Foto Alat</label>
+                <div class="border-2 border-dashed border-navy-200 rounded-xl p-5 text-center">
+                    <button type="button" onclick="document.getElementById('alatFileInput').click()" class="gold-btn text-xs px-4 py-2 rounded-xl flex items-center gap-1.5 mx-auto">
+                        <i class="fa-solid fa-upload text-[10px]"></i> Pilih File Foto
+                    </button>
+                    <p class="text-xs text-navy-400 mt-2">Klik tombol di atas</p>
+                </div>
+                <input type="file" id="alatFileInput" class="form-input text-xs p-2" multiple accept="image/*" onchange="handleAlatFiles(this.files)">
+                <div id="alatFilesPreview" class="grid grid-cols-4 sm:grid-cols-6 gap-2 mt-3"></div>
+            </div>
+            <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Catatan</label><textarea id="alatNotes" class="form-input" rows="2" placeholder="Catatan tambahan"></textarea></div>
+        </div>
+        <div class="px-5 py-3.5 border-t border-navy-100 flex justify-end gap-2">
+            <button onclick="closeModal('alatModal')" class="px-4 py-2 rounded-xl text-sm font-500 text-navy-400 hover:bg-navy-50 transition">Batal</button>
+            <button onclick="saveAlat()" id="saveAlatBtn" class="px-5 py-2 rounded-xl text-sm gold-btn">Simpan</button>
+        </div>
+    </div>
+</div>
+<!-- MODAL DETAIL ASET ALAT -->
+<div id="alatDetailModal" class="modal-overlay">
+    <div class="modal-content max-w-2xl">
+        <div class="px-5 py-4 border-b border-navy-100 flex items-center justify-between">
+            <h3 class="font-700 text-navy-800">Detail Aset Alat</h3>
+            <button onclick="closeModal('alatDetailModal')" class="w-8 h-8 rounded-lg hover:bg-navy-50 flex items-center justify-center text-navy-300 hover:text-navy-600 transition"><i class="fa-solid fa-xmark text-sm"></i></button>
+        </div>
+        <div class="p-5">
+            <div id="alatDetailInfo"></div>
+            <div class="mt-5 pt-5 border-t border-navy-100 flex justify-end gap-2" id="alatDetailActions"></div>
+        </div>
+    </div>
+</div>
                 <!-- PENGATURAN -->
         <div id="page-pengaturan" class="page-content hidden p-4 md:p-7 space-y-5">
             <!-- Manajemen Lokasi -->
@@ -931,6 +999,7 @@ function switchPage(page) {
         'laporan': ['Laporan Harian', 'Laporan pekerjaan teknisi'],
         'aset': ['Manajemen Aset', 'Daftar aset dan inventaris'],
         'tools': ['Tools Teknisi', 'Stock alat kerja teknisi'],
+        'aset-alat': ['Aset Alat Baru', 'Daftar alat teknisi baru'], // <--- TAMBAHAN INI
         'pengaturan': ['Pengaturan', 'Kelola lokasi dan kategori aset'],
         'performa': ['Performa Teknisi', 'Evaluasi kinerja teknisi'],
         'water': ['Air PAM', 'Pemakaian air per lantai'],
@@ -963,18 +1032,26 @@ function switchPage(page) {
     if (page === 'schedule') loadScheduleMonth();
     if (page === 'users') loadUsers();
     if (page === 'pengaturan') { loadLokasiManagement(); loadKategoriManagement(); loadRoleMenuTable(); loadSlaSettings(); loadToolCatManagement(); }
-        if (page === 'tools') {
+    
+    if (page === 'tools') {
         var isSuper = currentUser.role === 'supervisi';
         document.getElementById('btnTambahTool').style.display = isSuper ? 'none' : '';
         populateToolCatFilter();
         loadTools();
     }
-        if (page === 'preventive') {
+    
+    // TAMBAHAN: Load data untuk Aset Alat Baru
+    if (page === 'aset-alat') {
+        loadAlat();
+    }
+
+    if (page === 'preventive') {
         var isSuper = currentUser.role === 'supervisi';
         document.getElementById('btnTambahPrev').style.display = isSuper ? 'none' : '';
         loadPreventive();
     }
-        if (page === 'vendor') {
+    
+    if (page === 'vendor') {
         var isSuper = currentUser.role === 'supervisi';
         document.getElementById('btnTambahVendor').style.display = isSuper ? 'none' : '';
         document.getElementById('btnTambahVisit').style.display = isSuper ? 'none' : '';
@@ -984,16 +1061,19 @@ function switchPage(page) {
         loadVendors();
         loadVendorVisits();
     }
+    
     if (page === 'water') {
-    if (!document.getElementById('waterFilterMonth').value) document.getElementById('waterFilterMonth').value = monthStr();
-    var isSuper = currentUser.role === 'supervisi';
-    document.getElementById('btnInputWater').style.display = isSuper ? 'none' : '';
-    loadWater();
+        if (!document.getElementById('waterFilterMonth').value) document.getElementById('waterFilterMonth').value = monthStr();
+        var isSuper = currentUser.role === 'supervisi';
+        document.getElementById('btnInputWater').style.display = isSuper ? 'none' : '';
+        loadWater();
     }
+    
     if (page === 'performa') {
-    if (!document.getElementById('performaFilterMonth').value) document.getElementById('performaFilterMonth').value = monthStr();
+        if (!document.getElementById('performaFilterMonth').value) document.getElementById('performaFilterMonth').value = monthStr();
         loadPerforma();
     }
+    
     if (page === 'aset') {
         populateFloorSelect('asetFloor');
         populateAsetFilterFloor();
@@ -1002,12 +1082,280 @@ function switchPage(page) {
         loadCategories();
         loadAset();
     }
+    
     if (page === 'buat-tiket') {
         populateFloorSelect('tiketFloor');
         document.getElementById('tiketRoom').innerHTML = '<option value="">Pilih lantai dulu</option>';
     }
 
     closeMobileSidebar();
+}
+
+/* ===== ASET ALAT BARU ===== */
+var alatFiles = [];
+
+async function generateAlatCode() {
+    try {
+        var res = await sb.from('aset_alat').select('code').order('created_at', { ascending: false }).limit(1);
+        var newNum = 1;
+        if (res.data && res.data.length > 0 && res.data[0].code) {
+            var lastCode = res.data[0].code.replace(/\D/g, '');
+            newNum = parseInt(lastCode) + 1;
+        }
+        document.getElementById('alatCode').value = 'AL-' + String(newNum).padStart(3, '0');
+    } catch(e) {
+        document.getElementById('alatCode').value = 'AL-' + Date.now();
+    }
+}
+
+function handleAlatFiles(fileList) {
+    console.log('=== HANDLE ALAT FILES TERPANGGIL ===');
+    if (!fileList || fileList.length === 0) {
+        console.log('File kosong');
+        return;
+    }
+    
+    // Pastikan alatFiles terdefinisi
+    if (typeof alatFiles === 'undefined') {
+        window.alatFiles = [];
+    }
+    
+    // Gunakan perulangan biasa agar kompatibel di semua HP
+    for (var i = 0; i < fileList.length; i++) {
+        var f = fileList[i];
+        if (f.size > 5 * 1024 * 1024) { 
+            showToast(f.name + ' terlalu besar (max 5MB)', 'error'); 
+        } else {
+            alatFiles.push(f);
+        }
+    }
+    
+    console.log('Total alatFiles saat ini:', alatFiles.length);
+    
+    // Tampilkan teks jumlah foto
+    var previewEl = document.getElementById('alatFilesPreview');
+    if (previewEl) {
+        previewEl.innerHTML = '<div class="col-span-full text-xs text-emerald-600 font-600"><i class="fa-solid fa-check-circle"></i> ' + alatFiles.length + ' foto terpilih dan siap diunggah.</div>';
+    }
+}
+
+function openAlatForm(editId) {
+    document.getElementById('alatEditId').value = editId || '';
+    document.getElementById('alatCode').value = '';
+    document.getElementById('alatName').value = '';
+    document.getElementById('alatCategory').value = '';
+    document.getElementById('alatBrand').value = '';
+    document.getElementById('alatQty').value = '1';
+    document.getElementById('alatCondition').value = 'Baik';
+    document.getElementById('alatStatus').value = 'Aktif';
+    document.getElementById('alatNotes').value = '';
+    
+    alatFiles = [];
+    document.getElementById('alatFilesPreview').innerHTML = '';
+    var fileInput = document.getElementById('alatFileInput');
+    if (fileInput) fileInput.value = '';
+    
+    (async function() {
+        if (editId) {
+            document.getElementById('alatCode').readOnly = true;
+            var res = await sb.from('aset_alat').select('*').eq('id', editId).single();
+            if (res.data) {
+                var a = res.data;
+                document.getElementById('alatCode').value = a.code || '';
+                document.getElementById('alatName').value = a.name || '';
+                document.getElementById('alatCategory').value = a.category || '';
+                document.getElementById('alatBrand').value = a.brand_model || '';
+                document.getElementById('alatQty').value = a.quantity || 1;
+                document.getElementById('alatCondition').value = a.condition_status || 'Baik';
+                document.getElementById('alatStatus').value = a.status || 'Aktif';
+                document.getElementById('alatNotes').value = a.notes || '';
+                
+                if (Array.isArray(a.photos) && a.photos.length > 0) {
+                    var previewEl = document.getElementById('alatFilesPreview');
+                    a.photos.forEach(function(url) {
+                        var div = document.createElement('div');
+                        div.className = 'relative aspect-square rounded-lg overflow-hidden border border-navy-200';
+                        div.innerHTML = '<img src="' + url + '" class="w-full h-full object-cover">';
+                        previewEl.appendChild(div);
+                    });
+                }
+            }
+        } else {
+            document.getElementById('alatCode').readOnly = true;
+            await generateAlatCode();
+        }
+        openModal('alatModal');
+    })();
+}
+
+async function saveAlat() {
+    var editId = document.getElementById('alatEditId').value;
+    var code = document.getElementById('alatCode').value.trim();
+    var name = document.getElementById('alatName').value.trim();
+    var category = document.getElementById('alatCategory').value.trim();
+    var brand = document.getElementById('alatBrand').value.trim();
+    var qty = parseInt(document.getElementById('alatQty').value) || 1;
+    var condition = document.getElementById('alatCondition').value;
+    var status = document.getElementById('alatStatus').value;
+    var notes = document.getElementById('alatNotes').value.trim();
+
+    if (!name) { showToast('Nama alat wajib diisi', 'error'); return; }
+
+    var btn = document.getElementById('saveAlatBtn');
+    btn.disabled = true; btn.textContent = 'Menyimpan...';
+
+    try {
+        var photoUrls = [];
+                for (var i = 0; i < alatFiles.length; i++) {
+            // Kita paksa nama file berakhiran .jpg dan contentType image/jpeg
+            var fname = 'aset_alat/' + Date.now() + '_' + i + '.jpg';
+            var upRes = await sb.storage.from('ticket-images').upload(fname, alatFiles[i], {
+                contentType: 'image/jpeg',
+                upsert: true
+            });
+            if (upRes.error) throw upRes.error;
+            var publicUrl = sb.storage.from('ticket-images').getPublicUrl(fname).data.publicUrl;
+            photoUrls.push(publicUrl);
+            console.log('URL Foto tersimpan:', publicUrl);
+        }
+
+        var finalPhotos = photoUrls;
+        if (editId) {
+            var exRes = await sb.from('aset_alat').select('photos').eq('id', editId).single();
+            if (exRes.data && exRes.data.photos) {
+                finalPhotos = exRes.data.photos.concat(photoUrls);
+            }
+        }
+
+        var data = {
+            code: code,
+            name: name,
+            category: category || null,
+            brand_model: brand || null,
+            quantity: qty,
+            condition_status: condition,
+            status: status,
+            photos: finalPhotos,
+            notes: notes || null
+        };
+
+        var result;
+        if (editId) {
+            result = await sb.from('aset_alat').update(data).eq('id', editId);
+        } else {
+            result = await sb.from('aset_alat').insert(data);
+        }
+        if (result.error) throw result.error;
+
+        showToast('Data alat berhasil disimpan');
+        closeModal('alatModal');
+        loadAlat();
+    } catch (err) {
+        console.error('Save alat error:', err);
+        showToast('Gagal: ' + (err.message || ''), 'error');
+    } finally {
+        btn.disabled = false; btn.textContent = 'Simpan';
+    }
+}
+
+async function deleteAlat(id) {
+    if (!confirm('Hapus data alat ini?')) return;
+    try {
+        var res = await sb.from('aset_alat').delete().eq('id', id);
+        if (res.error) throw res.error;
+        showToast('Data berhasil dihapus');
+        closeModal('alatDetailModal');
+        loadAlat();
+    } catch(err) {
+        showToast('Gagal menghapus: ' + err.message, 'error');
+    }
+}
+
+async function openAlatDetail(id) {
+    try {
+        var res = await sb.from('aset_alat').select('*').eq('id', id).single();
+        if (!res.data) return;
+        var a = res.data;
+        
+        var photosHtml = '<p class="text-xs text-navy-300 mt-2">Tidak ada foto</p>';
+        if (Array.isArray(a.photos) && a.photos.length > 0) {
+            photosHtml = '<div class="flex flex-wrap gap-2 mt-2">';
+            a.photos.forEach(function(p) {
+                photosHtml += '<img src="' + p + '" class="w-20 h-20 rounded-lg border border-navy-200 object-cover cursor-pointer" onclick="document.getElementById(\'lightboxImg\').src=\'' + p + '\';document.getElementById(\'lightbox\').style.display=\'flex\'">';
+            });
+            photosHtml += '</div>';
+        }
+        
+        document.getElementById('alatDetailInfo').innerHTML =
+            '<div class="grid sm:grid-cols-2 gap-3 text-xs">' +
+                '<div class="bg-navy-50 rounded-xl p-3"><span class="text-navy-400 block mb-0.5">Kode</span><span class="font-600 text-navy-800">' + a.code + '</span></div>' +
+                '<div class="bg-navy-50 rounded-xl p-3"><span class="text-navy-400 block mb-0.5">Nama</span><span class="font-600 text-navy-800">' + a.name + '</span></div>' +
+                '<div class="bg-navy-50 rounded-xl p-3"><span class="text-navy-400 block mb-0.5">Kategori</span><span class="font-600 text-navy-800">' + (a.category || '-') + '</span></div>' +
+                '<div class="bg-navy-50 rounded-xl p-3"><span class="text-navy-400 block mb-0.5">Merek / Model</span><span class="font-600 text-navy-800">' + (a.brand_model || '-') + '</span></div>' +
+                '<div class="bg-navy-50 rounded-xl p-3"><span class="text-navy-400 block mb-0.5">Kondisi</span><span class="font-600 text-navy-800">' + a.condition_status + '</span></div>' +
+                '<div class="bg-navy-50 rounded-xl p-3"><span class="text-navy-400 block mb-0.5">Status</span><span class="font-600 text-navy-800">' + a.status + '</span></div>' +
+                '<div class="bg-navy-50 rounded-xl p-3 sm:col-span-2"><span class="text-navy-400 block mb-0.5">Jumlah</span><span class="font-600 text-navy-800 text-base">' + a.quantity + ' unit</span></div>' +
+            '</div>' +
+            '<div class="mt-3"><span class="text-[10px] font-600 text-navy-400 block mb-1">Foto</span>' + photosHtml + '</div>' +
+            (a.notes ? '<p class="text-xs text-navy-400 mt-3 italic">' + a.notes + '</p>' : '');
+            
+        document.getElementById('alatDetailActions').innerHTML = 
+            '<button onclick="closeModal(\'alatDetailModal\')" class="px-4 py-2 rounded-xl text-sm font-500 text-navy-400 hover:bg-navy-50 transition">Tutup</button>' +
+            '<button onclick="closeModal(\'alatDetailModal\');openAlatForm(\'' + a.id + '\')" class="px-4 py-2 rounded-xl text-sm font-500 text-gold-600 hover:bg-gold-50 transition">Edit</button>' +
+            '<button onclick="deleteAlat(\'' + a.id + '\')" class="px-4 py-2 rounded-xl text-sm font-500 text-red-500 hover:bg-red-50 transition">Hapus</button>';
+        
+        openModal('alatDetailModal');
+    } catch(err) {
+        showToast('Gagal memuat detail', 'error');
+    }
+}
+
+async function loadAlat() {
+    var search = document.getElementById('alatSearch').value.toLowerCase();
+    var listEl = document.getElementById('alatList');
+    listEl.innerHTML = '<p class="text-xs text-navy-300 text-center py-10">Memuat...</p>';
+
+    try {
+        var res = await sb.from('aset_alat').select('*').order('created_at', { ascending: false });
+        if (res.error) throw res.error;
+        
+        if (!res.data || res.data.length === 0) {
+            listEl.innerHTML = '<p class="text-xs text-navy-300 text-center py-10">Belum ada data alat</p>';
+            return;
+        }
+
+        var list = res.data.filter(function(a) {
+            if (search && a.name.toLowerCase().indexOf(search) === -1 && a.code.toLowerCase().indexOf(search) === -1) return false;
+            return true;
+        });
+
+        listEl.innerHTML = list.map(function(a) {
+            var photosHtml = '';
+            if (Array.isArray(a.photos) && a.photos.length > 0) {
+                photosHtml = '<img src="' + a.photos[0] + '" class="w-12 h-12 rounded-lg border border-navy-200 object-cover cursor-pointer" onclick="event.stopPropagation();openAlatDetail(\'' + a.id + '\')">';
+            } else {
+                photosHtml = '<div class="w-12 h-12 rounded-lg bg-navy-50 flex items-center justify-center text-navy-300"><i class="fa-solid fa-image text-sm"></i></div>';
+            }
+            
+            return '<div class="bg-white rounded-2xl border border-navy-100 p-4 flex items-center gap-4">' +
+                photosHtml +
+                '<div class="flex-1 min-w-0 cursor-pointer" onclick="openAlatDetail(\'' + a.id + '\')">' +
+                    '<p class="text-sm font-700 text-navy-800">' + a.code + ' — ' + a.name + '</p>' +
+                    '<p class="text-xs text-navy-400 mt-0.5">' + (a.category || '-') + ' | ' + (a.brand_model || '-') + '</p>' +
+                    '<div class="flex items-center gap-2 mt-1.5">' +
+                        '<span class="text-[10px] font-600 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700">' + a.condition_status + '</span>' +
+                        '<span class="text-[10px] font-600 px-2 py-0.5 rounded-md bg-blue-100 text-blue-700">' + a.status + '</span>' +
+                        '<span class="text-[10px] text-navy-400">' + a.quantity + ' unit</span>' +
+                    '</div>' +
+                '</div>' +
+                '<button onclick="openAlatDetail(\'' + a.id + '\')" class="text-[10px] font-600 text-navy-400 hover:text-gold-600 transition">Detail</button>' +
+            '</div>';
+        }).join('');
+
+    } catch(err) {
+        console.error('Load alat error:', err);
+        listEl.innerHTML = '<p class="text-xs text-red-500 text-center py-10">Gagal memuat data</p>';
+    }
 }
 
 /* ===== DASHBOARD ===== */
