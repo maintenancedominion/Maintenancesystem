@@ -625,20 +625,35 @@
 <!-- MODAL: WATER -->
 <div id="waterModal" class="modal-overlay">
     <div class="modal-content max-w-md">
-        <div class="px-5 py-4 border-b border-navy-100 flex items-center justify-between"><h3 class="font-700 text-navy-800">Input Meteran Air</h3><button onclick="closeModal('waterModal')" class="w-8 h-8 rounded-lg hover:bg-navy-50 flex items-center justify-center text-navy-300 hover:text-navy-600 transition"><i class="fa-solid fa-xmark text-sm"></i></button></div>
-        <div class="p-5 space-y-4">
-            <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Bulan *</label><input type="month" id="waterMonth" class="form-input"></div>
-            <div class="grid sm:grid-cols-2 gap-3">
-                <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Meter Awal (m³) *</label><input type="number" id="waterMeterStart" class="form-input" step="0.01" min="0" placeholder="0.00" oninput="calcWaterUsage()"></div>
-                <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Meter Akhir (m³) *</label><input type="number" id="waterMeterEnd" class="form-input" step="0.01" min="0" placeholder="0.00" oninput="calcWaterUsage()"></div>
-            </div>
-            <div class="bg-navy-50 rounded-xl p-3 flex items-center justify-between">
-                <span class="text-xs font-600 text-navy-400">Pemakaian</span>
-                <span class="text-lg font-800 text-navy-800" id="waterUsageDisplay">0.00 m³</span>
-            </div>
-            <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Catatan</label><textarea id="waterNotes" class="form-input" rows="2" placeholder="Catatan tambahan"></textarea></div>
+        <div class="px-5 py-4 border-b border-navy-100 flex items-center justify-between">
+            <h3 class="font-700 text-navy-800">Input Meteran Air</h3>
+            <button onclick="closeModal('waterModal')" class="w-8 h-8 rounded-lg hover:bg-navy-50 flex items-center justify-center text-navy-300 hover:text-navy-600 transition"><i class="fa-solid fa-xmark text-sm"></i></button>
         </div>
-        <div class="px-5 py-3.5 border-t border-navy-100 flex justify-end gap-2"><button onclick="closeModal('waterModal')" class="px-4 py-2 rounded-xl text-sm font-500 text-navy-400 hover:bg-navy-50 transition">Batal</button><button onclick="saveWater()" id="saveWaterBtn" class="px-5 py-2 rounded-xl text-sm gold-btn">Simpan</button></div>
+        <div class="p-5 space-y-4">
+            <div>
+                <label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Tanggal Input *</label>
+                <input type="date" id="waterDate" class="form-input">
+            </div>
+            <div>
+                <label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Angka Meteran Saat Ini (m³) *</label>
+                <input type="number" id="waterMeterReading" class="form-input" step="0.01" min="0" placeholder="Contoh: 125.50">
+            </div>
+            <div>
+                <label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Cuaca *</label>
+                <select id="waterWeather" class="form-input">
+                    <option value="Cerah">Cerah</option>
+                    <option value="Hujan">Hujan</option>
+                </select>
+            </div>
+            <div>
+                <label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Catatan</label>
+                <textarea id="waterNotes" class="form-input" rows="2" placeholder="Catatan tambahan"></textarea>
+            </div>
+        </div>
+        <div class="px-5 py-3.5 border-t border-navy-100 flex justify-end gap-2">
+            <button onclick="closeModal('waterModal')" class="px-4 py-2 rounded-xl text-sm font-500 text-navy-400 hover:bg-navy-50 transition">Batal</button>
+            <button onclick="saveWater()" id="saveWaterBtn" class="px-5 py-2 rounded-xl text-sm gold-btn">Simpan</button>
+        </div>
     </div>
 </div>
 <!-- MODAL: TOOLS -->
@@ -1914,7 +1929,7 @@ async function doSelesai() {
    ============================================================ */
 
 /* Buka form laporan harian */
-function openLaporanForm(editId) {
+async function openLaporanForm(editId) {
     document.getElementById('laporanEditId').value = editId || '';
     document.getElementById('laporanModalTitle').textContent = editId ? 'Edit Laporan Harian' : 'Buat Laporan Harian';
     document.getElementById('laporanDate').value = todayStr();
@@ -1932,10 +1947,16 @@ function openLaporanForm(editId) {
     var radioTidak = document.querySelector('input[name="laporanReplacement"][value="false"]');
     if (radioTidak) radioTidak.checked = true;
 
-    /* Populate select teknisi */
-    document.getElementById('laporanTeknisi').innerHTML = allTeknisi.map(function(t) {
-        return '<option value="' + t.id + '">' + t.name + '</option>';
-    }).join('');
+    /* Populate select teknisi (Ambil Teknisi & Head) */
+    try {
+        var res = await sb.from('users').select('id, name, role').in('role', ['teknisi', 'head']).eq('active', true).order('name');
+        var petugasList = res.data || [];
+        document.getElementById('laporanTeknisi').innerHTML = petugasList.map(function(t) {
+            return '<option value="' + t.id + '">' + t.name + '</option>';
+        }).join('');
+    } catch(e) {
+        console.error('Gagal load petugas:', e);
+    }
 
     /* Populate select lantai */
     populateFloorSelect('laporanFloor');
@@ -2256,28 +2277,37 @@ async function loadLaporan() {
     }
 }
 
-/* ===== DOWNLOAD LAPORAN EXCEL ===== */
-function downloadLaporanExcel() {
-    var month = document.getElementById('laporanFilterMonth').value;
-    var csvContent = 'data:text/csv;charset=utf-8,';
-    csvContent += 'No,Tanggal,Petugas,Jenis Pekerjaan,Lantai,Ruangan,Deskripsi,Replacement Barang,Status,Tanggal Selesai,Catatan\n';
-
-    /* Ambil data dari DOM yang sudah di-render */
-    var rows = document.querySelectorAll('#laporanList > div');
-    if (rows.length === 0 || rows[0].querySelector('.text-center')) {
-        showToast('Tidak ada data untuk di-download', 'error');
-        return;
-    }
-
-    /* Re-fetch data untuk CSV yang akurat */
-    (async function() {
-        var query = sb.from('daily_reports').select('*').order('date', { ascending: false });
-        if (month) { var ym1 = month.split('-'); var ld1 = new Date(parseInt(ym1[0]), parseInt(ym1[1]), 0).getDate(); query = query.gte('date', month + '-01').lte('date', month + '-' + String(ld1).padStart(2, '0')); }
+async function downloadLaporanExcel() {
+    try {
+        showToast('Mengambil data...');
+        var month = document.getElementById('laporanFilterMonth').value;
+        var query = sb.from('daily_reports').select('*');
+        
+        // Filter bulan jika dipilih
+        if (month) {
+            var ym = month.split('-');
+            var lastDay = new Date(parseInt(ym[0]), parseInt(ym[1]), 0).getDate();
+            query = query.gte('date', month + '-01').lte('date', month + '-' + String(lastDay).padStart(2, '0'));
+        }
+        
+        query = query.order('date', { ascending: false });
         var res = await query;
-        if (!res.data || res.data.length === 0) { showToast('Tidak ada data', 'error'); return; }
-
+        
+        if (res.error) throw res.error;
+        
+        var rows = res.data;
+        if (!rows || rows.length === 0) {
+            showToast('Tidak ada data untuk diunduh', 'error');
+            return;
+        }
+        
+        showToast('Membuat file Excel...');
+        
+        // 1. Ambil nama petugas berdasarkan ID
         var allIds = [];
-        res.data.forEach(function(r) { if (r.teknisi_ids) allIds = allIds.concat(r.teknisi_ids); });
+        rows.forEach(function(r) {
+            if (Array.isArray(r.teknisi_ids)) allIds = allIds.concat(r.teknisi_ids);
+        });
         var uniqueIds = allIds.filter(function(v, i, a) { return a.indexOf(v) === i; });
         var tkMap = {};
         if (uniqueIds.length > 0) {
@@ -2285,31 +2315,91 @@ function downloadLaporanExcel() {
             if (tkRes.data) tkRes.data.forEach(function(u) { tkMap[u.id] = u.name; });
         }
 
-        var lines = ['No,Tanggal,Petugas,Jenis Pekerjaan,Lantai,Ruangan,Deskripsi,Replacement Barang,Status,Tanggal Selesai,Catatan'];
-        res.data.forEach(function(r, idx) {
-            var names = (r.teknisi_ids || []).map(function(id) { return tkMap[id] || '?'; }).join('; ');
-            lines.push([
-                idx + 1,
+        // 2. Buat Workbook & Worksheet
+        var workbook = new ExcelJS.Workbook();
+        var worksheet = workbook.addWorksheet('Laporan Harian');
+        
+        // Atur Lebar 10 Kolom (A sampai J)
+        worksheet.columns = [
+            { width: 12 }, { width: 25 }, { width: 15 }, { width: 12 }, 
+            { width: 15 }, { width: 35 }, { width: 20 }, { width: 10 }, 
+            { width: 12 }, { width: 30 }
+        ];
+        
+        // Baris 1: Judul Utama (Merge 10 Kolom)
+        worksheet.mergeCells('A1:J1');
+        var titleCell = worksheet.getCell('A1');
+        titleCell.value = 'Data Laporan Harian Teknisi';
+        titleCell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FF1F2937' } };
+        titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+        
+        // Baris 2: Tanggal & Jam
+        var now = new Date();
+        var dateString = now.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+        var timeString = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+        
+        worksheet.mergeCells('A2:J2');
+        var dateCell = worksheet.getCell('A2');
+        dateCell.value = 'Diunduh pada: ' + dateString + ' ' + timeString;
+        dateCell.font = { name: 'Calibri', size: 10, italic: true, color: { argb: 'FF6B7280' } };
+        dateCell.alignment = { vertical: 'middle', horizontal: 'center' };
+        
+        // Baris 3: Spasi Kosong
+        worksheet.addRow([]);
+        
+        // Baris 4: Header Tabel
+        var headers = ["Tanggal", "Petugas", "Jenis Pekerjaan", "Lantai", "Ruangan", "Deskripsi", "Replacement", "Status", "Tgl Selesai", "Catatan"];
+        var headerRow = worksheet.addRow(headers);
+        headerRow.height = 20;
+        headerRow.eachCell(function(cell) {
+            cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        });
+        
+        // Mapping Status
+        var statusLabel = { proses: 'Proses', done: 'Selesai', pending: 'Pending' };
+        
+        // Baris Isi Data
+        rows.forEach(function(r) {
+            var names = Array.isArray(r.teknisi_ids) ? r.teknisi_ids.map(function(id) { return tkMap[id] || '?'; }).join(', ') : '-';
+            var replText = r.has_replacement ? (r.replacement_item || '-') : 'Tidak';
+            
+            var dataRow = worksheet.addRow([
                 r.date || '',
-                '"' + (names || '').replace(/"/g, '""') + '"',
-                workTypeLabel[r.work_type] || r.work_type || '',
+                names,
+                r.work_type || '',
                 r.floor || '',
                 r.room || '',
-                '"' + (r.description || '').replace(/"/g, '""') + '"',
-                r.has_replacement ? r.replacement_item || 'Ya' : 'Tidak',
-                laporanStatusLabel[r.status] || r.status || '',
+                r.description || '',
+                replText,
+                statusLabel[r.status] || r.status,
                 r.date_done || '',
-                '"' + (r.notes || '').replace(/"/g, '""') + '"'
-            ].join(','));
+                r.notes || ''
+            ]);
+            
+            dataRow.eachCell(function(cell) {
+                cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+                cell.border = { 
+                    top: { style: 'thin', color: { argb: 'FFD1D5DB' } }, 
+                    left: { style: 'thin', color: { argb: 'FFD1D5DB' } }, 
+                    bottom: { style: 'thin', color: { argb: 'FFD1D5DB' } }, 
+                    right: { style: 'thin', color: { argb: 'FFD1D5DB' } } 
+                };
+            });
         });
-
-        var blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-        var link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = 'laporan_harian' + (month ? '_' + month : '') + '.csv';
-        link.click();
-        showToast('File berhasil di-download');
-    })();
+        
+        // Generate File .xlsx
+        var buffer = await workbook.xlsx.writeBuffer();
+        var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        saveAs(blob, 'Laporan_Harian.xlsx');
+        
+        showToast('File Excel berhasil diunduh');
+    } catch(err) {
+        console.error('Excel error:', err);
+        showToast('Gagal: ' + err.message, 'error');
+    }
 }
 
 /* ===== DOWNLOAD LAPORAN PDF ===== */
@@ -3738,58 +3828,52 @@ async function deleteToolCategory(id, name) {
 }
 
 /* ===== WATER PAM ===== */
-function calcWaterUsage() {
-    var start = parseFloat(document.getElementById('waterMeterStart').value) || 0;
-    var end = parseFloat(document.getElementById('waterMeterEnd').value) || 0;
-    var usage = Math.max(0, end - start);
-    document.getElementById('waterUsageDisplay').textContent = usage.toFixed(2) + ' m\u00B3';
-}
-
-function openWaterForm(editMonth) {
-    document.getElementById('waterMonth').value = editMonth || document.getElementById('waterFilterMonth').value || monthStr();
-    if (editMonth) {
-        document.getElementById('waterMonth').readOnly = true;
-    } else {
-        document.getElementById('waterMonth').readOnly = false;
-    }
-    document.getElementById('waterMeterStart').value = '';
-    document.getElementById('waterMeterEnd').value = '';
-    document.getElementById('waterUsageDisplay').textContent = '0.00 m\u00B3';
+function openWaterForm(editDate) {
+    document.getElementById('waterDate').value = editDate || todayStr();
+    document.getElementById('waterMeterReading').value = '';
+    document.getElementById('waterWeather').value = 'Cerah';
     document.getElementById('waterNotes').value = '';
-    if (editMonth) loadWaterDataForEdit(editMonth);
+    
+    // Jika edit, load data lama
+    if (editDate) {
+        loadWaterDataForEdit(editDate);
+    }
     openModal('waterModal');
 }
 
-async function loadWaterDataForEdit(month) {
-    var res = await sb.from('water_readings').select('*').eq('floor', 'Utama').eq('month', month).single();
+async function loadWaterDataForEdit(date) {
+    var res = await sb.from('water_readings').select('*').eq('reading_date', date).single();
     if (res.data) {
-        document.getElementById('waterMeterStart').value = res.data.meter_start || '';
-        document.getElementById('waterMeterEnd').value = res.data.meter_end || '';
+        document.getElementById('waterMeterReading').value = res.data.meter_reading || '';
+        document.getElementById('waterWeather').value = res.data.weather || 'Cerah';
         document.getElementById('waterNotes').value = res.data.notes || '';
-        calcWaterUsage();
     }
 }
 
 async function saveWater() {
-    var month = document.getElementById('waterMonth').value;
-    var start = parseFloat(document.getElementById('waterMeterStart').value) || 0;
-    var end = parseFloat(document.getElementById('waterMeterEnd').value) || 0;
+    var date = document.getElementById('waterDate').value;
+    var reading = parseFloat(document.getElementById('waterMeterReading').value) || 0;
+    var weather = document.getElementById('waterWeather').value;
     var notes = document.getElementById('waterNotes').value.trim();
 
-    if (!month) { showToast('Bulan wajib diisi', 'error'); return; }
-    if (end < start) { showToast('Meter akhir tidak boleh kurang dari awal', 'error'); return; }
+    if (!date) { showToast('Tanggal wajib diisi', 'error'); return; }
+    if (!weather) { showToast('Cuaca wajib diisi', 'error'); return; }
+    if (isNaN(reading)) { showToast('Angka meteran wajib diisi', 'error'); return; }
 
     var btn = document.getElementById('saveWaterBtn');
     btn.disabled = true; btn.textContent = 'Menyimpan...';
 
     try {
         var res = await sb.from('water_readings').upsert({
-            floor: 'Utama', month: month, meter_start: start, meter_end: end,
-            notes: notes || null, created_by: currentUser.id
-        }, { onConflict: 'floor,month' });
+            reading_date: date, 
+            meter_reading: reading, 
+            weather: weather, 
+            notes: notes || null,
+            input_by: currentUser.id
+        }, { onConflict: 'reading_date' });
 
         if (res.error) throw res.error;
-        showToast('Data meteran berhasil disimpan');
+        showToast('Data meteran harian berhasil disimpan');
         closeModal('waterModal');
         loadWater();
     } catch(err) {
@@ -3811,58 +3895,48 @@ async function loadWater() {
     cardsEl.innerHTML = '';
 
     try {
-        var res = await sb.from('water_readings').select('*').eq('floor', 'Utama').eq('month', month).single();
-        var item = res.data || null;
-        var usage = item ? parseFloat(item.usage) : 0;
+        var startDate = month + '-01';
+        var ym = month.split('-');
+        var lastDay = new Date(parseInt(ym[0]), parseInt(ym[1]), 0).getDate();
+        var endDate = month + '-' + String(lastDay).padStart(2, '0');
 
-        var pm = getPrevMonth(month);
-        var prevUsage = 0;
-        var diff = null;
-        var isAnomali = false;
+        var res = await sb.from('water_readings').select('*').gte('reading_date', startDate).lte('reading_date', endDate).order('reading_date', { ascending: true });
+        var rows = res.data || [];
 
-        if (pm) {
-            var prevRes = await sb.from('water_readings').select('*').eq('floor', 'Utama').eq('month', pm).single();
-            if (prevRes.data) {
-                prevUsage = parseFloat(prevRes.data.usage) || 0;
-                if (prevUsage > 0) {
-                    diff = ((usage - prevUsage) / prevUsage) * 100;
-                    if (diff > 30) isAnomali = true;
-                }
+        var totalUsage = 0;
+        var daysReported = rows.length;
+        var dataRowsHtml = '';
+
+        // Kalkulasi pemakaian harian
+        for (var i = 0; i < rows.length; i++) {
+            var current = rows[i];
+            var usage = 0;
+            if (i > 0) {
+                var prev = rows[i-1];
+                usage = parseFloat(current.meter_reading) - parseFloat(prev.meter_reading);
+                if (usage < 0) usage = 0; // Jika meteran dikembali ke 0 atau salah input
+                totalUsage += usage;
             }
+            
+            dataRowsHtml += '<div class="flex items-center justify-between py-2 border-b border-navy-50">' +
+                '<div><p class="text-xs font-600 text-navy-800">' + fmtDate(current.reading_date) + '</p><p class="text-[10px] text-navy-300">Meter: ' + current.meter_reading + ' m³ | <span class="text-blue-500">' + current.weather + '</span></p></div>' +
+                '<div class="text-right"><p class="text-sm font-700 ' + (i === 0 ? 'text-navy-300' : 'text-sky-600') + '">' + (i === 0 ? '-' : usage.toFixed(2) + ' m³') + '</p><button onclick="openWaterForm(\'' + current.reading_date + '\')" class="text-[9px] text-navy-400 hover:text-gold-600">Edit</button></div>' +
+            '</div>';
         }
 
-        var diffColor = diff === null ? 'text-navy-300' : (isAnomali ? 'text-red-600' : (diff > 0 ? 'text-amber-600' : 'text-emerald-600'));
-        var diffIcon = diff === null ? '' : (diff > 0 ? 'fa-arrow-up' : 'fa-arrow-down');
-        var diffText = diff === null ? 'Belum ada data bulan lalu' : (Math.abs(diff).toFixed(1) + '% vs bulan lalu');
-
+        // Kartu Ringkasan
         cardsEl.innerHTML =
-            '<div class="stat-card"><div style="position:absolute;top:0;left:0;right:0;height:3px;background:#0ea5e9;border-radius:14px 14px 0 0"></div><div class="flex items-center justify-between mb-2"><div class="w-9 h-9 rounded-xl bg-sky-50 flex items-center justify-center"><i class="fa-solid fa-droplet text-sky-500 text-sm"></i></div></div><p class="text-xl font-800 text-navy-800">' + usage.toFixed(1) + '</p><p class="text-[10px] text-navy-300 mt-0.5">Pemakaian (m\u00B3)</p></div>' +
-            '<div class="stat-card"><div style="position:absolute;top:0;left:0;right:0;height:3px;background:#c9a84c;border-radius:14px 14px 0 0"></div><div class="flex items-center justify-between mb-2"><div class="w-9 h-9 rounded-xl bg-gold-50 flex items-center justify-center"><i class="fa-solid fa-gauge text-gold-600 text-sm"></i></div></div><p class="text-lg font-800 ' + diffColor + '">' + (diff !== null ? (diff > 0 ? '+' : '') + diff.toFixed(1) + '%' : '-') + '</p><p class="text-[10px] text-navy-300 mt-0.5">' + diffText + '</p></div>' +
-            '<div class="stat-card"><div style="position:absolute;top:0;left:0;right:0;height:3px;background:' + (isAnomali ? '#ef4444' : '#22c55e') + ';border-radius:14px 14px 0 0"></div><div class="flex items-center justify-between mb-2"><div class="w-9 h-9 rounded-xl ' + (isAnomali ? 'bg-red-50' : 'bg-emerald-50') + ' flex items-center justify-center"><i class="fa-solid fa-triangle-exclamation ' + (isAnomali ? 'text-red-500' : 'text-emerald-500') + ' text-sm"></i></div></div><p class="text-xl font-800 ' + (isAnomali ? 'text-red-600' : 'text-emerald-600') + '">' + (isAnomali ? 'ANOMALI' : 'NORMAL') + '</p><p class="text-[10px] text-navy-300 mt-0.5">Status' + (isAnomali ? ' (>30%)' : '') + '</p></div>';
+            '<div class="stat-card"><div style="position:absolute;top:0;left:0;right:0;height:3px;background:#0ea5e9;border-radius:14px 14px 0 0"></div><div class="flex items-center justify-between mb-2"><div class="w-9 h-9 rounded-xl bg-sky-50 flex items-center justify-center"><i class="fa-solid fa-droplet text-sky-500 text-sm"></i></div></div><p class="text-xl font-800 text-navy-800">' + totalUsage.toFixed(2) + '</p><p class="text-[10px] text-navy-300 mt-0.5">Total Pemakaian (m³)</p></div>' +
+            '<div class="stat-card"><div style="position:absolute;top:0;left:0;right:0;height:3px;background:#c9a84c;border-radius:14px 14px 0 0"></div><div class="flex items-center justify-between mb-2"><div class="w-9 h-9 rounded-xl bg-gold-50 flex items-center justify-center"><i class="fa-solid fa-calendar-check text-gold-600 text-sm"></i></div></div><p class="text-xl font-800 text-navy-800">' + daysReported + '</p><p class="text-[10px] text-navy-300 mt-0.5">Hari Dicatat</p></div>' +
+            '<div class="stat-card"><div style="position:absolute;top:0;left:0;right:0;height:3px;background:#22c55e;border-radius:14px 14px 0 0"></div><div class="flex items-center justify-between mb-2"><div class="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center"><i class="fa-solid fa-gauge text-emerald-500 text-sm"></i></div></div><p class="text-xl font-800 text-navy-800">' + (daysReported > 0 ? (totalUsage/daysReported).toFixed(2) : '0.00') + '</p><p class="text-[10px] text-navy-300 mt-0.5">Rata-rata Harian (m³)</p></div>';
 
-        if (!item) {
-            listEl.innerHTML = '<div class="bg-white rounded-2xl border border-navy-100 p-6 text-center"><i class="fa-solid fa-droplet text-3xl text-navy-200 mb-3"></i><p class="text-sm font-600 text-navy-800">Belum ada data untuk bulan ini</p><p class="text-xs text-navy-400 mt-1">Klik "Input Meteran" untuk menambahkan</p></div>';
+        if (rows.length === 0) {
+            listEl.innerHTML = '<div class="bg-white rounded-2xl border border-navy-100 p-6 text-center"><i class="fa-solid fa-droplet text-3xl text-navy-200 mb-3"></i><p class="text-sm font-600 text-navy-800">Belum ada catatan meteran bulan ini</p><p class="text-xs text-navy-400 mt-1">Klik "Input Meteran" untuk mencatat harian</p></div>';
             return;
         }
 
-        var anomaliBadge = isAnomali ? ' <span class="text-[9px] font-700 px-2 py-0.5 rounded-md bg-red-100 text-red-600 ml-2">ANOMALI - Kemungkinan kebocoran</span>' : '';
-        var diffBadge = diff !== null ? '<span class="text-[10px] font-600 ' + diffColor + '"><i class="fa-solid ' + diffIcon + ' mr-0.5"></i>' + Math.abs(diff).toFixed(1) + '% dari bulan lalu</span>' : '';
+        listEl.innerHTML = '<div class="bg-white rounded-2xl border border-navy-100 p-5"><h3 class="text-sm font-700 text-navy-800 mb-3"><i class="fa-solid fa-list mr-2 text-navy-500"></i>Riwayat Pencatatan Bulan Ini</h3>' + dataRowsHtml + '</div>';
 
-        listEl.innerHTML = '<div class="bg-white rounded-2xl border ' + (isAnomali ? 'border-red-300' : 'border-navy-100') + ' p-5">' +
-            '<div class="flex items-center justify-between mb-4">' +
-                '<h3 class="text-sm font-700 text-navy-800"><i class="fa-solid fa-droplet mr-2 text-sky-500"></i>Pemakaian Air - ' + fmtDate(month + '-01') + anomaliBadge + '</h3>' +
-                '<button onclick="openWaterForm(\'' + month + '\')" class="text-[10px] font-600 text-navy-400 hover:text-gold-600 transition"><i class="fa-solid fa-pen text-[8px] mr-0.5"></i>Edit</button>' +
-            '</div>' +
-            '<div class="grid grid-cols-3 gap-4 mb-4">' +
-                '<div class="text-center"><p class="text-[10px] text-navy-400 mb-1">Meter Awal</p><p class="text-lg font-800 text-navy-800">' + item.meter_start + '</p></div>' +
-                '<div class="text-center"><p class="text-[10px] text-navy-400 mb-1">Meter Akhir</p><p class="text-lg font-800 text-navy-800">' + item.meter_end + '</p></div>' +
-                '<div class="text-center"><p class="text-[10px] text-navy-400 mb-1">Pemakaian</p><p class="text-lg font-800 text-sky-600">' + usage.toFixed(2) + ' m\u00B3</p></div>' +
-            '</div>' +
-            '<div class="flex items-center justify-between text-xs">' +
-                diffBadge +
-                (item.notes ? '<span class="text-navy-400 italic">' + item.notes + '</span>' : '<span></span>') +
-            '</div>' +
-        '</div>';
     } catch(err) {
         console.error('Load water error:', err);
         listEl.innerHTML = '<p class="text-xs text-red-500 text-center py-10">Gagal: ' + (err.message || '') + '</p>';
@@ -3878,26 +3952,99 @@ function getPrevMonth(month) {
     return y + '-' + String(m).padStart(2, '0');
 }
 
-function downloadWaterExcel() {
-    (async function() {
+async function downloadWaterExcel() {
+    try {
         var month = document.getElementById('waterFilterMonth').value;
         if (!month) { showToast('Pilih bulan dulu', 'error'); return; }
 
-        var lines = [['Bulan', 'Meter Awal', 'Meter Akhir', 'Pemakaian (m3)', 'Catatan']];
-        var res = await sb.from('water_readings').select('*').eq('floor', 'Utama').order('month', { ascending: false }).limit(12);
-        if (res.data) {
-            res.data.forEach(function(d) {
-                lines.push([d.month, d.meter_start, d.meter_end, d.usage, d.notes || '']);
-            });
-        }
+        showToast('Mengambil data...');
+        var startDate = month + '-01';
+        var ym = month.split('-');
+        var lastDay = new Date(parseInt(ym[0]), parseInt(ym[1]), 0).getDate();
+        var endDate = month + '-' + String(lastDay).padStart(2, '0');
 
-        var blob = new Blob(['\uFEFF' + lines.map(function(r) { return r.join(','); }).join('\n')], { type: 'text/csv;charset=utf-8;' });
-        var link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = 'water_pam.csv';
-        link.click();
-        showToast('File berhasil di-download');
-    })();
+        var res = await sb.from('water_readings').select('*').gte('reading_date', startDate).lte('reading_date', endDate).order('reading_date', { ascending: true });
+        if (!res.data || res.data.length === 0) { showToast('Tidak ada data untuk diunduh', 'error'); return; }
+
+        var rows = res.data;
+        showToast('Membuat file Excel...');
+
+        var workbook = new ExcelJS.Workbook();
+        var worksheet = workbook.addWorksheet('Air PAM');
+        worksheet.columns = [
+            { width: 15 }, { width: 18 }, { width: 18 }, { width: 12 }, { width: 30 }
+        ];
+
+        worksheet.mergeCells('A1:E1');
+        var titleCell = worksheet.getCell('A1');
+        titleCell.value = 'Data Pemakaian Air PAM Harian';
+        titleCell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FF1F2937' } };
+        titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+        var now = new Date();
+        var dateString = now.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+        worksheet.mergeCells('A2:E2');
+        var dateCell = worksheet.getCell('A2');
+        dateCell.value = 'Diunduh pada: ' + dateString;
+        dateCell.font = { name: 'Calibri', size: 10, italic: true, color: { argb: 'FF6B7280' } };
+        dateCell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+        worksheet.addRow([]);
+
+        var headers = ["Tanggal", "Meter Saat Ini", "Pemakaian Hari Ini", "Cuaca", "Catatan"];
+        var headerRow = worksheet.addRow(headers);
+        headerRow.height = 20;
+        headerRow.eachCell(function(cell) {
+            cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        });
+
+        var totalUsage = 0;
+        rows.forEach(function(d, idx) {
+            var usage = 0;
+            if (idx > 0) {
+                usage = parseFloat(d.meter_reading) - parseFloat(rows[idx-1].meter_reading);
+                if (usage < 0) usage = 0;
+                totalUsage += usage;
+            }
+            
+            var dataRow = worksheet.addRow([
+                d.reading_date || '',
+                d.meter_reading || 0,
+                idx === 0 ? '-' : usage.toFixed(2),
+                d.weather || '-',
+                d.notes || ''
+            ]);
+            dataRow.eachCell(function(cell) {
+                cell.alignment = { vertical: 'middle', horizontal: 'center' };
+                cell.border = { 
+                    top: { style: 'thin', color: { argb: 'FFD1D5DB' } }, 
+                    left: { style: 'thin', color: { argb: 'FFD1D5DB' } }, 
+                    bottom: { style: 'thin', color: { argb: 'FFD1D5DB' } }, 
+                    right: { style: 'thin', color: { argb: 'FFD1D5DB' } } 
+                };
+            });
+        });
+
+        // Baris Total di paling bawah
+        var totalRow = worksheet.addRow(["", "TOTAL PEMAKAIAN", totalUsage.toFixed(2), "", ""]);
+        totalRow.eachCell(function(cell, colNumber) {
+            cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF1F2937' } };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        });
+
+        var buffer = await workbook.xlsx.writeBuffer();
+        var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        saveAs(blob, 'Data_Air_PAM_Harian.xlsx');
+
+        showToast('File Excel berhasil diunduh');
+    } catch(err) {
+        console.error('Excel error:', err);
+        showToast('Gagal: ' + err.message, 'error');
+    }
 }
 
 /* ===== PERFORMA TEKNISI ===== */
@@ -3920,8 +4067,12 @@ async function loadPerforma() {
         var ticketsRes = await sb.from('tickets').select('*').gte('created_at', startDate).lte('created_at', endDate + 'T23:59:59');
         var tickets = ticketsRes.data || [];
 
-        var tkRes = await sb.from('users').select('*').eq('role', 'teknisi').eq('active', true).order('name');
-        var teknisiList = tkRes.data || [];
+                // Ambil role teknisi dan head, lalu filter keluarkan divisi IT
+        var tkRes = await sb.from('users').select('*').in('role', ['teknisi', 'head']).eq('active', true).order('name');
+        var teknisiList = (tkRes.data || []).filter(function(u) {
+            var div = (u.division || '').toLowerCase();
+            return div !== 'it'; // Mawan (IT) tidak akan masuk ke daftar performa
+        });
 
         /* Hitung statistik tiket */
         var stats = {};
@@ -4952,26 +5103,106 @@ async function changeAsetStatus(id, newStatus) {
     loadAset();
 }
 
-function downloadAsetExcel() {
-    (async function() {
+async function downloadAsetExcel() {
+    try {
+        showToast('Mengambil data...');
         var res = await sb.from('assets').select('*').order('category').order('code');
-        if (!res.data || res.data.length === 0) { showToast('Tidak ada data', 'error'); return; }
-        var lines = ['No,Kode Aset,Nama,Kategori,Merek/Model,Lantai,Ruangan,Jumlah Unit,Kondisi,Status,Tahun Pengadaan,Catatan'];
-        res.data.forEach(function(a, idx) {
-            lines.push([
-                idx + 1, a.code, '"' + (a.name || '').replace(/"/g, '""') + '"', a.category,
-                a.brand_model || '', a.floor || '', a.room || '', a.unit_count,
-                a.condition_status, a.status, a.year_acquired || '',
-                '"' + (a.notes || '').replace(/"/g, '""') + '"'
-            ].join(','));
+        if (!res.data || res.data.length === 0) { 
+            showToast('Tidak ada data untuk diunduh', 'error'); 
+            return; 
+        }
+
+        showToast('Membuat file Excel...');
+
+        var workbook = new ExcelJS.Workbook();
+        var worksheet = workbook.addWorksheet('Manajemen Aset');
+
+        // Atur Lebar 12 Kolom (A sampai L)
+        worksheet.columns = [
+            { width: 5 },   // No
+            { width: 15 },  // Kode Aset
+            { width: 25 },  // Nama
+            { width: 15 },  // Kategori
+            { width: 20 },  // Merek/Model
+            { width: 12 },  // Lantai
+            { width: 15 },  // Ruangan
+            { width: 10 },  // Jumlah Unit
+            { width: 15 },  // Kondisi
+            { width: 12 },  // Status
+            { width: 12 },  // Tahun Pengadaan
+            { width: 30 }   // Catatan
+        ];
+
+        // Baris 1: Judul Utama (Merge 12 Kolom)
+        worksheet.mergeCells('A1:L1');
+        var titleCell = worksheet.getCell('A1');
+        titleCell.value = 'Data Inventaris Manajemen Aset';
+        titleCell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FF1F2937' } };
+        titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+        // Baris 2: Tanggal & Jam
+        var now = new Date();
+        var dateString = now.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+        var timeString = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+
+        worksheet.mergeCells('A2:L2');
+        var dateCell = worksheet.getCell('A2');
+        dateCell.value = 'Diunduh pada: ' + dateString + ' ' + timeString;
+        dateCell.font = { name: 'Calibri', size: 10, italic: true, color: { argb: 'FF6B7280' } };
+        dateCell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+        // Baris 3: Spasi Kosong
+        worksheet.addRow([]);
+
+        // Baris 4: Header Tabel
+        var headers = ["No", "Kode Aset", "Nama", "Kategori", "Merek/Model", "Lantai", "Ruangan", "Jumlah Unit", "Kondisi", "Status", "Tahun Pengadaan", "Catatan"];
+        var headerRow = worksheet.addRow(headers);
+        headerRow.height = 20;
+        headerRow.eachCell(function(cell) {
+            cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
         });
-        var blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-        var link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = 'daftar_aset.csv';
-        link.click();
-        showToast('File berhasil di-download');
-    })();
+
+        // Baris Isi Data
+        res.data.forEach(function(a, idx) {
+            var dataRow = worksheet.addRow([
+                idx + 1, 
+                a.code || '', 
+                a.name || '', 
+                a.category || '', 
+                a.brand_model || '', 
+                a.floor || '', 
+                a.room || '', 
+                a.unit_count || 0, 
+                a.condition_status || '', 
+                a.status || '', 
+                a.year_acquired || '', 
+                a.notes || ''
+            ]);
+            
+            dataRow.eachCell(function(cell) {
+                cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+                cell.border = { 
+                    top: { style: 'thin', color: { argb: 'FFD1D5DB' } }, 
+                    left: { style: 'thin', color: { argb: 'FFD1D5DB' } }, 
+                    bottom: { style: 'thin', color: { argb: 'FFD1D5DB' } }, 
+                    right: { style: 'thin', color: { argb: 'FFD1D5DB' } } 
+                };
+            });
+        });
+
+        // Generate File .xlsx
+        var buffer = await workbook.xlsx.writeBuffer();
+        var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        saveAs(blob, 'Manajemen_Aset.xlsx');
+
+        showToast('File Excel berhasil diunduh');
+    } catch(err) {
+        console.error('Excel error:', err);
+        showToast('Gagal: ' + err.message, 'error');
+    }
 }
 
 
