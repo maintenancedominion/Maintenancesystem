@@ -1034,8 +1034,16 @@ function switchPage(page) {
     if (page === 'announcements' && (currentUser.role === 'admin' || currentUser.role === 'head' || (currentUser.can_announce))) {
         btnHtml = '<button onclick="openAnnounceForm()" class="gold-btn text-xs px-4 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-plus text-[10px]"></i>Buat Pengumuman</button>';
     }
-    if (page === 'users') {
-        btnHtml = '<button onclick="openUserForm()" class="gold-btn text-xs px-4 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-plus text-[10px]"></i>Tambah User</button>';
+        if (page === 'users') {
+        // Blokir user dan teknisi
+        if (currentUser.role === 'user' || currentUser.role === 'teknisi') {
+            showToast('Anda tidak punya akses ke menu ini', 'error');
+            switchPage('dashboard');
+            return;
+        }
+        if (currentUser.role === 'head') {
+            btnHtml = '<button onclick="openUserForm()" class="gold-btn text-xs px-4 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-plus text-[10px]"></i>Tambah User</button>';
+        }
     }
     document.getElementById('topBarActions').innerHTML = btnHtml;
 
@@ -1412,7 +1420,10 @@ async function loadAlat() {
         }).join('');
     } catch(err) {
         listEl.innerHTML = '<p class="text-xs text-red-500 text-center py-10">Gagal memuat data</p>';
-    }async function downloadAlatExcel() {
+    }
+}
+
+async function downloadAlatExcel() {
     try {
         showToast('Mengambil data...');
         var res = await sb.from('aset_alat').select('*').order('created_at', { ascending: false });
@@ -1455,8 +1466,7 @@ async function loadAlat() {
         console.error('Excel error:', err);
         showToast('Gagal: ' + err.message, 'error');
     }
-    }
-
+}
 
 async function loadAlat() {
     var search = document.getElementById('alatSearch').value.toLowerCase();
@@ -2450,18 +2460,27 @@ async function loadUsers() {
     var res = await sb.from('users').select('*').order('role').order('name');
     var el = document.getElementById('usersList');
     if (!res.data || res.data.length === 0) { el.innerHTML = '<p class="text-xs text-navy-300 text-center py-10">Tidak ada user</p>'; return; }
-    el.innerHTML = '<div class="bg-white rounded-2xl border border-navy-100 overflow-hidden"><div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="bg-navy-50"><th class="px-4 py-3 text-left font-600 text-navy-600">Nama</th><th class="px-4 py-3 text-left font-600 text-navy-600">Email</th><th class="px-4 py-3 text-left font-600 text-navy-600">Role</th><th class="px-4 py-3 text-left font-600 text-navy-600">Divisi</th><th class="px-4 py-3 text-center font-600 text-navy-600">Status</th><th class="px-4 py-3 text-center font-600 text-navy-600">Aksi</th></tr></thead><tbody>' +
-    res.data.map(function(u) {
-        return '<tr class="border-t border-navy-50 hover:bg-navy-50/30">' +
-            '<td class="px-4 py-2.5 font-600 text-navy-800">' + u.name + '</td>' +
-            '<td class="px-4 py-2.5 text-navy-500">' + u.email + '</td>' +
-            '<td class="px-4 py-2.5"><span class="shift-badge shift-morning">' + (roleLabel[u.role] || u.role) + '</span></td>' +
-            '<td class="px-4 py-2.5 text-navy-500">' + (u.division || '-') + '</td>' +
-            '<td class="px-4 py-2.5 text-center">' + (u.active !== false ? '<span class="text-emerald-600 font-600">Aktif</span>' : '<span class="text-red-500 font-600">Nonaktif</span>') + '</td>' +
-            '<td class="px-4 py-2.5 text-center"><div class="flex items-center justify-center gap-2"><button onclick="openUserForm(\'' + u.id + '\')" class="text-navy-400 hover:text-gold-600 transition"><i class="fa-solid fa-pen-to-square text-[10px]"></i></button><button onclick="toggleUserActive(\'' + u.id + '\', ' + (u.active !== false) + ')" class="text-navy-400 hover:text-amber-600 transition" title="' + (u.active !== false ? 'Nonaktifkan' : 'Aktifkan') + '"><i class="fa-solid fa-' + (u.active !== false ? 'ban' : 'check') + ' text-[10px]"></i></button></div></td>' +
-            '</tr>';
-    }).join('') +
-    '</tbody></table></div></div>';
+            el.innerHTML = '<div class="bg-white rounded-2xl border border-navy-100 overflow-hidden"><div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="bg-navy-50"><th class="px-4 py-3 text-left font-600 text-navy-600">Nama</th><th class="px-4 py-3 text-left font-600 text-navy-600">Email</th><th class="px-4 py-3 text-left font-600 text-navy-600">Role</th><th class="px-4 py-3 text-left font-600 text-navy-600">Divisi</th><th class="px-4 py-3 text-center font-600 text-navy-600">Status</th><th class="px-4 py-3 text-center font-600 text-navy-600">Aksi</th></tr></thead><tbody>' +
+        res.data.map(function(u) {
+                    // Tombol aksi hanya muncul untuk head
+        var actionsHtml = '<span class="text-[10px] text-navy-300">-</span>';
+        if (currentUser.role === 'head') {
+            actionsHtml = '<div class="flex items-center justify-center gap-2">' +
+                '<button onclick="openUserForm(\'' + u.id + '\')" class="text-navy-400 hover:text-gold-600 transition" title="Edit"><i class="fa-solid fa-pen-to-square text-[10px]"></i></button>' +
+                '<button onclick="toggleUserActive(\'' + u.id + '\', ' + (u.active !== false) + ')" class="text-navy-400 hover:text-amber-600 transition" title="' + (u.active !== false ? 'Nonaktifkan' : 'Aktifkan') + '"><i class="fa-solid fa-' + (u.active !== false ? 'ban' : 'check') + ' text-[10px]"></i></button>' +
+                '<button onclick="deleteUser(\'' + u.id + '\')" class="text-red-400 hover:text-red-600 transition" title="Hapus"><i class="fa-solid fa-trash-can text-[10px]"></i></button>' +
+            '</div>';
+        }
+            return '<tr class="border-t border-navy-50 hover:bg-navy-50/30">' +
+                '<td class="px-4 py-2.5 font-600 text-navy-800">' + u.name + '</td>' +
+                '<td class="px-4 py-2.5 text-navy-500">' + u.email + '</td>' +
+                '<td class="px-4 py-2.5"><span class="shift-badge shift-morning">' + (roleLabel[u.role] || u.role) + '</span></td>' +
+                '<td class="px-4 py-2.5 text-navy-500">' + (u.division || '-') + '</td>' +
+                '<td class="px-4 py-2.5 text-center">' + (u.active !== false ? '<span class="text-emerald-600 font-600">Aktif</span>' : '<span class="text-red-500 font-600">Nonaktif</span>') + '</td>' +
+                '<td class="px-4 py-2.5 text-center">' + actionsHtml + '</td>' +
+                '</tr>';
+        }).join('') +
+        '</tbody></table></div></div>';
 }
 
 async function toggleUserActive(id, currentlyActive) {
@@ -2470,6 +2489,18 @@ async function toggleUserActive(id, currentlyActive) {
     if (res.error) { showToast('Gagal: ' + res.error.message, 'error'); return; }
     showToast('Status user diperbarui');
     loadUsers();
+}
+
+async function deleteUser(id) {
+    if (!confirm('Hapus user ini secara permanen? Data yang sudah dihapus tidak bisa dikembalikan.')) return;
+    try {
+        var res = await sb.from('users').delete().eq('id', id);
+        if (res.error) throw res.error;
+        showToast('User berhasil dihapus');
+        loadUsers();
+    } catch(err) {
+        showToast('Gagal menghapus: ' + err.message, 'error');
+    }
 }
 
 /* ===== DOWNLOAD RIWAYAT EXCEL ===== */
