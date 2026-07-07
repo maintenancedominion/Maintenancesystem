@@ -349,18 +349,19 @@
             <div id="asetList" class="space-y-3"><p class="text-xs text-navy-300 text-center py-10">Memuat...</p></div>
         </div>
       
-
 <!-- HALAMAN ASET ALAT BARU -->
 <div id="page-aset-alat" class="page-content hidden p-4 md:p-7 space-y-5">
     <div class="bg-white rounded-2xl border border-navy-100 p-4 flex flex-wrap items-center gap-3">
-        <div class="relative flex-1 min-w-[180px]"><i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-navy-300 text-xs"></i><input type="text" id="alatSearch" class="form-input pl-9" placeholder="Cari nama alat..." oninput="loadAlat()"></div>
+        <div class="relative flex-1 min-w-[180px]"><i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-navy-300 text-xs"></i><input type="text" id="alatSearch" class="form-input pl-9" placeholder="Cari nama/kode alat..." oninput="loadAlat()"></div>
+        <select id="alatFilterCond" class="form-input w-auto" onchange="loadAlat()"><option value="">Semua Kondisi</option><option value="Baik">Baik</option><option value="Cukup">Cukup</option><option value="Rusak">Rusak</option></select>
+        <select id="alatFilterStatus" class="form-input w-auto" onchange="loadAlat()"><option value="">Semua Status</option><option value="Aktif">Aktif</option><option value="Tidak Aktif">Tidak Aktif</option></select>
         <div class="flex-1"></div>
-        <button onclick="openAlatForm()" class="gold-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-plus text-[10px]"></i>Tambah Alat</button>
+        <button onclick="downloadAlatExcel()" class="dark-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-file-excel text-[10px]"></i>Excel</button>
+        <button id="btnTambahAlat" onclick="openAlatForm()" class="gold-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-plus text-[10px]"></i>Tambah Alat</button>
     </div>
     <div id="alatList" class="space-y-3"><p class="text-xs text-navy-300 text-center py-10">Memuat...</p></div>
 </div>
 
-<!-- MODAL FORM ASET ALAT BARU -->
 <!-- MODAL FORM ASET ALAT BARU -->
 <div id="alatModal" class="modal-overlay">
     <div class="modal-content max-w-lg">
@@ -402,6 +403,7 @@
         </div>
     </div>
 </div>
+
 <!-- MODAL DETAIL ASET ALAT -->
 <div id="alatDetailModal" class="modal-overlay">
     <div class="modal-content max-w-2xl">
@@ -411,6 +413,25 @@
         </div>
         <div class="p-5">
             <div id="alatDetailInfo"></div>
+            
+            <div class="mt-5 pt-5 border-t border-navy-100">
+                <div class="flex items-center justify-between mb-3">
+                    <h4 class="font-700 text-navy-800 text-sm">Riwayat Replacement</h4>
+                    <button id="btnTambahReplacementAlat" onclick="resetAlatReplacementForm()" class="gold-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-plus text-[10px]"></i>Tambah Replacement</button>
+                </div>
+                <div id="alatReplacementForm" class="hidden bg-navy-50 rounded-xl p-4 mb-4 space-y-3">
+                    <div class="grid sm:grid-cols-2 gap-3">
+                        <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Tanggal *</label><input type="date" id="alatReplacementDate" class="form-input"></div>
+                        <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Keterangan *</label><input type="text" id="alatReplacementDesc" class="form-input" placeholder="Ganti mata bor, dll"></div>
+                    </div>
+                    <div class="flex justify-end gap-2">
+                        <button onclick="document.getElementById('alatReplacementForm').classList.add('hidden')" class="px-4 py-2 rounded-xl text-sm font-500 text-navy-400 hover:bg-navy-100 transition">Batal</button>
+                        <button onclick="saveAlatReplacement()" class="px-5 py-2 rounded-xl text-sm gold-btn">Simpan</button>
+                    </div>
+                </div>
+                <div id="alatReplacementList" class="space-y-3"></div>
+            </div>
+            
             <div class="mt-5 pt-5 border-t border-navy-100 flex justify-end gap-2" id="alatDetailActions"></div>
         </div>
     </div>
@@ -1040,8 +1061,15 @@ function switchPage(page) {
         loadTools();
     }
     
-    // TAMBAHAN: Load data untuk Aset Alat Baru
+        // TAMBAHAN: Load data untuk Aset Alat Baru
     if (page === 'aset-alat') {
+        if (currentUser.role === 'user') {
+            showToast('Anda tidak punya akses ke menu ini', 'error');
+            switchPage('dashboard');
+            return;
+        }
+        var canEditAlat = (currentUser.role === 'admin' || currentUser.role === 'head' || currentUser.role === 'supervisi');
+        document.getElementById('btnTambahAlat').style.display = canEditAlat ? '' : 'none';
         loadAlat();
     }
 
@@ -1093,6 +1121,7 @@ function switchPage(page) {
 
 /* ===== ASET ALAT BARU ===== */
 var alatFiles = [];
+var currentAlatId = null;
 
 async function generateAlatCode() {
     try {
@@ -1115,12 +1144,10 @@ function handleAlatFiles(fileList) {
         return;
     }
     
-    // Pastikan alatFiles terdefinisi
     if (typeof alatFiles === 'undefined') {
         window.alatFiles = [];
     }
     
-    // Gunakan perulangan biasa agar kompatibel di semua HP
     for (var i = 0; i < fileList.length; i++) {
         var f = fileList[i];
         if (f.size > 5 * 1024 * 1024) { 
@@ -1132,7 +1159,6 @@ function handleAlatFiles(fileList) {
     
     console.log('Total alatFiles saat ini:', alatFiles.length);
     
-    // Tampilkan teks jumlah foto
     var previewEl = document.getElementById('alatFilesPreview');
     if (previewEl) {
         previewEl.innerHTML = '<div class="col-span-full text-xs text-emerald-600 font-600"><i class="fa-solid fa-check-circle"></i> ' + alatFiles.length + ' foto terpilih dan siap diunggah.</div>';
@@ -1206,8 +1232,7 @@ async function saveAlat() {
 
     try {
         var photoUrls = [];
-                for (var i = 0; i < alatFiles.length; i++) {
-            // Kita paksa nama file berakhiran .jpg dan contentType image/jpeg
+        for (var i = 0; i < alatFiles.length; i++) {
             var fname = 'aset_alat/' + Date.now() + '_' + i + '.jpg';
             var upRes = await sb.storage.from('ticket-images').upload(fname, alatFiles[i], {
                 contentType: 'image/jpeg',
@@ -1271,7 +1296,35 @@ async function deleteAlat(id) {
     }
 }
 
+function resetAlatReplacementForm() {
+    document.getElementById('alatReplacementForm').classList.remove('hidden');
+    document.getElementById('alatReplacementDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('alatReplacementDesc').value = '';
+}
+
+async function saveAlatReplacement() {
+    var date = document.getElementById('alatReplacementDate').value;
+    var desc = document.getElementById('alatReplacementDesc').value.trim();
+    if (!date || !desc) { showToast('Tanggal dan keterangan wajib diisi', 'error'); return; }
+    
+    try {
+        var res = await sb.from('alat_replacements').insert({
+            alat_id: currentAlatId,
+            replacement_date: date,
+            description: desc,
+            created_by: currentUser.id
+        });
+        if (res.error) throw res.error;
+        showToast('Replacement berhasil dicatat');
+        document.getElementById('alatReplacementForm').classList.add('hidden');
+        openAlatDetail(currentAlatId);
+    } catch(err) {
+        showToast('Gagal: ' + err.message, 'error');
+    }
+}
+
 async function openAlatDetail(id) {
+    currentAlatId = id;
     try {
         var res = await sb.from('aset_alat').select('*').eq('id', id).single();
         if (!res.data) return;
@@ -1299,14 +1352,102 @@ async function openAlatDetail(id) {
             '<div class="mt-3"><span class="text-[10px] font-600 text-navy-400 block mb-1">Foto</span>' + photosHtml + '</div>' +
             (a.notes ? '<p class="text-xs text-navy-400 mt-3 italic">' + a.notes + '</p>' : '');
             
-        document.getElementById('alatDetailActions').innerHTML = 
-            '<button onclick="closeModal(\'alatDetailModal\')" class="px-4 py-2 rounded-xl text-sm font-500 text-navy-400 hover:bg-navy-50 transition">Tutup</button>' +
-            '<button onclick="closeModal(\'alatDetailModal\');openAlatForm(\'' + a.id + '\')" class="px-4 py-2 rounded-xl text-sm font-500 text-gold-600 hover:bg-gold-50 transition">Edit</button>' +
-            '<button onclick="deleteAlat(\'' + a.id + '\')" class="px-4 py-2 rounded-xl text-sm font-500 text-red-500 hover:bg-red-50 transition">Hapus</button>';
+        var canEditAlat = (currentUser.role === 'admin' || currentUser.role === 'head' || currentUser.role === 'supervisi');
+        document.getElementById('btnTambahReplacementAlat').style.display = canEditAlat ? '' : 'none';
+        
+        var repRes = await sb.from('alat_replacements').select('*').eq('alat_id', id).order('replacement_date', { ascending: false });
+        var reps = repRes.data || [];
+        var repHtml = '';
+        if (reps.length === 0) {
+            repHtml = '<p class="text-xs text-navy-300 text-center py-4">Belum ada riwayat replacement</p>';
+        } else {
+            repHtml = reps.map(function(r) {
+                return '<div class="p-3 rounded-xl bg-white border border-navy-100"><div class="flex items-center justify-between mb-1"><span class="text-[10px] font-700 px-2 py-0.5 rounded-md bg-amber-100 text-amber-700">Replacement</span><span class="text-[10px] text-navy-400">' + r.replacement_date + '</span></div><p class="text-xs text-navy-600">' + r.description + '</p></div>';
+            }).join('');
+        }
+        document.getElementById('alatReplacementList').innerHTML = repHtml;
+        
+        var actionsHtml = '<button onclick="closeModal(\'alatDetailModal\')" class="px-4 py-2 rounded-xl text-sm font-500 text-navy-400 hover:bg-navy-50 transition">Tutup</button>';
+        if (canEditAlat) {
+            actionsHtml += '<button onclick="closeModal(\'alatDetailModal\');openAlatForm(\'' + a.id + '\')" class="px-4 py-2 rounded-xl text-sm font-500 text-gold-600 hover:bg-gold-50 transition">Edit</button>';
+            actionsHtml += '<button onclick="deleteAlat(\'' + a.id + '\')" class="px-4 py-2 rounded-xl text-sm font-500 text-red-500 hover:bg-red-50 transition">Hapus</button>';
+        }
+        document.getElementById('alatDetailActions').innerHTML = actionsHtml;
         
         openModal('alatDetailModal');
     } catch(err) {
         showToast('Gagal memuat detail', 'error');
+    }
+}
+
+async function loadAlat() {
+    var search = document.getElementById('alatSearch').value.toLowerCase();
+    var cond = document.getElementById('alatFilterCond') ? document.getElementById('alatFilterCond').value : '';
+    var status = document.getElementById('alatFilterStatus') ? document.getElementById('alatFilterStatus').value : '';
+    var listEl = document.getElementById('alatList');
+    listEl.innerHTML = '<p class="text-xs text-navy-300 text-center py-10">Memuat...</p>';
+
+    try {
+        var res = await sb.from('aset_alat').select('*').order('created_at', { ascending: false });
+        if (res.error) throw res.error;
+        
+        var list = res.data.filter(function(a) {
+            if (search && a.name.toLowerCase().indexOf(search) === -1 && a.code.toLowerCase().indexOf(search) === -1) return false;
+            if (cond && a.condition_status !== cond) return false;
+            if (status && a.status !== status) return false;
+            return true;
+        });
+
+        if (list.length === 0) { listEl.innerHTML = '<p class="text-xs text-navy-300 text-center py-10">Tidak ada data</p>'; return; }
+
+        listEl.innerHTML = list.map(function(a) {
+            var photosHtml = '';
+            if (Array.isArray(a.photos) && a.photos.length > 0) {
+                photosHtml = '<img src="' + a.photos[0] + '" class="w-12 h-12 rounded-lg border border-navy-200 object-cover cursor-pointer" onclick="event.stopPropagation();openAlatDetail(\'' + a.id + '\')">';
+            } else {
+                photosHtml = '<div class="w-12 h-12 rounded-lg bg-navy-50 flex items-center justify-center text-navy-300"><i class="fa-solid fa-image text-sm"></i></div>';
+            }
+            return '<div class="bg-white rounded-2xl border border-navy-100 p-4 flex items-center gap-4">' + photosHtml +
+                '<div class="flex-1 min-w-0 cursor-pointer" onclick="openAlatDetail(\'' + a.id + '\')"><p class="text-sm font-700 text-navy-800">' + a.code + ' — ' + a.name + '</p><p class="text-xs text-navy-400 mt-0.5">' + (a.category || '-') + ' | ' + (a.brand_model || '-') + '</p><div class="flex items-center gap-2 mt-1.5"><span class="text-[10px] font-600 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700">' + a.condition_status + '</span><span class="text-[10px] font-600 px-2 py-0.5 rounded-md bg-blue-100 text-blue-700">' + a.status + '</span><span class="text-[10px] text-navy-400">' + a.quantity + ' unit</span></div></div><button onclick="openAlatDetail(\'' + a.id + '\')" class="text-[10px] font-600 text-navy-400 hover:text-gold-600 transition">Detail</button></div>';
+        }).join('');
+    } catch(err) {
+        listEl.innerHTML = '<p class="text-xs text-red-500 text-center py-10">Gagal memuat data</p>';
+    }
+}
+
+async function downloadAlatExcel() {
+    try {
+        showToast('Mengambil data...');
+        var res = await sb.from('aset_alat').select('*').order('created_at', { ascending: false });
+        if (res.error) throw res.error;
+        
+        var rows = res.data;
+        if (!rows || rows.length === 0) {
+            showToast('Tidak ada data untuk diunduh', 'error');
+            return;
+        }
+        
+        showToast('Membuat file Excel...'); // Notifikasi 2
+        
+        var html = '<table border="1"><tr><th>Kode</th><th>Nama</th><th>Kategori</th><th>Merek/Model</th><th>Jumlah</th><th>Kondisi</th><th>Status</th><th>Catatan</th></tr>';
+        rows.forEach(function(a) {
+            html += '<tr><td>' + (a.code || '') + '</td><td>' + (a.name || '') + '</td><td>' + (a.category || '') + '</td><td>' + (a.brand_model || '') + '</td><td>' + (a.quantity || '') + '</td><td>' + (a.condition_status || '') + '</td><td>' + (a.status || '') + '</td><td>' + (a.notes || '') + '</td></tr>';
+        });
+        html += '</table>';
+        
+        var blob = new Blob(['\ufeff', html], { type: 'application/vnd.ms-excel' });
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = 'Aset_Alat.xls';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        showToast('File Excel berhasil diunduh'); // Notifikasi 3
+    } catch(err) {
+        console.error('Excel error:', err);
+        showToast('Gagal: ' + err.message, 'error');
     }
 }
 
