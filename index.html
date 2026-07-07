@@ -1437,31 +1437,57 @@ async function downloadAlatExcel() {
         
         showToast('Membuat file Excel...');
         
-        // Buat format CSV yang 100% didukung semua HP
-        var csv = 'Kode,Nama,Kategori,Merek/Model,Jumlah,Kondisi,Status,Catatan\n';
+        // Buat format XML Spreadsheet 2003 yang 100% didukung Excel
+        var xml = '<?xml version="1.0"?>\n';
+        xml += '<?mso-application progid="Excel.Sheet"?>\n';
+        xml += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"\n';
+        xml += ' xmlns:o="urn:schemas-microsoft-com:office:office"\n';
+        xml += ' xmlns:x="urn:schemas-microsoft-com:office:excel"\n';
+        xml += ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"\n';
+        xml += ' xmlns:html="http://www.w3.org/TR/REC-html40">\n';
+        xml += '<Worksheet ss:Name="Aset Alat">\n';
+        xml += '<Table>\n';
+        
+        // Header
+        xml += '<Row>\n';
+        xml += '<Cell><Data ss:Type="String">Kode</Data></Cell>\n';
+        xml += '<Cell><Data ss:Type="String">Nama</Data></Cell>\n';
+        xml += '<Cell><Data ss:Type="String">Kategori</Data></Cell>\n';
+        xml += '<Cell><Data ss:Type="String">Merek/Model</Data></Cell>\n';
+        xml += '<Cell><Data ss:Type="String">Jumlah</Data></Cell>\n';
+        xml += '<Cell><Data ss:Type="String">Kondisi</Data></Cell>\n';
+        xml += '<Cell><Data ss:Type="String">Status</Data></Cell>\n';
+        xml += '<Cell><Data ss:Type="String">Catatan</Data></Cell>\n';
+        xml += '</Row>\n';
+        
+        // Isi Data
         rows.forEach(function(a) {
-            // Tambahkan tanda kutip agar teks koma tidak terpotong
-            csv += '"' + (a.code || '') + '",';
-            csv += '"' + (a.name || '') + '",';
-            csv += '"' + (a.category || '') + '",';
-            csv += '"' + (a.brand_model || '') + '",';
-            csv += '"' + (a.quantity || '') + '",';
-            csv += '"' + (a.condition_status || '') + '",';
-            csv += '"' + (a.status || '') + '",';
-            csv += '"' + (a.notes || '').replace(/"/g, '""') + '"\n';
+            xml += '<Row>\n';
+            xml += '<Cell><Data ss:Type="String">' + (a.code || '') + '</Data></Cell>\n';
+            xml += '<Cell><Data ss:Type="String">' + (a.name || '') + '</Data></Cell>\n';
+            xml += '<Cell><Data ss:Type="String">' + (a.category || '') + '</Data></Cell>\n';
+            xml += '<Cell><Data ss:Type="String">' + (a.brand_model || '') + '</Data></Cell>\n';
+            xml += '<Cell><Data ss:Type="Number">' + (a.quantity || 0) + '</Data></Cell>\n';
+            xml += '<Cell><Data ss:Type="String">' + (a.condition_status || '') + '</Data></Cell>\n';
+            xml += '<Cell><Data ss:Type="String">' + (a.status || '') + '</Data></Cell>\n';
+            xml += '<Cell><Data ss:Type="String">' + (a.notes || '') + '</Data></Cell>\n';
+            xml += '</Row>\n';
         });
         
-        // Buat file dengan format UTF-8 BOM agar dibaca sebagai Excel
-        var blob = new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8;' });
+        xml += '</Table>\n';
+        xml += '</Worksheet>\n';
+        xml += '</Workbook>\n';
+        
+        var blob = new Blob([xml], { type: 'application/vnd.ms-excel' });
         var url = URL.createObjectURL(blob);
         var link = document.createElement('a');
         link.href = url;
-        link.download = 'Aset_Alat.csv'; // Diubah ke .csv
+        link.download = 'Aset_Alat.xls';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         
-        showToast('File berhasil diunduh');
+        showToast('File Excel berhasil diunduh');
     } catch(err) {
         console.error('Excel error:', err);
         showToast('Gagal: ' + err.message, 'error');
