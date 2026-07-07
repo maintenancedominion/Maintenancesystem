@@ -85,7 +85,8 @@
         }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 </head>
 <body>
 
@@ -1440,38 +1441,68 @@ async function downloadAlatExcel() {
         
         showToast('Membuat file Excel...');
         
-        // 1. Siapkan data array untuk Excel
-        var dataForExcel = [];
-        // Header
-        dataForExcel.push(["Kode", "Nama", "Kategori", "Merek/Model", "Jumlah", "Kondisi", "Status", "Catatan"]);
-        // Isi Data
-        rows.forEach(function(a) {
-            dataForExcel.push([
-                a.code || '', 
-                a.name || '', 
-                a.category || '', 
-                a.brand_model || '', 
-                a.quantity || 0, 
-                a.condition_status || '', 
-                a.status || '', 
-                a.notes || ''
-            ]);
-        });
-
-        // 2. Buat Worksheet
-        var ws = XLSX.utils.aoa_to_sheet(dataForExcel);
+        var workbook = new ExcelJS.Workbook();
+        var worksheet = workbook.addWorksheet('Aset Alat');
         
-        // 3. Atur lebar kolom agar rapi (opsional tapi disarankan)
-        ws['!cols'] = [
-            {wch: 15}, {wch: 25}, {wch: 15}, {wch: 20}, {wch: 8}, {wch: 15}, {wch: 10}, {wch: 30}
+        // Atur Lebar Kolom
+        worksheet.columns = [
+            { width: 15 }, { width: 25 }, { width: 15 }, { width: 20 }, 
+            { width: 8 }, { width: 15 }, { width: 10 }, { width: 30 }
         ];
-
-        // 4. Buat Workbook baru
-        var wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Aset Alat");
-
-        // 5. Generate dan Download file .xlsx
-        XLSX.writeFile(wb, 'Aset_Alat.xlsx');
+        
+        // Baris 1: Judul Utama (Merge 8 Kolom)
+        worksheet.mergeCells('A1:H1');
+        var titleCell = worksheet.getCell('A1');
+        titleCell.value = 'Data Inventori Tools Teknisi';
+        titleCell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FF1F2937' } };
+        titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+        
+        // Baris 2: Tanggal & Jam
+        var now = new Date();
+        var dateString = now.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+        var timeString = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+        
+        worksheet.mergeCells('A2:H2');
+        var dateCell = worksheet.getCell('A2');
+        dateCell.value = 'Diunduh pada: ' + dateString + ' ' + timeString;
+        dateCell.font = { name: 'Calibri', size: 10, italic: true, color: { argb: 'FF6B7280' } };
+        dateCell.alignment = { vertical: 'middle', horizontal: 'center' };
+        
+        // Baris 3: Spasi Kosong
+        worksheet.addRow([]);
+        
+        // Baris 4: Header Tabel
+        var headers = ["Kode", "Nama", "Kategori", "Merek/Model", "Jumlah", "Kondisi", "Status", "Catatan"];
+        var headerRow = worksheet.addRow(headers);
+        headerRow.height = 20;
+        headerRow.eachCell(function(cell) {
+            cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        });
+        
+        // Baris Isi Data
+        rows.forEach(function(a) {
+            var dataRow = worksheet.addRow([
+                a.code || '', a.name || '', a.category || '', a.brand_model || '',
+                a.quantity || 0, a.condition_status || '', a.status || '', a.notes || ''
+            ]);
+            dataRow.eachCell(function(cell) {
+                cell.alignment = { vertical: 'middle', horizontal: 'center' };
+                cell.border = { 
+                    top: { style: 'thin', color: { argb: 'FFD1D5DB' } }, 
+                    left: { style: 'thin', color: { argb: 'FFD1D5DB' } }, 
+                    bottom: { style: 'thin', color: { argb: 'FFD1D5DB' } }, 
+                    right: { style: 'thin', color: { argb: 'FFD1D5DB' } } 
+                };
+            });
+        });
+        
+        // Generate File .xlsx dan langsung download
+        var buffer = await workbook.xlsx.writeBuffer();
+        var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        saveAs(blob, 'Aset_Alat.xlsx');
         
         showToast('File Excel berhasil diunduh');
     } catch(err) {
