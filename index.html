@@ -1412,10 +1412,7 @@ async function loadAlat() {
         }).join('');
     } catch(err) {
         listEl.innerHTML = '<p class="text-xs text-red-500 text-center py-10">Gagal memuat data</p>';
-    }
-}
-
-async function downloadAlatExcel() {
+    }async function downloadAlatExcel() {
     try {
         showToast('Mengambil data...');
         var res = await sb.from('aset_alat').select('*').order('created_at', { ascending: false });
@@ -1427,29 +1424,39 @@ async function downloadAlatExcel() {
             return;
         }
         
-        showToast('Membuat file Excel...'); // Notifikasi 2
+        showToast('Membuat file Excel...');
         
-        var html = '<table border="1"><tr><th>Kode</th><th>Nama</th><th>Kategori</th><th>Merek/Model</th><th>Jumlah</th><th>Kondisi</th><th>Status</th><th>Catatan</th></tr>';
+        // Buat format CSV yang 100% didukung semua HP
+        var csv = 'Kode,Nama,Kategori,Merek/Model,Jumlah,Kondisi,Status,Catatan\n';
         rows.forEach(function(a) {
-            html += '<tr><td>' + (a.code || '') + '</td><td>' + (a.name || '') + '</td><td>' + (a.category || '') + '</td><td>' + (a.brand_model || '') + '</td><td>' + (a.quantity || '') + '</td><td>' + (a.condition_status || '') + '</td><td>' + (a.status || '') + '</td><td>' + (a.notes || '') + '</td></tr>';
+            // Tambahkan tanda kutip agar teks koma tidak terpotong
+            csv += '"' + (a.code || '') + '",';
+            csv += '"' + (a.name || '') + '",';
+            csv += '"' + (a.category || '') + '",';
+            csv += '"' + (a.brand_model || '') + '",';
+            csv += '"' + (a.quantity || '') + '",';
+            csv += '"' + (a.condition_status || '') + '",';
+            csv += '"' + (a.status || '') + '",';
+            csv += '"' + (a.notes || '').replace(/"/g, '""') + '"\n';
         });
-        html += '</table>';
         
-        var blob = new Blob(['\ufeff', html], { type: 'application/vnd.ms-excel' });
+        // Buat file dengan format UTF-8 BOM agar dibaca sebagai Excel
+        var blob = new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8;' });
         var url = URL.createObjectURL(blob);
         var link = document.createElement('a');
         link.href = url;
-        link.download = 'Aset_Alat.xls';
+        link.download = 'Aset_Alat.csv'; // Diubah ke .csv
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         
-        showToast('File Excel berhasil diunduh'); // Notifikasi 3
+        showToast('File berhasil diunduh');
     } catch(err) {
         console.error('Excel error:', err);
         showToast('Gagal: ' + err.message, 'error');
     }
-}
+    }
+
 
 async function loadAlat() {
     var search = document.getElementById('alatSearch').value.toLowerCase();
