@@ -87,6 +87,106 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+    /* === MODE MUDAH BACA UNTUK IBU FITRI === */
+    
+    /* 1. Buat semua teks dasar lebih tebal */
+    body, p, span, td, th, input, select, textarea, button {
+        font-weight: 600 !important;
+    }
+    
+    /* 2. Tambahkan efek glow (cahaya) pada teks putih agar menyala */
+    .text-white, .modal-content, .nav-item, .page-content {
+        text-shadow: 0px 0px 4px rgba(255, 255, 255, 0.4);
+    }
+    
+    /* 3. Warna Emas (Gold) dibuat lebih terang dan menyala */
+    .text-gold-400, .text-gold-500, .text-gold-600 {
+        color: #ffd700 !important;
+        text-shadow: 0px 0px 8px rgba(255, 215, 0, 0.6) !important;
+        font-weight: 800 !important;
+    }
+    
+    /* 4. Warna Biru Navy dibuat lebih gelap agar teks putih makin menonjol */
+    .bg-navy-800, .bg-navy-900, .login-bg, .modal-overlay {
+        background-color: #0f172a !important;
+    }
+    
+    /* 5. Angka dan Statistik dibuat sangat tebal dan jelas */
+    .font-700, .font-800, .font-900 {
+        font-weight: 900 !important;
+        letter-spacing: 0.5px;
+    }
+    
+    /* 6. Teks di dalam tabel dan list dibuat hitam pekat agar sangat kontras dengan putih */
+    .bg-white .text-navy-800 {
+        color: #0f172a !important; 
+        text-shadow: none !important;
+    }
+    
+    /* 7. Badge status dibuat menyala */
+    .bg-emerald-100 { background-color: #10b981 !important; color: #ffffff !important; text-shadow: none !important; }
+    .bg-red-100 { background-color: #ef4444 !important; color: #ffffff !important; text-shadow: none !important; }
+    .bg-amber-100 { background-color: #f59e0b !important; color: #ffffff !important; text-shadow: none !important; }
+    .bg-blue-100 { background-color: #3b82f6 !important; color: #ffffff !important; text-shadow: none !important; }
+        /* 8. Warna teks sidebar diubah jadi Gold/Emas Terang */
+    .nav-item, .nav-item span, .nav-item i {
+        color: #fbbf24 !important; /* Warna kuning emas terang */
+        text-shadow: 0px 0px 6px rgba(251, 191, 36, 0.5) !important; /* Efek glownya */
+    }
+    
+    /* Saat menu diklik (active), warnanya jadi putih agar terlihat sedang dipilih */
+    .nav-item.active, .nav-item.active span, .nav-item.active i {
+        color: #ffffff !important;
+        text-shadow: 0px 0px 8px rgba(255, 255, 255, 0.8) !important;
+    }
+        /* === RUNNING TEXT NEON DOMINION === */
+    .neon-running-text {
+        font-family: 'Arial', sans-serif;
+        font-weight: 900;
+        font-size: 13px;
+        letter-spacing: 1px;
+        /* Warna dasar teks */
+        color: #fff;
+        /* Efek Glow Neon (Kuning Emas & Cyan) */
+        text-shadow: 
+            0 0 5px #fff,
+            0 0 10px #fff,
+            0 0 20px #ff00de,  /* Magenta neon */
+            0 0 30px #ff00de,
+            0 0 40px #00ffff,  /* Cyan neon */
+            0 0 70px #00ffff;
+        /* Animasi berjalan */
+        display: inline-block;
+        white-space: nowrap;
+        animation: marquee-neon 10s linear infinite;
+    }
+
+    @keyframes marquee-neon {
+        0%   { transform: translateX(100%); }
+        100% { transform: translateX(-100%); }
+    }
+    
+        /* === RUNNING TEXT NEON DI HEADER === */
+    .neon-header-text {
+        font-family: 'Arial', sans-serif;
+        font-weight: 900;
+        font-size: 15px; /* Sedikit lebih besar dari sidebar */
+        letter-spacing: 1px;
+        color: #fff;
+        text-shadow: 
+            0 0 5px #fff,
+            0 0 10px #fff,
+            0 0 20px #ff00de,
+            0 0 30px #ff00de,
+            0 0 40px #00ffff,
+            0 0 70px #00ffff;
+        display: inline-block;
+        white-space: nowrap;
+        animation: marquee-neon 10s linear infinite;
+    }
+    
+</style>
 </head>
 <body>
 
@@ -119,7 +219,7 @@
     <aside id="sidebar" class="sidebar fixed left-0 top-0 h-screen z-50 flex flex-col">
         <div class="p-4 flex items-center gap-2.5 border-b border-white/10">
             <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:linear-gradient(135deg,rgba(201,168,76,0.2),rgba(201,168,76,0.05))"><i class="fa-solid fa-crown text-gold-400 text-xs"></i></div>
-            <div><h1 class="text-sm font-800 text-white leading-none">DOMINION</h1><p class="text-[9px] text-gold-400/50 mt-0.5 font-500 tracking-wider">TICKETPRO</p></div>
+            <div style="overflow: hidden; width: 150px;"><h1 class="neon-running-text">DOMINION LOUNGE & MASTERPIECE</h1><p class="text-[9px] text-gold-400/50 mt-0.5 font-500 tracking-wider">MAINTENANCE SYSTEM</p></div>
         </div>
             <nav class="flex-1 p-2.5 space-y-0.5 overflow-y-auto" id="sidebarNav">
             <p class="nav-label px-2.5 mb-1.5 mt-1">Menu</p>
@@ -153,7 +253,9 @@
     <div class="md:hidden fixed top-0 left-0 right-0 bg-white border-b border-navy-100 z-30 px-3 py-2.5 flex items-center gap-2.5">
         <button onclick="openMobileSidebar()" class="w-8 h-8 rounded-lg bg-navy-50 flex items-center justify-center"><i class="fa-solid fa-bars text-navy-600 text-xs"></i></button>
         <div class="w-6 h-6 rounded-md flex items-center justify-center" style="background:linear-gradient(135deg,#c9a84c,#e0bf4e)"><i class="fa-solid fa-crown text-navy-900 text-[10px]"></i></div>
-        <span class="font-700 text-navy-800 text-sm">DOMINION</span>
+        <div style="overflow: hidden; width: 180px; display: flex; align-items: center;">
+    <span class="neon-header-text">DOMINION LOUNGE & MASTERPIECE</span>
+</div>
         <div class="flex-1"></div>
         <div class="text-right mr-1"><p class="text-[9px] font-600 text-navy-600 leading-tight" id="mobileDate">-</p><p class="text-[9px] font-700 tracking-wider" id="mobileTime" style="color:#c9a84c;text-shadow:0 0 6px rgba(201,168,76,0.4)">-</p></div>
         <div class="relative cursor-pointer mr-2" onclick="toggleNotifPanel()"><i class="fa-solid fa-bell text-navy-400 text-sm"></i><span id="notifBadgeMobile" class="hidden absolute -top-1.5 -right-2 min-w-[16px] h-4 bg-red-500 text-white text-[9px] font-700 rounded-full flex items-center justify-center px-1">0</span></div><div id="mobileActions"></div>
