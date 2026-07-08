@@ -454,7 +454,15 @@
             <div id="asetList" class="space-y-3"><p class="text-xs text-navy-300 text-center py-10">Memuat...</p></div>
         </div>
       
-<!-- HALAMAN ASET ALAT BARU -->
+<!-- HALAMAN STOCK REQUEST -->
+<div id="page-stock-request" class="page-content hidden p-4 md:p-7 space-y-5">
+    <div class="bg-white rounded-2xl border border-navy-100 p-4 flex flex-col sm:flex-row sm:flex-wrap items-center gap-3">
+        <div class="flex-1"></div>
+        <button onclick="downloadStockExcel()" class="dark-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-file-excel text-[10px]"></i>Excel</button>
+        <button id="btnTambahStock" onclick="openStockForm()" class="gold-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-plus text-[10px]"></i>Buat Permintaan</button>
+    </div>
+    <div id="stockList" class="space-y-3"><p class="text-xs text-navy-300 text-center py-10">Memuat...</p></div>
+</div>
 <!-- HALAMAN ASET ALAT BARU -->
 <div id="page-aset-alat" class="page-content hidden p-4 md:p-7 space-y-5">
     <div class="bg-white rounded-2xl border border-navy-100 p-4 flex flex-col sm:flex-row sm:flex-wrap items-center gap-3">
@@ -805,6 +813,13 @@
                     <button type="button" onclick="addStockItemRow()" class="text-xs text-gold-600 font-600 hover:underline"><i class="fa-solid fa-plus mr-1"></i>Tambah Barang</button>
                 </div>
                 <div id="stockItemsBody" class="space-y-3"></div>
+            </div>
+
+            <!-- TAMBAHAN FORM UPLOAD GAMBAR -->
+            <div>
+                <label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Foto Barang (Opsional)</label>
+                <input type="file" id="stockFileInput" class="form-input text-xs p-2" accept="image/*" onchange="handleStockFile(this.files)">
+                <div id="stockFilePreview" class="grid grid-cols-4 sm:grid-cols-6 gap-2 mt-3"></div>
             </div>
         </div>
         <div class="px-5 py-3.5 border-t border-navy-100 flex justify-end gap-2">
@@ -5402,19 +5417,34 @@ async function downloadAsetExcel() {
 
 /* ===== STOCK REQUEST ===== */
 var stockItemCounter = 0;
+var stockFiles = [];
 
 function openStockForm() {
     document.getElementById('stockEditId').value = '';
     document.getElementById('stockDate').value = todayStr();
-    document.getElementById('stockRequester').value = currentUser.name;
+    document.getElementById('stockRequester').value = currentUser.name; // Bisa diubah manual
     document.getElementById('stockPriority').value = 'Sedang';
     document.getElementById('stockLocation').value = 'Dominion Lounge';
     
     document.getElementById('stockItemsBody').innerHTML = '';
     stockItemCounter = 0;
-    addStockItemRow(); // Tambah 1 baris kosong otomatis
+    addStockItemRow();
+    
+    stockFiles = [];
+    document.getElementById('stockFilePreview').innerHTML = '';
+    document.getElementById('stockFileInput').value = '';
     
     openModal('stockModal');
+}
+
+function handleStockFile(fileList) {
+    if (!fileList || fileList.length === 0) return;
+    Array.from(fileList).forEach(function(f) {
+        if (f.size > 5 * 1024 * 1024) { showToast(f.name + ' terlalu besar (max 5MB)', 'error'); return; }
+        stockFiles.push(f);
+    });
+    var previewEl = document.getElementById('stockFilePreview');
+    previewEl.innerHTML = '<div class="col-span-full text-xs text-emerald-600 font-600"><i class="fa-solid fa-check-circle"></i> ' + stockFiles.length + ' foto terpilih.</div>';
 }
 
 function addStockItemRow(data) {
@@ -5430,33 +5460,26 @@ function addStockItemRow(data) {
     var satuan = data ? (data.satuan || '') : '';
     var catatan = data ? (data.catatan || '') : '';
     
+    // Daftar Satuan
+    var satuanOptions = ['Pcs', 'Kaleng', 'Kg', 'Liter', 'Buah', 'Set', 'Pack', 'Unit', 'Batang'];
+    var satuanHtml = '<select class="form-input text-sm py-2"><option value="">Pilih</option>';
+    satuanOptions.forEach(function(opt) {
+        satuanHtml += '<option value="' + opt + '" ' + (satuan === opt ? 'selected' : '') + '>' + opt + '</option>';
+    });
+    satuanHtml += '</select>';
+    
     div.innerHTML = 
         '<div class="flex items-center justify-between">' +
             '<span class="text-[10px] font-700 text-navy-500">Barang ke-' + no + '</span>' +
             '<button type="button" onclick="this.parentNode.parentNode.remove()" class="text-red-400 hover:text-red-600 text-xs"><i class="fa-solid fa-trash text-[10px]"></i> Hapus</button>' +
         '</div>' +
-        '<div>' +
-            '<label class="text-[10px] text-navy-400 block mb-1">Nama Barang</label>' +
-            '<input type="text" class="form-input text-sm py-2" placeholder="Contoh: Kabel Roll 10m" value="' + nama + '">' +
-        '</div>' +
-        '<div>' +
-            '<label class="text-[10px] text-navy-400 block mb-1">Spesifikasi</label>' +
-            '<input type="text" class="form-input text-sm py-2" placeholder="Contoh: merek Philips" value="' + spec + '">' +
-        '</div>' +
+        '<div><label class="text-[10px] text-navy-400 block mb-1">Nama Barang</label><input type="text" class="form-input text-sm py-2" placeholder="Contoh: Kabel Roll 10m" value="' + nama + '"></div>' +
+        '<div><label class="text-[10px] text-navy-400 block mb-1">Spesifikasi</label><input type="text" class="form-input text-sm py-2" placeholder="Contoh: merek Philips" value="' + spec + '"></div>' +
         '<div class="grid grid-cols-2 gap-2">' +
-            '<div>' +
-                '<label class="text-[10px] text-navy-400 block mb-1">Qty</label>' +
-                '<input type="number" class="form-input text-sm py-2 text-center" placeholder="0" value="' + qty + '">' +
-            '</div>' +
-            '<div>' +
-                '<label class="text-[10px] text-navy-400 block mb-1">Satuan</label>' +
-                '<input type="text" class="form-input text-sm py-2" placeholder="Contoh: Unit" value="' + satuan + '">' +
-            '</div>' +
+            '<div><label class="text-[10px] text-navy-400 block mb-1">Qty</label><input type="number" class="form-input text-sm py-2 text-center" placeholder="0" value="' + qty + '"></div>' +
+            '<div><label class="text-[10px] text-navy-400 block mb-1">Satuan</label>' + satuanHtml + '</div>' +
         '</div>' +
-        '<div>' +
-            '<label class="text-[10px] text-navy-400 block mb-1">Catatan</label>' +
-            '<input type="text" class="form-input text-sm py-2" placeholder="Catatan tambahan" value="' + catatan + '">' +
-        '</div>';
+        '<div><label class="text-[10px] text-navy-400 block mb-1">Catatan</label><input type="text" class="form-input text-sm py-2" placeholder="Catatan tambahan" value="' + catatan + '"></div>';
     
     container.appendChild(div);
 }
@@ -5467,24 +5490,17 @@ async function saveStockRequest() {
     var priority = document.getElementById('stockPriority').value;
     var location = document.getElementById('stockLocation').value;
     
+    if (!requester) { showToast('Nama pemohon wajib diisi', 'error'); return; }
     if (!priority || !location) { showToast('Lengkapi data wajib', 'error'); return; }
     
-    // Kumpulkan data dari kartu barang
     var items = [];
     var cards = document.getElementById('stockItemsBody').querySelectorAll('div.bg-navy-50');
     cards.forEach(function(card, idx) {
-        var inputs = card.querySelectorAll('input');
+        var inputs = card.querySelectorAll('input, select'); // Tambah select
         if (inputs.length > 0) {
             var namaVal = inputs[0].value.trim();
-            if (namaVal) { // Hanya simpan jika nama barang diisi
-                items.push({
-                    no: idx + 1,
-                    nama: namaVal,
-                    spec: inputs[1].value.trim(),
-                    qty: inputs[2].value.trim(),
-                    satuan: inputs[3].value.trim(),
-                    catatan: inputs[4].value.trim()
-                });
+            if (namaVal) {
+                items.push({ no: idx + 1, nama: namaVal, spec: inputs[1].value.trim(), qty: inputs[2].value.trim(), satuan: inputs[3].value.trim(), catatan: inputs[4].value.trim() });
             }
         }
     });
@@ -5495,18 +5511,39 @@ async function saveStockRequest() {
     btn.disabled = true; btn.textContent = 'Menyimpan...';
 
     try {
+        // 1. Upload gambar jika ada
+        var imageUrl = null;
+        if (stockFiles.length > 0) {
+            var compressedFile = await compressAlatImage(stockFiles[0], 800, 0.5);
+            var fname = 'stock_request/' + Date.now() + '_0.jpg';
+            var upRes = await sb.storage.from('ticket-images').upload(fname, compressedFile, { contentType: 'image/jpeg', upsert: true });
+            if (upRes.error) throw upRes.error;
+            imageUrl = sb.storage.from('ticket-images').getPublicUrl(fname).data.publicUrl;
+        }
+
+        // 2. Simpan ke database
         var res = await sb.from('stock_requests').insert({
             request_date: date,
             requester_name: requester,
             priority: priority,
             location_needed: location,
             items: items,
+            image_url: imageUrl,
             status: 'Pending',
+            is_approved: false,
             created_by: currentUser.id
         });
         
         if (res.error) throw res.error;
-        showToast('Stock Request berhasil diajukan');
+        showToast('Stock Request berhasil diajukan, menunggu approval Head');
+
+        // 3. Kirim notif ke semua Head
+        var headRes = await sb.from('users').select('id').eq('role', 'head').eq('active', true);
+        if (headRes.data && headRes.data.length > 0) {
+            var headIds = headRes.data.map(function(u) { return u.id; });
+            await sendNotifToUsers(headIds, 'Pengajuan Stock Request Baru', requester + ' mengajukan permintaan barang untuk ' + location, 'ticket', null);
+        }
+
         closeModal('stockModal');
         loadStockRequests();
     } catch(err) {
@@ -5530,17 +5567,19 @@ async function loadStockRequests() {
         }
         
         var pColors = { 'Urgent': 'bg-red-100 text-red-700', 'Sedang': 'bg-amber-100 text-amber-700', 'Rendah': 'bg-blue-100 text-blue-700' };
-        var sColors = { 'Pending': 'bg-amber-100 text-amber-700', 'Diproses': 'bg-blue-100 text-blue-700', 'Selesai': 'bg-emerald-100 text-emerald-700' };
         
         listEl.innerHTML = res.data.map(function(s) {
             var pClass = pColors[s.priority] || 'bg-gray-100';
-            var sClass = sColors[s.status] || 'bg-gray-100';
             var itemCount = Array.isArray(s.items) ? s.items.length : 0;
+            var approvalBadge = s.is_approved ? 
+                '<span class="text-[10px] font-600 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700">Approved</span>' : 
+                '<span class="text-[10px] font-600 px-2 py-0.5 rounded-md bg-amber-100 text-amber-700">Perlu Approval</span>';
             
             return '<div class="bg-white rounded-2xl border border-navy-100 p-4 flex items-center gap-4">' +
                 '<div class="flex-1 min-w-0 cursor-pointer" onclick="openStockDetail(\'' + s.id + '\')">' +
                     '<div class="flex items-center gap-2 mb-1">' +
                         '<span class="text-[10px] font-700 px-2 py-0.5 rounded-md ' + pClass + '">' + s.priority + '</span>' +
+                        approvalBadge +
                         '<span class="text-[10px] text-navy-300">' + fmtDate(s.request_date) + '</span>' +
                     '</div>' +
                     '<p class="text-sm font-700 text-navy-800">' + s.location_needed + '</p>' +
@@ -5569,27 +5608,30 @@ async function openStockDetail(id) {
                 '<div class="bg-navy-50 rounded-xl p-3"><span class="text-navy-400 block mb-0.5">Pemohon</span><span class="font-600 text-navy-800">' + (s.requester_name || '-') + '</span></div>' +
                 '<div class="bg-navy-50 rounded-xl p-3"><span class="text-navy-400 block mb-0.5">Prioritas</span><span class="font-700 px-2 py-0.5 rounded-md inline-block ' + pClass + '">' + s.priority + '</span></div>' +
                 '<div class="bg-navy-50 rounded-xl p-3"><span class="text-navy-400 block mb-0.5">Kebutuhan</span><span class="font-600 text-navy-800">' + s.location_needed + '</span></div>' +
+                '<div class="bg-navy-50 rounded-xl p-3"><span class="text-navy-400 block mb-0.5">Approval Head</span><span class="font-700 ' + (s.is_approved ? 'text-emerald-600' : 'text-amber-600') + '">' + (s.is_approved ? 'Sudah Diapprove' : 'Belum Diapprove') + '</span></div>' +
             '</div>';
             
         var itemsHtml = '<div class="mt-4"><h4 class="font-700 text-navy-800 text-sm mb-2">Daftar Barang</h4><div class="overflow-x-auto"><table class="w-full text-xs border border-navy-100 rounded-xl"><thead class="bg-navy-50"><tr><th class="p-2 text-center">No</th><th class="p-2 text-left">Nama</th><th class="p-2 text-left">Spec</th><th class="p-2 text-center">Qty</th><th class="p-2 text-left">Satuan</th><th class="p-2 text-left">Catatan</th></tr></thead><tbody>';
         if (Array.isArray(s.items)) {
             s.items.forEach(function(it) {
-                itemsHtml += '<tr class="border-t border-navy-50">' +
-                    '<td class="p-2 text-center">' + (it.no || '') + '</td>' +
-                    '<td class="p-2 font-600 text-navy-800">' + (it.nama || '') + '</td>' +
-                    '<td class="p-2 text-navy-500">' + (it.spec || '-') + '</td>' +
-                    '<td class="p-2 text-center">' + (it.qty || 0) + '</td>' +
-                    '<td class="p-2 text-navy-500">' + (it.satuan || '-') + '</td>' +
-                    '<td class="p-2 text-navy-500">' + (it.catatan || '-') + '</td>' +
-                '</tr>';
+                itemsHtml += '<tr class="border-t border-navy-50"><td class="p-2 text-center">' + (it.no || '') + '</td><td class="p-2 font-600 text-navy-800">' + (it.nama || '') + '</td><td class="p-2 text-navy-500">' + (it.spec || '-') + '</td><td class="p-2 text-center">' + (it.qty || 0) + '</td><td class="p-2 text-navy-500">' + (it.satuan || '-') + '</td><td class="p-2 text-navy-500">' + (it.catatan || '-') + '</td></tr>';
             });
         }
         itemsHtml += '</tbody></table></div></div>';
+        
+        // Tampilkan gambar jika ada
+        if (s.image_url) {
+            itemsHtml += '<div class="mt-4"><h4 class="font-700 text-navy-800 text-sm mb-2">Foto Barang</h4><img src="' + s.image_url + '" class="w-full max-w-xs rounded-xl border border-navy-200 cursor-pointer" onclick="document.getElementById(\'lightboxImg\').src=\'' + s.image_url + '\';document.getElementById(\'lightbox\').style.display=\'flex\'"></div>';
+        }
+        
         document.getElementById('stockDetailItems').innerHTML = itemsHtml;
         
         var canEdit = (currentUser.role === 'head');
         var actionsHtml = '<button onclick="closeModal(\'stockDetailModal\')" class="px-4 py-2 rounded-xl text-sm font-500 text-navy-400 hover:bg-navy-50 transition">Tutup</button>';
         if (canEdit) {
+            if (!s.is_approved) {
+                actionsHtml += '<button onclick="approveStockRequest(\'' + s.id + '\')" class="px-4 py-2 rounded-xl text-sm font-500 text-emerald-600 hover:bg-emerald-50 transition">Checked / Approve</button>';
+            }
             actionsHtml += '<button onclick="deleteStockRequest(\'' + s.id + '\')" class="px-4 py-2 rounded-xl text-sm font-500 text-red-500 hover:bg-red-50 transition">Hapus</button>';
         }
         document.getElementById('stockDetailActions').innerHTML = actionsHtml;
@@ -5597,6 +5639,19 @@ async function openStockDetail(id) {
         openModal('stockDetailModal');
     } catch(err) {
         showToast('Gagal memuat detail', 'error');
+    }
+}
+
+async function approveStockRequest(id) {
+    if (!confirm('Approve pengajuan ini?')) return;
+    try {
+        var res = await sb.from('stock_requests').update({ is_approved: true, approved_by: currentUser.id }).eq('id', id);
+        if (res.error) throw res.error;
+        showToast('Pengajuan berhasil diapprove');
+        closeModal('stockDetailModal');
+        loadStockRequests();
+    } catch(err) {
+        showToast('Gagal approve: ' + err.message, 'error');
     }
 }
 
@@ -5612,6 +5667,7 @@ async function deleteStockRequest(id) {
         showToast('Gagal menghapus: ' + err.message, 'error');
     }
 }
+
 async function downloadStockExcel() {
     try {
         showToast('Mengambil data...');
@@ -5628,16 +5684,13 @@ async function downloadStockExcel() {
             { width: 5 }, { width: 25 }, { width: 25 }, { width: 8 }, { width: 10 }, { width: 25 }
         ];
 
-        // Buat format pengajuan untuk setiap data
         rows.forEach(function(s, idx) {
-            // Title
             worksheet.mergeCells(`A${worksheet.rowCount + 1}:F${worksheet.rowCount + 1}`);
             var titleCell = worksheet.getCell(`A${worksheet.rowCount}`);
             titleCell.value = 'FORM PERMOHONAN BARANG (STOCK REQUEST)';
             titleCell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FF1F2937' } };
             titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
 
-            // Info Pengajuan
             worksheet.mergeCells(`A${worksheet.rowCount + 1}:F${worksheet.rowCount + 1}`);
             var infoCell1 = worksheet.getCell(`A${worksheet.rowCount}`);
             infoCell1.value = 'Tanggal: ' + fmtDate(s.request_date) + '    |    Pemohon: ' + (s.requester_name || '-');
@@ -5646,13 +5699,13 @@ async function downloadStockExcel() {
 
             worksheet.mergeCells(`A${worksheet.rowCount + 1}:F${worksheet.rowCount + 1}`);
             var infoCell2 = worksheet.getCell(`A${worksheet.rowCount}`);
-            infoCell2.value = 'Prioritas: ' + s.priority + '    |    Kebutuhan Untuk: ' + s.location_needed;
+            var approveText = s.is_approved ? 'Sudah Diapprove Head' : 'Belum Diapprove Head';
+            infoCell2.value = 'Prioritas: ' + s.priority + '    |    Kebutuhan: ' + s.location_needed + '    |    Status: ' + approveText;
             infoCell2.font = { name: 'Calibri', size: 10, bold: true };
             infoCell2.alignment = { vertical: 'middle', horizontal: 'left' };
 
             worksheet.addRow([]);
 
-            // Tabel Header
             var headers = ["No", "Nama Barang", "Spesifikasi", "Qty", "Satuan", "Catatan"];
             var headerRow = worksheet.addRow(headers);
             headerRow.height = 20;
@@ -5663,24 +5716,15 @@ async function downloadStockExcel() {
                 cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
             });
 
-            // Isi Tabel
             var items = Array.isArray(s.items) ? s.items : [];
             items.forEach(function(it, itemIdx) {
-                var dataRow = worksheet.addRow([
-                    itemIdx + 1, it.nama || '', it.spec || '', it.qty || 0, it.satuan || '', it.catatan || ''
-                ]);
+                var dataRow = worksheet.addRow([ itemIdx + 1, it.nama || '', it.spec || '', it.qty || 0, it.satuan || '', it.catatan || '' ]);
                 dataRow.eachCell(function(cell) {
                     cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-                    cell.border = { 
-                        top: { style: 'thin', color: { argb: 'FFD1D5DB' } }, 
-                        left: { style: 'thin', color: { argb: 'FFD1D5DB' } }, 
-                        bottom: { style: 'thin', color: { argb: 'FFD1D5DB' } }, 
-                        right: { style: 'thin', color: { argb: 'FFD1D5DB' } } 
-                    };
+                    cell.border = { top: { style: 'thin', color: { argb: 'FFD1D5DB' } }, left: { style: 'thin', color: { argb: 'FFD1D5DB' } }, bottom: { style: 'thin', color: { argb: 'FFD1D5DB' } }, right: { style: 'thin', color: { argb: 'FFD1D5DB' } } };
                 });
             });
 
-            // Spasi antar pengajuan
             if (idx < rows.length - 1) {
                 for (var k = 0; k < 3; k++) worksheet.addRow([]);
             }
