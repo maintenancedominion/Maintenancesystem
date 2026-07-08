@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="id" class="scroll-smooth">
 <head>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- KODE PWA -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0f172a">
@@ -281,7 +282,23 @@
     
     <!-- WIDGET HEAD/ADMIN/SUPERVISI -->
     <div id="headWidgets" class="hidden grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5"></div>
-
+<!-- WIDGET PRINT REKAP (HEAD/ADMIN/SUPERVISI) -->
+<div id="headPrintWidget" class="hidden bg-white rounded-2xl border border-navy-100 p-4 mt-5">
+    <h3 class="font-700 text-navy-800 text-sm mb-3">Cetak Rekap Manajerial</h3>
+    <div class="flex flex-wrap items-end gap-3">
+        <div>
+            <label class="text-[10px] font-600 text-navy-400 block mb-1">Dari Tanggal</label>
+            <input type="date" id="rekapStartDate" class="form-input w-auto">
+        </div>
+        <div>
+            <label class="text-[10px] font-600 text-navy-400 block mb-1">Sampai Tanggal</label>
+            <input type="date" id="rekapEndDate" class="form-input w-auto">
+        </div>
+        <button onclick="printRekapHarian()" class="dark-btn text-xs px-4 py-2 rounded-xl flex items-center gap-1.5">
+            <i class="fa-solid fa-print text-[10px]"></i>Print / PDF
+        </button>
+    </div>
+</div>
     <div id="dashPinnedAnnounce" class="hidden rounded-2xl p-5 border border-gold-200" style="background:linear-gradient(135deg,#fdf9ed,#f9efd0)">
         <div class="flex items-start gap-3">
             <div class="w-8 h-8 rounded-lg gold-btn flex items-center justify-center flex-shrink-0 mt-0.5"><i class="fa-solid fa-thumbtack text-xs"></i></div>
@@ -414,6 +431,13 @@
         <button id="btnInputWater" onclick="openWaterForm()" class="gold-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-plus text-[10px]"></i>Input Meteran</button>
     </div>
     <div class="grid grid-cols-3 gap-3" id="waterCards"></div>
+    <!-- GRAFIK AIR PAM -->
+    <div class="bg-white rounded-2xl border border-navy-100 p-4">
+        <h3 class="text-sm font-700 text-navy-800 mb-3">Grafik Pemakaian Harian (m³)</h3>
+        <div style="height: 250px; position: relative;">
+            <canvas id="waterChart"></canvas>
+        </div>
+    </div>
     <div id="waterList" class="space-y-3"><p class="text-xs text-navy-300 text-center py-10">Pilih rentang tanggal untuk melihat data</p></div>
 </div>
         <!-- DATA VENDOR -->
@@ -1962,6 +1986,9 @@ async function loadDashboard() {
     
     if (isHeadRole && headWidgetEl) {
         headWidgetEl.classList.remove('hidden');
+         // Tampilkan tombol print
+        var printWidget = document.getElementById('headPrintWidget');
+        if (printWidget) printWidget.classList.remove('hidden'); 
         
         // 1. Cek Tiket Masuk (Open/Diambil)
         var tiketMasukRes = await sb.from('tickets').select('id', { count: 'exact' }).in('status', ['open', 'diambil']);
@@ -1980,6 +2007,9 @@ async function loadDashboard() {
             '<div class="stat-card cursor-pointer" onclick="switchPage(\'stock-request\')"><div style="position:absolute;top:0;left:0;right:0;height:3px;background:#f59e0b;border-radius:14px 14px 0 0"></div><div class="flex items-center justify-between mb-2"><div class="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center"><i class="fa-solid fa-boxes-stacked text-amber-500 text-sm"></i></div></div><p class="text-xl font-800 text-amber-600">' + stockCount + '</p><p class="text-[10px] text-navy-300 mt-0.5">Request Butuh Approval</p></div>' +
             '<div class="stat-card cursor-pointer" onclick="switchPage(\'laporan\')"><div style="position:absolute;top:0;left:0;right:0;height:3px;background:#22c55e;border-radius:14px 14px 0 0"></div><div class="flex items-center justify-between mb-2"><div class="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center"><i class="fa-solid fa-file-lines text-emerald-500 text-sm"></i></div></div><p class="text-xl font-800 text-emerald-600">' + reportCount + '</p><p class="text-[10px] text-navy-300 mt-0.5">Laporan Hari Ini</p></div>';
     } else if (headWidgetEl) {
+            // Sembunyikan tombol print
+        var printWidget = document.getElementById('headPrintWidget');
+        if (printWidget) printWidget.classList.add('hidden');
         headWidgetEl.classList.add('hidden');
     }
 
@@ -4298,12 +4328,51 @@ async function loadWater() {
             '<div class="stat-card"><div style="position:absolute;top:0;left:0;right:0;height:3px;background:#c9a84c;border-radius:14px 14px 0 0"></div><div class="flex items-center justify-between mb-2"><div class="w-9 h-9 rounded-xl bg-gold-50 flex items-center justify-center"><i class="fa-solid fa-calendar-check text-gold-600 text-sm"></i></div></div><p class="text-xl font-800 text-navy-800">' + daysReported + '</p><p class="text-[10px] text-navy-300 mt-0.5">Hari Dicatat</p></div>' +
             '<div class="stat-card"><div style="position:absolute;top:0;left:0;right:0;height:3px;background:#22c55e;border-radius:14px 14px 0 0"></div><div class="flex items-center justify-between mb-2"><div class="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center"><i class="fa-solid fa-gauge text-emerald-500 text-sm"></i></div></div><p class="text-xl font-800 text-navy-800">' + avgUsage.toFixed(2) + '</p><p class="text-[10px] text-navy-300 mt-0.5">Rata-rata Harian (m³)</p></div>';
 
-        if (rows.length === 0) {
+                if (rows.length === 0) {
             listEl.innerHTML = '<div class="bg-white rounded-2xl border border-navy-100 p-6 text-center"><i class="fa-solid fa-droplet text-3xl text-navy-200 mb-3"></i><p class="text-sm font-600 text-navy-800">Belum ada catatan meteran di rentang ini</p><p class="text-xs text-navy-400 mt-1">Klik "Input Meteran" untuk mencatat harian</p></div>';
+            // Hancurkan grafik jika tidak ada data
+            if (window.waterChartInstance) window.waterChartInstance.destroy();
             return;
         }
 
         listEl.innerHTML = '<div class="bg-white rounded-2xl border border-navy-100 p-5"><h3 class="text-sm font-700 text-navy-800 mb-3"><i class="fa-solid fa-list mr-2 text-navy-500"></i>Riwayat Pencatatan</h3>' + dataRowsHtml + '</div>';
+
+        // === RENDER GRAFIK AIR PAM ===
+        var ctx = document.getElementById('waterChart').getContext('2d');
+        if (window.waterChartInstance) window.waterChartInstance.destroy();
+        
+        var chartLabels = [];
+        var chartData = [];
+        var lastMeterChart = prevRecord ? parseFloat(prevRecord.meter_reading) : null;
+        rows.forEach(function(d, idx) {
+            var usage = 0;
+            var isFirst = (!prevRecord && idx === 0);
+            if (!isFirst && lastMeterChart !== null) {
+                usage = parseFloat(d.meter_reading) - lastMeterChart;
+                if (usage < 0) usage = 0;
+            }
+            chartLabels.push(fmtDate(d.reading_date));
+            chartData.push(usage.toFixed(2));
+            lastMeterChart = parseFloat(d.meter_reading);
+        });
+
+        window.waterChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: chartLabels,
+                datasets: [{
+                    label: 'Pemakaian (m³)',
+                    data: chartData,
+                    backgroundColor: '#0ea5e9',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { y: { beginAtZero: true } }
+            }
+        });
 
     } catch(err) {
         console.error('Load water error:', err);
@@ -6066,6 +6135,184 @@ async function loadLogs() {
         }).join('');
     } catch(err) {
         listEl.innerHTML = '<p class="text-xs text-red-500 text-center py-10">Gagal memuat log</p>';
+    }
+}
+
+async function printRekapHarian() {
+    var startDate = document.getElementById('rekapStartDate').value;
+    var endDate = document.getElementById('rekapEndDate').value;
+    
+    if (!startDate || !endDate) { showToast('Pilih rentang tanggal dulu', 'error'); return; }
+    
+    showToast('Menyiapkan dokumen...');
+    try {
+        // 1. Ambil Data Air PAM
+        var prevRes = await sb.from('water_readings').select('*').lt('reading_date', startDate).order('reading_date', { ascending: false }).limit(1);
+        var prevRecord = (prevRes.data && prevRes.data.length > 0) ? prevRes.data[0] : null;
+        var waterRes = await sb.from('water_readings').select('*').gte('reading_date', startDate).lte('reading_date', endDate).order('reading_date', { ascending: true });
+        var waterRows = waterRes.data || [];
+        
+        var lastMeter = prevRecord ? parseFloat(prevRecord.meter_reading) : null;
+        var totalAir = 0;
+        var waterHtml = '<tr><td colspan="4" style="text-align:center;color:#888;">Tidak ada data</td></tr>';
+        
+        if (waterRows.length > 0) {
+            waterHtml = '';
+            waterRows.forEach(function(d) {
+                var currentMeter = parseFloat(d.meter_reading);
+                var usage = 0;
+                var isFirstUntracked = (!prevRecord && lastMeter === null);
+                
+                if (!isFirstUntracked && lastMeter !== null) {
+                    usage = currentMeter - lastMeter;
+                    if (usage < 0) usage = 0;
+                    totalAir += usage;
+                }
+                lastMeter = currentMeter;
+                
+                waterHtml += '<tr>' +
+                    '<td>' + fmtDate(d.reading_date) + '</td>' +
+                    '<td>' + currentMeter.toFixed(2) + '</td>' +
+                    '<td>' + (isFirstUntracked ? '-' : usage.toFixed(2)) + '</td>' +
+                    '<td>' + (d.weather || '-') + '</td>' +
+                '</tr>';
+            });
+        }
+
+        // 2. Ambil Data Laporan Harian
+        var reportRes = await sb.from('daily_reports').select('*').gte('date', startDate).lte('date', endDate).order('date', { ascending: true });
+        var reportRows = reportRes.data || [];
+        
+        // Ambil nama petugas
+        var allIds = [];
+        reportRows.forEach(function(r) { if (Array.isArray(r.teknisi_ids)) allIds = allIds.concat(r.teknisi_ids); });
+        var uniqueIds = allIds.filter(function(v, i, a) { return a.indexOf(v) === i; });
+        var tkMap = {};
+        if (uniqueIds.length > 0) {
+            var tkRes = await sb.from('users').select('id, name').in('id', uniqueIds);
+            if (tkRes.data) tkRes.data.forEach(function(u) { tkMap[u.id] = u.name; });
+        }
+
+        var laporanHtml = '<tr><td colspan="6" style="text-align:center;color:#888;">Tidak ada data</td></tr>';
+        if (reportRows.length > 0) {
+            laporanHtml = '';
+            reportRows.forEach(function(r, idx) {
+                var names = Array.isArray(r.teknisi_ids) ? r.teknisi_ids.map(function(id) { return tkMap[id] || '?'; }).join(', ') : '-';
+                // Gabungkan Lantai dan Ruangan
+                var lokasi = (r.floor || '-');
+                if (r.room) lokasi += ' - ' + r.room;
+                
+                laporanHtml += '<tr>' +
+                    '<td style="width:5%; text-align:center;">' + (idx + 1) + '</td>' +
+                    '<td style="width:12%; text-align:center;">' + fmtDate(r.date) + '</td>' +
+                    '<td style="width:20%;">' + names + '</td>' +
+                    '<td style="width:18%;">' + lokasi + '</td>' +
+                    '<td style="width:35%;">' + (r.description || '-') + '</td>' +
+                    '<td style="width:10%; text-align:center;">' + (r.status || '-') + '</td>' +
+                '</tr>';
+            });
+        }
+
+        // 3. Buat HTML untuk di-Print
+        var now = new Date();
+        var printDate = now.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+        
+        var html = '<html><head><title>Rekap Laporan</title><style>' +
+            'body { font-family: Arial, sans-serif; margin: 40px; color: #1F2937; }' +
+            'h1 { text-align: center; font-size: 18px; margin-bottom: 2px; }' +
+            'h2 { text-align: center; font-size: 14px; margin-top: 0; margin-bottom: 20px; color: #4B5563; }' +
+            'h3 { font-size: 13px; margin-top: 30px; border-bottom: 2px solid #1F2937; padding-bottom: 5px; }' +
+            'table { width: 100%; border-collapse: collapse; font-size: 12px; }' +
+            'th, td { border: 1px solid #D1D5DB; padding: 8px; text-align: left; }' +
+            'th { background-color: #1F2937; color: white; }' +
+            '.total { font-weight: bold; background-color: #F3F4F6; }' +
+            '.sign { margin-top: 60px; width: 100%; display: flex; justify-content: space-around; text-align: center; font-size: 12px; }' +
+            '.sign div { width: 30%; }' +
+            '.sign p { margin-top: 60px; border-top: 1px solid #000; padding-top: 5px; }' +
+            '.footer { margin-top: 50px; text-align: center; font-size: 10px; color: #9CA3AF; border-top: 1px solid #E5E7EB; padding-top: 10px; }' +
+            '</style></head><body>' +
+            '<h1>DOMINION LOUNGE & MASTERPIECE</h1>' +
+            '<h2>Maintenance System Technician</h2>' +
+            '<h2>REKAP LAPORAN HARIAN TEKNISI & PEMAKAIAN AIR PAM<br>Periode: ' + fmtDate(startDate) + ' s/d ' + fmtDate(endDate) + '</h2>' +
+            
+            '<h3>A. PEMAKAIAN AIR PAM</h3>' +
+            '<h3>A. PEMAKAIAN AIR PAM</h3>' +
+            '<div style="width:100%; height:250px; margin-bottom:20px;"><canvas id="printWaterChart"></canvas></div>' +
+            '<table><thead><tr><th>Tanggal</th><th>Meter Akhir (m³)</th><th>Pemakaian (m³)</th><th>Cuaca</th></tr></thead><tbody>' +
+            waterHtml +
+            '<tr class="total"><td colspan="2">TOTAL PEMAKAIAN AIR</td><td colspan="2">' + totalAir.toFixed(2) + ' m³</td></tr>' +
+            '</tbody></table>' +
+            
+            '<h3>B. LAPORAN HARIAN TEKNISI</h3>' +
+            '<table><thead><tr><th style="width:5%;">No</th><th style="width:12%;">Tanggal</th><th style="width:20%;">Petugas</th><th style="width:18%;">Lokasi</th><th style="width:35%;">Pekerjaan</th><th style="width:10%;">Status</th></tr></thead><tbody>' +
+            laporanHtml +
+            '</tbody></table>' +
+            
+            '<div class="sign">' +
+                '<div><p>Billy Suhendi<br>(Head Teknisi)</p></div>' +
+                '<div><p>Ibu Fitri<br>(Office)</p></div>' +
+                '<div><p>Bpk Adiib<br>(General Manager)</p></div>' +
+            '</div>' +
+            
+            '<div class="footer">Dicetak Sistem: ' + printDate + '</div>' +
+            '</body></html>';
+
+                // 4. Sembunyikan aplikasi, tampilkan dokumen print secara fisik
+        var printArea = document.createElement('div');
+        printArea.id = 'printArea';
+        printArea.innerHTML = html;
+        document.body.appendChild(printArea);
+
+        // Sembunyikan seluruh aplikasi asli
+        var mainApp = document.getElementById('mainApp');
+        if (mainApp) mainApp.style.display = 'none';
+
+        // Render grafik untuk print
+        var printCtx = document.getElementById('printWaterChart').getContext('2d');
+        var printChartLabels = [];
+        var printChartData = [];
+        var lastMeterPrint = prevRecord ? parseFloat(prevRecord.meter_reading) : null;
+        waterRows.forEach(function(d, idx) {
+            var usage = 0;
+            var isFirst = (!prevRecord && idx === 0);
+            if (!isFirst && lastMeterPrint !== null) {
+                usage = parseFloat(d.meter_reading) - lastMeterPrint;
+                if (usage < 0) usage = 0;
+            }
+            printChartLabels.push(fmtDate(d.reading_date));
+            printChartData.push(usage.toFixed(2));
+            lastMeterPrint = parseFloat(d.meter_reading);
+        });
+
+        new Chart(printCtx, {
+            type: 'bar',
+            data: {
+                labels: printChartLabels,
+                datasets: [{
+                    label: 'Pemakaian (m³)',
+                    data: printChartData,
+                    backgroundColor: '#0ea5e9',
+                    borderRadius: 4
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+        });
+        
+        // Tunggu grafik selesai digambar sebelum print
+        await new Promise(function(resolve) { setTimeout(resolve, 800); });
+
+        // Munculkan dialog print
+        window.print();
+
+        // Kembalikan aplikasi seperti semula setelah dialog print ditutup
+        setTimeout(function() {
+            if (mainApp) mainApp.style.display = '';
+            if (document.getElementById('printArea')) document.body.removeChild(printArea);
+        }, 500);
+        
+    } catch(err) {
+        console.error('Print error:', err);
+        showToast('Gagal mencetak: ' + err.message, 'error');
     }
 }
 
