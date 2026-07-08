@@ -880,7 +880,7 @@
     <div id="imgFooter" style="margin-top: 20px; font-size: 12px; color: #6B7280; text-align: right;"></div>
         <div id="imgPhotoWrap" style="margin-top: 20px; text-align: center; display: none;">
         <p style="font-size: 12px; color: #6B7280; margin-bottom: 5px; text-align: left;">Foto Barang:</p>
-        <img id="imgPhoto" src="" style="max-width: 100%; max-height: 300px; border: 1px solid #ddd; border-radius: 8px;" />
+        <img id="imgPhoto" src="" crossOrigin="anonymous" style="max-width: 100%; max-height: 300px; border: 1px solid #ddd; border-radius: 8px;" />
     </div>
 </div>
 
@@ -5795,7 +5795,8 @@ async function downloadStockImage(id) {
         var container = document.getElementById('stockImageTemplate');
         container.style.left = '0'; // Tampilkan sebentar untuk di-capture
         
-        const canvas = await html2canvas(container, { scale: 2 });
+        // TAMBAHKAN useCORS: true agar bisa membaca gambar dari Supabase
+        const canvas = await html2canvas(container, { scale: 2, useCORS: true });
         const link = document.createElement('a');
         link.download = 'Stock_Request_' + todayStr() + '.png';
         link.href = canvas.toDataURL('image/png');
