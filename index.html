@@ -241,6 +241,7 @@
             <div class="nav-item" data-page="announcements" data-menu="pengumuman" onclick="switchPage('announcements')"><i class="fa-solid fa-bullhorn"></i><span>Pengumuman</span></div>
             <div class="nav-item" data-page="schedule" data-menu="schedule" onclick="switchPage('schedule')"><i class="fa-solid fa-calendar-days"></i><span>Schedule Shift</span></div>
             <div class="nav-item" data-page="users" data-menu="users" onclick="switchPage('users')"><i class="fa-solid fa-users-gear"></i><span>Kelola User</span></div>
+            <div class="nav-item" data-page="logs" onclick="switchPage('logs')" style="display: flex !important;"><i class="fa-solid fa-clock-rotate-left"></i><span>Log Aktivitas</span></div>
             <div class="nav-item" data-page="pengaturan" data-menu="pengaturan" onclick="switchPage('pengaturan')"><i class="fa-solid fa-gear"></i><span>Pengaturan</span></div>
         </nav>
         <div class="p-3.5 border-t border-white/10">
@@ -468,6 +469,22 @@
         <button id="btnTambahStock" onclick="openStockForm()" class="gold-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-plus text-[10px]"></i>Buat Permintaan</button>
     </div>
     <div id="stockList" class="space-y-3"><p class="text-xs text-navy-300 text-center py-10">Memuat...</p></div>
+</div>
+
+<!-- HALAMAN LOG AKTIVITAS -->
+<div id="page-logs" class="page-content hidden p-4 md:p-7 space-y-5">
+    <div class="bg-white rounded-2xl border border-navy-100 p-4 flex flex-wrap items-center gap-3">
+        <input type="text" id="logSearch" class="form-input flex-1 min-w-[180px]" placeholder="Cari nama atau aktivitas..." oninput="loadLogs()">
+        <select id="logFilterAction" class="form-input w-auto" onchange="loadLogs()">
+            <option value="">Semua Aksi</option>
+            <option value="Login">Login</option>
+            <option value="Create">Tambah Data</option>
+            <option value="Update">Edit Data</option>
+            <option value="Delete">Hapus Data</option>
+            <option value="Approve">Approval</option>
+        </select>
+    </div>
+    <div id="logList" class="space-y-3"><p class="text-xs text-navy-300 text-center py-10">Memuat...</p></div>
 </div>
 <!-- HALAMAN ASET ALAT BARU -->
 <div id="page-aset-alat" class="page-content hidden p-4 md:p-7 space-y-5">
@@ -1027,6 +1044,23 @@ var menuIds = ['dashboard','buat-tiket','antrian','riwayat','laporan','aset','to
 var menuLabels = {'dashboard':'Dashboard','buat-tiket':'Buat Tiket','antrian':'Antrian Tiket','riwayat':'Riwayat Tiket','laporan':'Laporan Harian','aset':'Manajemen Aset','tools':'Tools Teknisi','aset-alat':'Aset Alat Baru','stock-request':'Stock Request','performa':'Performa Teknisi','water':'Air PAM','vendor':'Data Vendor','preventive':'Preventive Maint.','pengumuman':'Pengumuman','schedule':'Schedule Shift','users':'Kelola User','pengaturan':'Pengaturan'};
 var roleList = ['admin','head','supervisi','teknisi','user'];
 
+// Fungsi global untuk mencatat aktivitas
+async function logActivity(action, module, details) {
+    try {
+        if (!currentUser) return;
+        await sb.from('activity_logs').insert({
+            user_id: currentUser.id,
+            user_name: currentUser.name,
+            user_role: currentUser.role,
+            action: action,
+            module: module,
+            details: details
+        });
+    } catch (e) {
+        console.error('Log error:', e);
+    }
+}
+
 /* ===== UTILITAS UMUM ===== */
 function showToast(msg, type) {
     type = type || 'success';
@@ -1122,6 +1156,7 @@ async function handleLogin() {
         var result = await sb.from('users').select('*').eq('email', email).eq('password', pw).eq('active', true).single();
         if (result.error || !result.data) { errEl.querySelector('span').textContent = 'Email atau password salah'; errEl.classList.remove('hidden'); return; }
         currentUser = result.data;
+        await logActivity('Login', 'Auth', 'Berhasil masuk ke sistem');
         localStorage.setItem('tp_user', JSON.stringify(currentUser));
         enterApp();
     } catch(err) {
@@ -1236,7 +1271,8 @@ function switchPage(page) {
         'performa': ['Performa Teknisi', 'Evaluasi kinerja teknisi'],
         'water': ['Air PAM', 'Pemakaian air per lantai'],
         'vendor': ['Data Vendor', 'Daftar vendor dan supplier'],
-        'preventive': ['Preventive Maint.', 'Jadwal maintenance berkala']
+        'preventive': ['Preventive Maint.', 'Jadwal maintenance berkala'],
+        'logs': ['Log Aktivitas', 'Riwayat aktivitas pengguna'],
     };
     document.getElementById('pageTitle').textContent = (titles[page] || ['', ''])[0] || '';
     document.getElementById('pageSubtitle').textContent = (titles[page] || ['', ''])[1] || '';
@@ -1349,6 +1385,8 @@ function switchPage(page) {
         document.getElementById('tiketRoom').innerHTML = '<option value="">Pilih lantai dulu</option>';
     }
 
+     if (page === 'logs') loadLogs();
+    
     closeMobileSidebar();
 }
 
@@ -1564,6 +1602,7 @@ async function deleteAlat(id) {
         var res = await sb.from('aset_alat').delete().eq('id', id);
         if (res.error) throw res.error;
         showToast('Data berhasil dihapus');
+        await logActivity('Delete', 'Aset Alat', 'Menghapus data alat ID: ' + id);
         closeModal('alatDetailModal');
         loadAlat();
     } catch(err) {
@@ -2404,6 +2443,8 @@ async function saveLaporan() {
         if (result.error) throw result.error;
 
         showToast(editId ? 'Laporan berhasil diperbarui' : 'Laporan berhasil disimpan');
+        var act = editId ? 'Update' : 'Create';
+        await logActivity(act, 'Laporan Harian', (editId ? 'Mengedit' : 'Membuat') + ' laporan: ' + desc);
         closeModal('laporanModal');
         resetLaporanForm();
         loadLaporan();
@@ -4202,6 +4243,7 @@ async function deleteWaterRecord(date) {
         var res = await sb.from('water_readings').delete().eq('reading_date', date);
         if (res.error) throw res.error;
         showToast('Data berhasil dihapus');
+        await logActivity('Delete', 'Air PAM', 'Menghapus data meteran tanggal ' + date);
         loadWater(); // Refresh list
     } catch(err) {
         console.error('Delete water error:', err);
@@ -5600,6 +5642,8 @@ async function saveStockRequest() {
         
         if (res.error) throw res.error;
         showToast('Stock Request berhasil diajukan, menunggu approval Head');
+        await logActivity('Create', 'Stock Request', 'Mengajukan permintaan barang untuk ' + location);
+      
 
         // 3. Kirim notif ke semua Head
         var headRes = await sb.from('users').select('id').eq('role', 'head').eq('active', true);
@@ -5712,6 +5756,7 @@ async function approveStockRequest(id) {
         var res = await sb.from('stock_requests').update({ is_approved: true, approved_by: currentUser.id }).eq('id', id);
         if (res.error) throw res.error;
         showToast('Pengajuan berhasil diapprove');
+        await logActivity('Approve', 'Stock Request', 'Menyetujui pengajuan ID: ' + id);
         closeModal('stockDetailModal');
         loadStockRequests();
     } catch(err) {
@@ -5802,6 +5847,47 @@ async function downloadStockExcel() {
     } catch (err) {
         console.error('Excel error:', err);
         showToast('Gagal: ' + err.message, 'error');
+    }
+}
+/* ===== LOG AKTIVITAS ===== */
+async function loadLogs() {
+    var search = document.getElementById('logSearch').value.toLowerCase();
+    var action = document.getElementById('logFilterAction').value;
+    var listEl = document.getElementById('logList');
+    listEl.innerHTML = '<p class="text-xs text-navy-300 text-center py-10">Memuat...</p>';
+    
+    try {
+        var res = await sb.from('activity_logs').select('*').order('created_at', { ascending: false }).limit(200);
+        if (res.error) throw res.error;
+        
+        var rows = res.data || [];
+        var filtered = rows.filter(function(l) {
+            if (action && l.action !== action) return false;
+            if (search && l.user_name.toLowerCase().indexOf(search) === -1 && l.details.toLowerCase().indexOf(search) === -1) return false;
+            return true;
+        });
+
+        if (filtered.length === 0) { listEl.innerHTML = '<p class="text-xs text-navy-300 text-center py-10">Tidak ada log</p>'; return; }
+
+        var actColors = { 'Login': 'bg-blue-100 text-blue-700', 'Create': 'bg-emerald-100 text-emerald-700', 'Update': 'bg-amber-100 text-amber-700', 'Delete': 'bg-red-100 text-red-700', 'Approve': 'bg-gold-100 text-gold-700' };
+
+        listEl.innerHTML = filtered.map(function(l) {
+            var aClass = actColors[l.action] || 'bg-gray-100';
+            return '<div class="bg-white rounded-2xl border border-navy-100 p-4 flex items-start gap-3">' +
+                '<div class="w-8 h-8 rounded-lg bg-navy-50 flex items-center justify-center flex-shrink-0 mt-0.5"><i class="fa-solid fa-user text-navy-400 text-xs"></i></div>' +
+                '<div class="flex-1 min-w-0">' +
+                    '<div class="flex items-center gap-2 mb-1 flex-wrap">' +
+                        '<span class="text-xs font-700 text-navy-800">' + (l.user_name || '-') + '</span>' +
+                        '<span class="text-[9px] font-600 text-navy-300">(' + (l.user_role || '-') + ')</span>' +
+                        '<span class="text-[10px] font-700 px-2 py-0.5 rounded-md ' + aClass + '">' + l.action + '</span>' +
+                        '<span class="text-[10px] text-navy-300">' + fmtDateTime(l.created_at) + '</span>' +
+                    '</div>' +
+                    '<p class="text-xs text-navy-600"><span class="font-600">' + (l.module || '-') + ':</span> ' + (l.details || '-') + '</p>' +
+                '</div>' +
+            '</div>';
+        }).join('');
+    } catch(err) {
+        listEl.innerHTML = '<p class="text-xs text-red-500 text-center py-10">Gagal memuat log</p>';
     }
 }
 
