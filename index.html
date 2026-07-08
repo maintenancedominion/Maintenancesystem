@@ -380,17 +380,23 @@
             <div id="performaList" class="space-y-3"><p class="text-xs text-navy-300 text-center py-10">Pilih bulan untuk melihat performa</p></div>
         </div>
         <!-- WATER PAM -->
-        <div id="page-water" class="page-content hidden p-4 md:p-7 space-y-5">
-            <div class="bg-white rounded-2xl border border-navy-100 p-4 flex flex-wrap items-center gap-3">
-                <label class="text-xs text-navy-400 font-500">Bulan:</label>
-                <input type="month" id="waterFilterMonth" class="form-input w-auto" onchange="loadWater()">
-                <div class="flex-1"></div>
-                <button onclick="downloadWaterExcel()" class="dark-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-file-excel text-[10px]"></i>Excel</button>
-                <button id="btnInputWater" onclick="openWaterForm()" class="gold-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-plus text-[10px]"></i>Input Meteran</button>
-            </div>
-            <div class="grid grid-cols-3 gap-3" id="waterCards"></div>
-            <div id="waterList" class="space-y-3"><p class="text-xs text-navy-300 text-center py-10">Pilih bulan untuk melihat data</p></div>
+<div id="page-water" class="page-content hidden p-4 md:p-7 space-y-5">
+    <div class="bg-white rounded-2xl border border-navy-100 p-4 flex flex-wrap items-center gap-3">
+        <div class="flex items-center gap-2">
+            <label class="text-xs text-navy-400 font-500">Dari:</label>
+            <input type="date" id="waterFilterStart" class="form-input w-auto" onchange="loadWater()">
         </div>
+        <div class="flex items-center gap-2">
+            <label class="text-xs text-navy-400 font-500">Sampai:</label>
+            <input type="date" id="waterFilterEnd" class="form-input w-auto" onchange="loadWater()">
+        </div>
+        <div class="flex-1"></div>
+        <button onclick="downloadWaterExcel()" class="dark-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-file-excel text-[10px]"></i>Excel</button>
+        <button id="btnInputWater" onclick="openWaterForm()" class="gold-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-plus text-[10px]"></i>Input Meteran</button>
+    </div>
+    <div class="grid grid-cols-3 gap-3" id="waterCards"></div>
+    <div id="waterList" class="space-y-3"><p class="text-xs text-navy-300 text-center py-10">Pilih rentang tanggal untuk melihat data</p></div>
+</div>
         <!-- DATA VENDOR -->
         <div id="page-vendor" class="page-content hidden p-4 md:p-7 space-y-5">
             <div class="bg-white rounded-2xl border border-navy-100 p-4 flex flex-wrap items-center gap-3">
@@ -1306,8 +1312,11 @@ function switchPage(page) {
         loadVendorVisits();
     }
     
-    if (page === 'water') {
-        if (!document.getElementById('waterFilterMonth').value) document.getElementById('waterFilterMonth').value = monthStr();
+        if (page === 'water') {
+        var startEl = document.getElementById('waterFilterStart');
+        var endEl = document.getElementById('waterFilterEnd');
+        if (!startEl.value) startEl.value = monthStr() + '-01'; // Default awal bulan
+        if (!endEl.value) endEl.value = todayStr(); // Default hari ini
         var isSuper = currentUser.role === 'supervisi';
         document.getElementById('btnInputWater').style.display = isSuper ? 'none' : '';
         loadWater();
@@ -4109,57 +4118,77 @@ async function saveWater() {
 }
 
 async function loadWater() {
-    var month = document.getElementById('waterFilterMonth').value;
+    var startDate = document.getElementById('waterFilterStart').value;
+    var endDate = document.getElementById('waterFilterEnd').value;
     var cardsEl = document.getElementById('waterCards');
     var listEl = document.getElementById('waterList');
 
-    if (!month) { cardsEl.innerHTML = ''; listEl.innerHTML = '<p class="text-xs text-navy-300 text-center py-10">Pilih bulan</p>'; return; }
+    if (!startDate || !endDate) { cardsEl.innerHTML = ''; listEl.innerHTML = '<p class="text-xs text-navy-300 text-center py-10">Pilih rentang tanggal</p>'; return; }
 
     listEl.innerHTML = '<p class="text-xs text-navy-300 text-center py-10">Memuat...</p>';
     cardsEl.innerHTML = '';
 
     try {
-        var startDate = month + '-01';
-        var ym = month.split('-');
-        var lastDay = new Date(parseInt(ym[0]), parseInt(ym[1]), 0).getDate();
-        var endDate = month + '-' + String(lastDay).padStart(2, '0');
-
+        // Ambil data dalam rentang tanggal
         var res = await sb.from('water_readings').select('*').gte('reading_date', startDate).lte('reading_date', endDate).order('reading_date', { ascending: true });
         var rows = res.data || [];
+
+        // Ambil 1 data sebelum startDate untuk perhitungan silang bulan
+        var prevRes = await sb.from('water_readings').select('*').lt('reading_date', startDate).order('reading_date', { ascending: false }).limit(1);
+        var prevRecord = (prevRes.data && prevRes.data.length > 0) ? prevRes.data[0] : null;
 
         var totalUsage = 0;
         var daysReported = rows.length;
         var dataRowsHtml = '';
+        var validDays = 0;
+        var lastMeter = prevRecord ? parseFloat(prevRecord.meter_reading) : null;
 
-        // Kalkulasi pemakaian harian
         for (var i = 0; i < rows.length; i++) {
             var current = rows[i];
+            var currentMeter = parseFloat(current.meter_reading);
             var usage = 0;
-            if (i > 0) {
-                var prev = rows[i-1];
-                usage = parseFloat(current.meter_reading) - parseFloat(prev.meter_reading);
-                if (usage < 0) usage = 0; // Jika meteran dikembali ke 0 atau salah input
+            var isFirstUntracked = (!prevRecord && i === 0); // Jika tidak ada data kemarin, hari ini tidak bisa dihitung
+
+            if (!isFirstUntracked && lastMeter !== null) {
+                usage = currentMeter - lastMeter;
+                if (usage < 0) usage = 0;
                 totalUsage += usage;
+                validDays++;
             }
+            lastMeter = currentMeter;
+
+            var usageDisplay = isFirstUntracked ? '-' : usage.toFixed(2) + ' m³';
+            var usageColor = isFirstUntracked ? 'text-navy-300' : 'text-sky-600';
             
+            // Hanya Head, Admin, Supervisi yang bisa Edit/Hapus
+            var canManageWater = (currentUser.role === 'admin' || currentUser.role === 'head' || currentUser.role === 'supervisi');
+            var actionsHtml = '';
+            if (canManageWater) {
+                actionsHtml = '<div class="flex gap-2 mt-1 justify-end">' +
+                    '<button onclick="openWaterForm(\'' + current.reading_date + '\')" class="text-[9px] text-navy-400 hover:text-gold-600">Edit</button>' +
+                    '<button onclick="deleteWaterRecord(\'' + current.reading_date + '\')" class="text-[9px] text-red-400 hover:text-red-600">Hapus</button>' +
+                '</div>';
+            }
+
             dataRowsHtml += '<div class="flex items-center justify-between py-2 border-b border-navy-50">' +
                 '<div><p class="text-xs font-600 text-navy-800">' + fmtDate(current.reading_date) + '</p><p class="text-[10px] text-navy-300">Meter: ' + current.meter_reading + ' m³ | <span class="text-blue-500">' + current.weather + '</span></p></div>' +
-                '<div class="text-right"><p class="text-sm font-700 ' + (i === 0 ? 'text-navy-300' : 'text-sky-600') + '">' + (i === 0 ? '-' : usage.toFixed(2) + ' m³') + '</p><button onclick="openWaterForm(\'' + current.reading_date + '\')" class="text-[9px] text-navy-400 hover:text-gold-600">Edit</button></div>' +
+                '<div class="text-right"><p class="text-sm font-700 ' + usageColor + '">' + usageDisplay + '</p>' + actionsHtml + '</div>' +
             '</div>';
         }
 
-        // Kartu Ringkasan
+        var avgUsage = validDays > 0 ? totalUsage / validDays : 0;
+
         cardsEl.innerHTML =
             '<div class="stat-card"><div style="position:absolute;top:0;left:0;right:0;height:3px;background:#0ea5e9;border-radius:14px 14px 0 0"></div><div class="flex items-center justify-between mb-2"><div class="w-9 h-9 rounded-xl bg-sky-50 flex items-center justify-center"><i class="fa-solid fa-droplet text-sky-500 text-sm"></i></div></div><p class="text-xl font-800 text-navy-800">' + totalUsage.toFixed(2) + '</p><p class="text-[10px] text-navy-300 mt-0.5">Total Pemakaian (m³)</p></div>' +
             '<div class="stat-card"><div style="position:absolute;top:0;left:0;right:0;height:3px;background:#c9a84c;border-radius:14px 14px 0 0"></div><div class="flex items-center justify-between mb-2"><div class="w-9 h-9 rounded-xl bg-gold-50 flex items-center justify-center"><i class="fa-solid fa-calendar-check text-gold-600 text-sm"></i></div></div><p class="text-xl font-800 text-navy-800">' + daysReported + '</p><p class="text-[10px] text-navy-300 mt-0.5">Hari Dicatat</p></div>' +
-            '<div class="stat-card"><div style="position:absolute;top:0;left:0;right:0;height:3px;background:#22c55e;border-radius:14px 14px 0 0"></div><div class="flex items-center justify-between mb-2"><div class="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center"><i class="fa-solid fa-gauge text-emerald-500 text-sm"></i></div></div><p class="text-xl font-800 text-navy-800">' + (daysReported > 0 ? (totalUsage/daysReported).toFixed(2) : '0.00') + '</p><p class="text-[10px] text-navy-300 mt-0.5">Rata-rata Harian (m³)</p></div>';
+            '<div class="stat-card"><div style="position:absolute;top:0;left:0;right:0;height:3px;background:#22c55e;border-radius:14px 14px 0 0"></div><div class="flex items-center justify-between mb-2"><div class="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center"><i class="fa-solid fa-gauge text-emerald-500 text-sm"></i></div></div><p class="text-xl font-800 text-navy-800">' + avgUsage.toFixed(2) + '</p><p class="text-[10px] text-navy-300 mt-0.5">Rata-rata Harian (m³)</p></div>';
 
         if (rows.length === 0) {
-            listEl.innerHTML = '<div class="bg-white rounded-2xl border border-navy-100 p-6 text-center"><i class="fa-solid fa-droplet text-3xl text-navy-200 mb-3"></i><p class="text-sm font-600 text-navy-800">Belum ada catatan meteran bulan ini</p><p class="text-xs text-navy-400 mt-1">Klik "Input Meteran" untuk mencatat harian</p></div>';
+            listEl.innerHTML = '<div class="bg-white rounded-2xl border border-navy-100 p-6 text-center"><i class="fa-solid fa-droplet text-3xl text-navy-200 mb-3"></i><p class="text-sm font-600 text-navy-800">Belum ada catatan meteran di rentang ini</p><p class="text-xs text-navy-400 mt-1">Klik "Input Meteran" untuk mencatat harian</p></div>';
             return;
         }
 
-        listEl.innerHTML = '<div class="bg-white rounded-2xl border border-navy-100 p-5"><h3 class="text-sm font-700 text-navy-800 mb-3"><i class="fa-solid fa-list mr-2 text-navy-500"></i>Riwayat Pencatatan Bulan Ini</h3>' + dataRowsHtml + '</div>';
+        listEl.innerHTML = '<div class="bg-white rounded-2xl border border-navy-100 p-5"><h3 class="text-sm font-700 text-navy-800 mb-3"><i class="fa-solid fa-list mr-2 text-navy-500"></i>Riwayat Pencatatan</h3>' + dataRowsHtml + '</div>';
 
     } catch(err) {
         console.error('Load water error:', err);
@@ -4167,31 +4196,35 @@ async function loadWater() {
     }
 }
 
-function getPrevMonth(month) {
-    var parts = month.split('-');
-    var y = parseInt(parts[0]);
-    var m = parseInt(parts[1]);
-    m--;
-    if (m < 1) { m = 12; y--; }
-    return y + '-' + String(m).padStart(2, '0');
+async function deleteWaterRecord(date) {
+    if (!confirm('Hapus data meteran tanggal ' + fmtDate(date) + '?')) return;
+    try {
+        var res = await sb.from('water_readings').delete().eq('reading_date', date);
+        if (res.error) throw res.error;
+        showToast('Data berhasil dihapus');
+        loadWater(); // Refresh list
+    } catch(err) {
+        console.error('Delete water error:', err);
+        showToast('Gagal menghapus: ' + err.message, 'error');
+    }
 }
 
 async function downloadWaterExcel() {
     try {
-        var month = document.getElementById('waterFilterMonth').value;
-        if (!month) { showToast('Pilih bulan dulu', 'error'); return; }
+        var startDate = document.getElementById('waterFilterStart').value;
+        var endDate = document.getElementById('waterFilterEnd').value;
+        if (!startDate || !endDate) { showToast('Pilih rentang tanggal dulu', 'error'); return; }
 
         showToast('Mengambil data...');
-        var startDate = month + '-01';
-        var ym = month.split('-');
-        var lastDay = new Date(parseInt(ym[0]), parseInt(ym[1]), 0).getDate();
-        var endDate = month + '-' + String(lastDay).padStart(2, '0');
-
         var res = await sb.from('water_readings').select('*').gte('reading_date', startDate).lte('reading_date', endDate).order('reading_date', { ascending: true });
         if (!res.data || res.data.length === 0) { showToast('Tidak ada data untuk diunduh', 'error'); return; }
 
         var rows = res.data;
         showToast('Membuat file Excel...');
+
+        var prevRes = await sb.from('water_readings').select('*').lt('reading_date', startDate).order('reading_date', { ascending: false }).limit(1);
+        var prevRecord = (prevRes.data && prevRes.data.length > 0) ? prevRes.data[0] : null;
+        var lastMeter = prevRecord ? parseFloat(prevRecord.meter_reading) : null;
 
         var workbook = new ExcelJS.Workbook();
         var worksheet = workbook.addWorksheet('Air PAM');
@@ -4209,7 +4242,7 @@ async function downloadWaterExcel() {
         var dateString = now.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
         worksheet.mergeCells('A2:E2');
         var dateCell = worksheet.getCell('A2');
-        dateCell.value = 'Diunduh pada: ' + dateString;
+        dateCell.value = 'Diunduh pada: ' + dateString + ' (Rentang: ' + fmtDate(startDate) + ' s/d ' + fmtDate(endDate) + ')';
         dateCell.font = { name: 'Calibri', size: 10, italic: true, color: { argb: 'FF6B7280' } };
         dateCell.alignment = { vertical: 'middle', horizontal: 'center' };
 
@@ -4227,17 +4260,21 @@ async function downloadWaterExcel() {
 
         var totalUsage = 0;
         rows.forEach(function(d, idx) {
+            var currentMeter = parseFloat(d.meter_reading);
             var usage = 0;
-            if (idx > 0) {
-                usage = parseFloat(d.meter_reading) - parseFloat(rows[idx-1].meter_reading);
+            var isFirstUntracked = (!prevRecord && idx === 0);
+
+            if (!isFirstUntracked && lastMeter !== null) {
+                usage = currentMeter - lastMeter;
                 if (usage < 0) usage = 0;
                 totalUsage += usage;
             }
-            
+            lastMeter = currentMeter;
+
             var dataRow = worksheet.addRow([
                 d.reading_date || '',
                 d.meter_reading || 0,
-                idx === 0 ? '-' : usage.toFixed(2),
+                isFirstUntracked ? '-' : usage.toFixed(2),
                 d.weather || '-',
                 d.notes || ''
             ]);
@@ -4252,7 +4289,6 @@ async function downloadWaterExcel() {
             });
         });
 
-        // Baris Total di paling bawah
         var totalRow = worksheet.addRow(["", "TOTAL PEMAKAIAN", totalUsage.toFixed(2), "", ""]);
         totalRow.eachCell(function(cell, colNumber) {
             cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF1F2937' } };
