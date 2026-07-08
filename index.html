@@ -233,6 +233,7 @@
             <div class="nav-item" data-page="aset-alat" data-menu="tools" onclick="switchPage('aset-alat')" style="display: flex !important;"><i class="fa-solid fa-toolbox"></i><span>Aset Alat Baru</span></div>
             <div class="nav-item" data-page="preventive" data-menu="preventive" onclick="switchPage('preventive')"><i class="fa-solid fa-shield-halved"></i><span>Preventive Maint.</span></div>
             <div class="nav-item" data-page="performa" data-menu="performa" onclick="switchPage('performa')"><i class="fa-solid fa-chart-line"></i><span>Performa Teknisi</span></div>
+            <div class="nav-item" data-page="aset-alat" onclick="switchPage('aset-alat')" style="display: flex !important;"><i class="fa-solid fa-toolbox"></i><span>Aset Alat Baru</span></div>
             <div class="nav-item" data-page="water" data-menu="water" onclick="switchPage('water')"><i class="fa-solid fa-droplet"></i><span>Air PAM</span></div>
             <div class="nav-item" data-page="stock-request" onclick="switchPage('stock-request')" style="display: flex !important;"><i class="fa-solid fa-boxes-stacked"></i><span>Stock Request</span></div>
             <div class="nav-item" data-page="vendor" data-menu="vendor" onclick="switchPage('vendor')"><i class="fa-solid fa-truck"></i><span>Data Vendor</span></div>
@@ -454,25 +455,38 @@
         </div>
       
 <!-- HALAMAN ASET ALAT BARU -->
+<!-- HALAMAN ASET ALAT BARU -->
 <div id="page-aset-alat" class="page-content hidden p-4 md:p-7 space-y-5">
-    <div class="bg-white rounded-2xl border border-navy-100 p-4 flex flex-wrap items-center gap-3">
-        <div class="relative flex-1 min-w-[180px]"><i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-navy-300 text-xs"></i><input type="text" id="alatSearch" class="form-input pl-9" placeholder="Cari nama/kode alat..." oninput="loadAlat()"></div>
-        <select id="alatFilterCond" class="form-input w-auto" onchange="loadAlat()"><option value="">Semua Kondisi</option><option value="Baik">Baik</option><option value="Cukup">Cukup</option><option value="Rusak">Rusak</option></select>
-        <select id="alatFilterStatus" class="form-input w-auto" onchange="loadAlat()"><option value="">Semua Status</option><option value="Aktif">Aktif</option><option value="Tidak Aktif">Tidak Aktif</option></select>
-        <div class="flex-1"></div>
-        <button onclick="downloadAlatExcel()" class="dark-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-file-excel text-[10px]"></i>Excel</button>
-        <button id="btnTambahAlat" onclick="openAlatForm()" class="gold-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-plus text-[10px]"></i>Tambah Alat</button>
+    <div class="bg-white rounded-2xl border border-navy-100 p-4 flex flex-col sm:flex-row sm:flex-wrap items-center gap-3">
+        <div class="relative w-full sm:flex-1 sm:min-w-[180px]">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-navy-300 text-xs"></i>
+            <input type="text" id="alatSearch" class="form-input pl-9" placeholder="Cari nama/kode alat..." oninput="loadAlat()">
+        </div>
+        
+        <div class="flex items-center gap-3 w-full sm:w-auto">
+            <select id="alatFilterCond" class="form-input flex-1 sm:w-auto" onchange="loadAlat()">
+                <option value="">Semua Kondisi</option>
+                <option value="Baik">Baik</option>
+                <option value="Cukup">Cukup</option>
+                <option value="Rusak">Rusak</option>
+            </select>
+            <select id="alatFilterStatus" class="form-input flex-1 sm:w-auto" onchange="loadAlat()">
+                <option value="">Semua Status</option>
+                <option value="Aktif">Aktif</option>
+                <option value="Tidak Aktif">Tidak Aktif</option>
+            </select>
+        </div>
+        
+        <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <button onclick="downloadAlatExcel()" class="dark-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5 flex-1 sm:flex-none justify-center">
+                <i class="fa-solid fa-file-excel text-[10px]"></i>Excel
+            </button>
+            <button id="btnTambahAlat" onclick="openAlatForm()" class="gold-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5 flex-1 sm:flex-none justify-center">
+                <i class="fa-solid fa-plus text-[10px]"></i>Tambah Alat
+            </button>
+        </div>
     </div>
     <div id="alatList" class="space-y-3"><p class="text-xs text-navy-300 text-center py-10">Memuat...</p></div>
-</div>
-<!-- HALAMAN STOCK REQUEST -->
-<div id="page-stock-request" class="page-content hidden p-4 md:p-7 space-y-5">
-    <div class="bg-white rounded-2xl border border-navy-100 p-4 flex flex-wrap items-center gap-3">
-        <div class="flex-1"></div>
-        <button onclick="downloadStockExcel()" class="dark-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-file-excel text-[10px]"></i>Excel</button>
-        <button id="btnTambahStock" onclick="openStockForm()" class="gold-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-plus text-[10px]"></i>Buat Permintaan</button>
-    </div>
-    <div id="stockList" class="space-y-3"><p class="text-xs text-navy-300 text-center py-10">Memuat...</p></div>
 </div>
 
 <!-- MODAL FORM ASET ALAT BARU -->
@@ -987,8 +1001,8 @@ var notifOpen = false;
 var notifInterval = null;
 var lastNotifCount = 0;
 var currentPage = 'dashboard';
-var menuIds = ['dashboard','buat-tiket','antrian','riwayat','laporan','aset','tools','stock-request','performa','water','vendor','preventive','pengumuman','schedule','users','pengaturan'];
-var menuLabels = {'dashboard':'Dashboard','buat-tiket':'Buat Tiket','antrian':'Antrian Tiket','riwayat':'Riwayat Tiket','laporan':'Laporan Harian','aset':'Manajemen Aset','tools':'Tools Teknisi','stock-request':'Stock Request','performa':'Performa Teknisi','water':'Air PAM','vendor':'Data Vendor','preventive':'Preventive Maint.','pengumuman':'Pengumuman','schedule':'Schedule Shift','users':'Kelola User','pengaturan':'Pengaturan'};
+var menuIds = ['dashboard','buat-tiket','antrian','riwayat','laporan','aset','tools','aset-alat','stock-request','performa','water','vendor','preventive','pengumuman','schedule','users','pengaturan'];
+var menuLabels = {'dashboard':'Dashboard','buat-tiket':'Buat Tiket','antrian':'Antrian Tiket','riwayat':'Riwayat Tiket','laporan':'Laporan Harian','aset':'Manajemen Aset','tools':'Tools Teknisi','aset-alat':'Aset Alat Baru','stock-request':'Stock Request','performa':'Performa Teknisi','water':'Air PAM','vendor':'Data Vendor','preventive':'Preventive Maint.','pengumuman':'Pengumuman','schedule':'Schedule Shift','users':'Kelola User','pengaturan':'Pengaturan'};
 var roleList = ['admin','head','supervisi','teknisi','user'];
 
 /* ===== UTILITAS UMUM ===== */
@@ -1253,7 +1267,8 @@ function switchPage(page) {
             switchPage('dashboard');
             return;
         }
-        var canEditAlat = (currentUser.role === 'admin' || currentUser.role === 'head' || currentUser.role === 'supervisi');
+        // Teknisi sementara diizinkan tambah/edit/hapus
+        var canEditAlat = (currentUser.role === 'admin' || currentUser.role === 'head' || currentUser.role === 'supervisi' || currentUser.role === 'teknisi');
         document.getElementById('btnTambahAlat').style.display = canEditAlat ? '' : 'none';
         loadAlat();
     }
@@ -1587,7 +1602,7 @@ async function openAlatDetail(id) {
             '<div class="mt-3"><span class="text-[10px] font-600 text-navy-400 block mb-1">Foto</span>' + photosHtml + '</div>' +
             (a.notes ? '<p class="text-xs text-navy-400 mt-3 italic">' + a.notes + '</p>' : '');
             
-        var canEditAlat = (currentUser.role === 'admin' || currentUser.role === 'head' || currentUser.role === 'supervisi');
+        var canEditAlat = (currentUser.role === 'admin' || currentUser.role === 'head' || currentUser.role === 'supervisi' || currentUser.role === 'teknisi');
         document.getElementById('btnTambahReplacementAlat').style.display = canEditAlat ? '' : 'none';
         
         var repRes = await sb.from('alat_replacements').select('*').eq('alat_id', id).order('replacement_date', { ascending: false });
@@ -4676,11 +4691,11 @@ async function resetRoleMenus() {
     if (!confirm('Reset semua akses menu ke default?')) return;
     var defaults = [];
     var defaultMap = {
-        admin: { dashboard:true, 'buat-tiket':true, antrian:true, riwayat:true, laporan:true, aset:true, 'stock-request':true, pengumuman:true, schedule:true, users:true, pengaturan:true },
-        head: { dashboard:true, 'buat-tiket':true, antrian:true, riwayat:true, laporan:true, aset:true, 'stock-request':true, pengumuman:true, schedule:true, users:false, pengaturan:true },
-        supervisi: { dashboard:true, 'buat-tiket':true, antrian:true, riwayat:true, laporan:true, aset:true, 'stock-request':true, pengumuman:true, schedule:true, users:false, pengaturan:false },
-        teknisi: { dashboard:true, 'buat-tiket':true, antrian:true, riwayat:true, laporan:true, aset:false, 'stock-request':true, pengumuman:true, schedule:false, users:false, pengaturan:false },
-        user: { dashboard:true, 'buat-tiket':true, antrian:true, riwayat:true, laporan:false, aset:false, 'stock-request':false, pengumuman:true, schedule:false, users:false, pengaturan:false }
+        admin: { dashboard:true, 'buat-tiket':true, antrian:true, riwayat:true, laporan:true, aset:true, 'aset-alat':true, 'stock-request':true, pengumuman:true, schedule:true, users:true, pengaturan:true },
+        head: { dashboard:true, 'buat-tiket':true, antrian:true, riwayat:true, laporan:true, aset:true, 'aset-alat':true, 'stock-request':true, pengumuman:true, schedule:true, users:false, pengaturan:true },
+        supervisi: { dashboard:true, 'buat-tiket':true, antrian:true, riwayat:true, laporan:true, aset:true, 'aset-alat':true, 'stock-request':true, pengumuman:true, schedule:true, users:false, pengaturan:false },
+        teknisi: { dashboard:true, 'buat-tiket':true, antrian:true, riwayat:true, laporan:true, aset:false, 'aset-alat':true, 'stock-request':true, pengumuman:true, schedule:false, users:false, pengaturan:false },
+        user: { dashboard:true, 'buat-tiket':true, antrian:true, riwayat:true, laporan:false, aset:false, 'aset-alat':false, 'stock-request':false, pengumuman:true, schedule:false, users:false, pengaturan:false }
     };
     roleList.forEach(function(role) {
         menuIds.forEach(function(mid) {
