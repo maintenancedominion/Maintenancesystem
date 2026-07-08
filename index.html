@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="id" class="scroll-smooth">
 <head>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TicketPro — Dominion</title>
@@ -850,6 +851,36 @@
             <button onclick="closeModal('stockModal')" class="px-4 py-2 rounded-xl text-sm font-500 text-navy-400 hover:bg-navy-50 transition">Batal</button>
             <button onclick="saveStockRequest()" id="saveStockBtn" class="px-5 py-2 rounded-xl text-sm gold-btn">Simpan</button>
         </div>
+    </div>
+</div>
+
+<!-- TEMPLATE GAMBAR STOCK REQUEST (TERSEMBUNYI) -->
+<div id="stockImageTemplate" style="position: fixed; left: -9999px; top: 0; width: 400px; padding: 20px; background: #ffffff; font-family: sans-serif;">
+    <div style="text-align: center; border-bottom: 2px solid #1F2937; padding-bottom: 10px; margin-bottom: 15px;">
+        <h2 style="margin: 0; font-size: 18px; color: #1F2937;">FORM PERMOHONAN BARANG</h2>
+<p id="imgHeader" style="margin: 5px 0 0; font-size: 12px; color: #6B7280;">-</p>
+    </div>
+    <div style="font-size: 12px; margin-bottom: 15px; color: #1F2937;">
+        <p id="imgFormNo" style="margin: 2px 0; font-weight: bold; color: #1F2937;">No: -</p>
+<p id="imgInfo1" style="margin: 2px 0;"></p>
+        <p id="imgInfo2" style="margin: 2px 0;"></p>
+    </div>
+    <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+        <thead>
+            <tr style="background: #1F2937; color: #ffffff;">
+                <th style="border: 1px solid #ddd; padding: 6px;">No</th>
+                <th style="border: 1px solid #ddd; padding: 6px; text-align: left;">Nama Barang</th>
+                <th style="border: 1px solid #ddd; padding: 6px; text-align: left;">Spec</th>
+                <th style="border: 1px solid #ddd; padding: 6px;">Qty</th>
+                <th style="border: 1px solid #ddd; padding: 6px;">Satuan</th>
+            </tr>
+        </thead>
+        <tbody id="imgItemsBody"></tbody>
+    </table>
+    <div id="imgFooter" style="margin-top: 20px; font-size: 12px; color: #6B7280; text-align: right;"></div>
+        <div id="imgPhotoWrap" style="margin-top: 20px; text-align: center; display: none;">
+        <p style="font-size: 12px; color: #6B7280; margin-bottom: 5px; text-align: left;">Foto Barang:</p>
+        <img id="imgPhoto" src="" style="max-width: 100%; max-height: 300px; border: 1px solid #ddd; border-radius: 8px;" />
     </div>
 </div>
 
@@ -1831,7 +1862,7 @@ async function downloadAlatExcel() {
         // Generate File .xlsx dan langsung download
         var buffer = await workbook.xlsx.writeBuffer();
         var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        saveAs(blob, 'Aset_Alat.xlsx');
+        saveAs(blob, 'Aset_Alat_' + todayStr() + '.xlsx');
         
         showToast('File Excel berhasil diunduh');
     } catch(err) {
@@ -2667,7 +2698,7 @@ async function downloadLaporanExcel() {
         // Generate File .xlsx
         var buffer = await workbook.xlsx.writeBuffer();
         var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        saveAs(blob, 'Laporan_Harian.xlsx');
+        saveAs(blob, 'Laporan_Harian_' + todayStr() + '.xlsx');
         
         showToast('File Excel berhasil diunduh');
     } catch(err) {
@@ -4340,7 +4371,7 @@ async function downloadWaterExcel() {
 
         var buffer = await workbook.xlsx.writeBuffer();
         var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        saveAs(blob, 'Data_Air_PAM_Harian.xlsx');
+        saveAs(blob, 'Data_Air_PAM_' + todayStr() + '.xlsx');
 
         showToast('File Excel berhasil diunduh');
     } catch(err) {
@@ -5498,7 +5529,7 @@ async function downloadAsetExcel() {
         // Generate File .xlsx
         var buffer = await workbook.xlsx.writeBuffer();
         var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        saveAs(blob, 'Manajemen_Aset.xlsx');
+        saveAs(blob, 'Manajemen_Aset_' + todayStr() + '.xlsx');
 
         showToast('File Excel berhasil diunduh');
     } catch(err) {
@@ -5591,18 +5622,25 @@ function addStockItemRow(data) {
 }
 
 async function saveStockRequest() {
+    // 1. KUNCI TOMBOL DI DETIK PERTAMA DIKLIK
+    var btn = document.getElementById('saveStockBtn');
+    if (btn.disabled) return; 
+    btn.disabled = true; 
+    btn.textContent = 'Menyimpan...';
+
+    // 2. Baru ambil data form
     var date = document.getElementById('stockDate').value;
     var requester = document.getElementById('stockRequester').value;
     var priority = document.getElementById('stockPriority').value;
     var location = document.getElementById('stockLocation').value;
     
-    if (!requester) { showToast('Nama pemohon wajib diisi', 'error'); return; }
-    if (!priority || !location) { showToast('Lengkapi data wajib', 'error'); return; }
+    if (!requester) { showToast('Nama pemohon wajib diisi', 'error'); btn.disabled = false; btn.textContent = 'Simpan'; return; }
+    if (!priority || !location) { showToast('Lengkapi data wajib', 'error'); btn.disabled = false; btn.textContent = 'Simpan'; return; }
     
     var items = [];
     var cards = document.getElementById('stockItemsBody').querySelectorAll('div.bg-navy-50');
     cards.forEach(function(card, idx) {
-        var inputs = card.querySelectorAll('input, select'); // Tambah select
+        var inputs = card.querySelectorAll('input, select');
         if (inputs.length > 0) {
             var namaVal = inputs[0].value.trim();
             if (namaVal) {
@@ -5611,10 +5649,7 @@ async function saveStockRequest() {
         }
     });
     
-    if (items.length === 0) { showToast('Masukkan minimal 1 barang', 'error'); return; }
-
-    var btn = document.getElementById('saveStockBtn');
-    btn.disabled = true; btn.textContent = 'Menyimpan...';
+    if (items.length === 0) { showToast('Masukkan minimal 1 barang', 'error'); btn.disabled = false; btn.textContent = 'Simpan'; return; }
 
     try {
         // 1. Upload gambar jika ada
@@ -5627,7 +5662,15 @@ async function saveStockRequest() {
             imageUrl = sb.storage.from('ticket-images').getPublicUrl(fname).data.publicUrl;
         }
 
-        // 2. Simpan ke database
+        // 2. Buat No Form Otomatis
+        var prefix = 'ALL';
+        if (location === 'Dominion Lounge') prefix = 'DL';
+        else if (location === 'Masterpiece') prefix = 'MP';
+        var dateStr = date.replace(/-/g, ''); 
+        var uniqueId = Math.random().toString(36).substr(2, 4).toUpperCase();
+        var formNumber = prefix + '/' + dateStr + '/' + uniqueId;
+
+        // 3. Simpan ke database
         var res = await sb.from('stock_requests').insert({
             request_date: date,
             requester_name: requester,
@@ -5635,6 +5678,7 @@ async function saveStockRequest() {
             location_needed: location,
             items: items,
             image_url: imageUrl,
+            form_number: formNumber,
             status: 'Pending',
             is_approved: false,
             created_by: currentUser.id
@@ -5642,15 +5686,15 @@ async function saveStockRequest() {
         
         if (res.error) throw res.error;
         showToast('Stock Request berhasil diajukan, menunggu approval Head');
-        await logActivity('Create', 'Stock Request', 'Mengajukan permintaan barang untuk ' + location);
-      
 
-        // 3. Kirim notif ke semua Head
+        // 4. Kirim notif ke semua Head
         var headRes = await sb.from('users').select('id').eq('role', 'head').eq('active', true);
         if (headRes.data && headRes.data.length > 0) {
             var headIds = headRes.data.map(function(u) { return u.id; });
             await sendNotifToUsers(headIds, 'Pengajuan Stock Request Baru', requester + ' mengajukan permintaan barang untuk ' + location, 'ticket', null);
         }
+        
+        await logActivity('Create', 'Stock Request', 'Mengajukan permintaan barang untuk ' + location);
 
         closeModal('stockModal');
         loadStockRequests();
@@ -5658,7 +5702,9 @@ async function saveStockRequest() {
         console.error('Save stock error:', err);
         showToast('Gagal: ' + err.message, 'error');
     } finally {
-        btn.disabled = false; btn.textContent = 'Simpan';
+        // Buka kunci tombol lagi setelah selesai
+        btn.disabled = false; 
+        btn.textContent = 'Simpan';
     }
 }
 
@@ -5700,6 +5746,68 @@ async function loadStockRequests() {
         listEl.innerHTML = '<p class="text-xs text-red-500 text-center py-10">Gagal memuat</p>';
     }
 }
+async function downloadStockImage(id) {
+    showToast('Membuat gambar...');
+    try {
+        var res = await sb.from('stock_requests').select('*').eq('id', id).single();
+        if (!res.data) return;
+        var s = res.data;
+
+        // Isi data ke template
+        document.getElementById('imgHeader').textContent = s.location_needed || 'Stock Request';
+        document.getElementById('imgFormNo').textContent = 'No:\u00A0' + (s.form_number || '-');
+        document.getElementById('imgInfo1').textContent = 'Tanggal:\u00A0' + fmtDate(s.request_date) + '\u00A0\u00A0|\u00A0\u00A0Pemohon:\u00A0' + (s.requester_name || '-');
+        document.getElementById('imgInfo2').textContent = 'Prioritas:\u00A0' + s.priority;
+        
+        var itemsBody = document.getElementById('imgItemsBody');
+        itemsBody.innerHTML = '';
+        var items = Array.isArray(s.items) ? s.items : [];
+        items.forEach(function(it, idx) {
+            var tr = document.createElement('tr');
+            tr.innerHTML = '<td style="border: 1px solid #ddd; padding: 6px; text-align: center;">' + (idx + 1) + '</td>' +
+                           '<td style="border: 1px solid #ddd; padding: 6px;">' + (it.nama || '') + '</td>' +
+                           '<td style="border: 1px solid #ddd; padding: 6px;">' + (it.spec || '-') + '</td>' +
+                           '<td style="border: 1px solid #ddd; padding: 6px; text-align: center;">' + (it.qty || 0) + '</td>' +
+                           '<td style="border: 1px solid #ddd; padding: 6px; text-align: center;">' + (it.satuan || '-') + '</td>';
+            itemsBody.appendChild(tr);
+        });
+
+        var statusText = s.is_approved ? 'Sudah\u00A0Diapprove\u00A0Head' : 'Belum\u00A0Diapprove\u00A0Head';
+        document.getElementById('imgFooter').textContent = 'Status:\u00A0' + statusText;
+
+        // MUNCULKAN GAMBAR JIKA ADA
+        var photoWrap = document.getElementById('imgPhotoWrap');
+        var photoEl = document.getElementById('imgPhoto');
+        if (s.image_url) {
+            photoEl.src = s.image_url;
+            photoWrap.style.display = 'block';
+            // Tunggu gambar selesai loading sebelum di-capture
+            await new Promise(function(resolve) {
+                photoEl.onload = resolve;
+                photoEl.onerror = resolve;
+            });
+        } else {
+            photoWrap.style.display = 'none';
+            photoEl.src = '';
+        }
+
+        // Render menjadi gambar
+        var container = document.getElementById('stockImageTemplate');
+        container.style.left = '0'; // Tampilkan sebentar untuk di-capture
+        
+        const canvas = await html2canvas(container, { scale: 2 });
+        const link = document.createElement('a');
+        link.download = 'Stock_Request_' + todayStr() + '.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        
+        container.style.left = '-9999px'; // Sembunyikan lagi
+        showToast('Gambar berhasil diunduh');
+    } catch(err) {
+        console.error('Image error:', err);
+        showToast('Gagal membuat gambar: ' + err.message, 'error');
+    }
+}
 
 async function openStockDetail(id) {
     try {
@@ -5735,7 +5843,9 @@ async function openStockDetail(id) {
         document.getElementById('stockDetailItems').innerHTML = itemsHtml;
         
         var canEdit = (currentUser.role === 'head');
-        var actionsHtml = '<button onclick="closeModal(\'stockDetailModal\')" class="px-4 py-2 rounded-xl text-sm font-500 text-navy-400 hover:bg-navy-50 transition">Tutup</button>';
+                var actionsHtml = '<button onclick="downloadStockImage(\'' + s.id + '\')" class="px-4 py-2 rounded-xl text-sm font-500 text-blue-600 hover:bg-blue-50 transition">Download Gambar</button>' +
+            '<button onclick="closeModal(\'stockDetailModal\')" class="px-4 py-2 rounded-xl text-sm font-500 text-navy-400 hover:bg-navy-50 transition">Tutup</button>';
+        
         if (canEdit) {
             if (!s.is_approved) {
                 actionsHtml += '<button onclick="approveStockRequest(\'' + s.id + '\')" class="px-4 py-2 rounded-xl text-sm font-500 text-emerald-600 hover:bg-emerald-50 transition">Checked / Approve</button>';
@@ -5841,7 +5951,7 @@ async function downloadStockExcel() {
 
         var buffer = await workbook.xlsx.writeBuffer();
         var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        saveAs(blob, 'Form_Stock_Request.xlsx');
+        saveAs(blob, 'Form_Stock_Request_' + todayStr() + '.xlsx');
 
         showToast('File Excel berhasil diunduh');
     } catch (err) {
