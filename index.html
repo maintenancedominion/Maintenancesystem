@@ -384,6 +384,13 @@
                 <button onclick="downloadLaporanPDF()" class="dark-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-file-pdf text-[10px]"></i>PDF</button>
                 <button id="btnBuatLaporan" onclick="openLaporanForm()" class="gold-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-plus text-[10px]"></i>Buat Laporan</button>
             </div>
+                <!-- GRAFIK LAPORAN HARIAN -->
+    <div class="bg-white rounded-2xl border border-navy-100 p-4">
+        <h3 class="text-sm font-700 text-navy-800 mb-3">Grafik Aktivitas Pekerjaan Harian</h3>
+        <div style="height: 300px; position: relative;">
+            <canvas id="laporanChart"></canvas>
+        </div>
+    </div>
             <div id="laporanList" class="space-y-3"><p class="text-xs text-navy-300 text-center py-10">Memuat...</p></div>
         </div>
         <!-- ANNOUNCEMENTS -->
@@ -2648,6 +2655,64 @@ async function loadLaporan() {
                 '</div>' +
             '</div>';
         }).join('');
+
+        // === RENDER GRAFIK LAPORAN HARIAN ===
+        var ctxLaporan = document.getElementById('laporanChart').getContext('2d');
+        if (window.laporanChartInstance) window.laporanChartInstance.destroy();
+        
+        var laporanChartLabels = [];
+        var dominionData = [];
+        var masterpieceData = [];
+        var dateMap = {};
+        
+        res.data.forEach(function(r) {
+            var d = r.date;
+            if (!dateMap[d]) dateMap[d] = { dominion: 0, masterpiece: 0 };
+            
+            var floor = (r.floor || '').toLowerCase();
+            // Cek apakah lantai masuk Masterpiece (5, 6, 7)
+            if (floor.indexOf('5') !== -1 || floor.indexOf('6') !== -1 || floor.indexOf('7') !== -1) {
+                dateMap[d].masterpiece++;
+            } else {
+                dateMap[d].dominion++;
+            }
+        });
+
+        // Urutkan tanggal dari terlama ke terbaru
+        Object.keys(dateMap).sort().forEach(function(d) {
+            laporanChartLabels.push(fmtDate(d));
+            dominionData.push(dateMap[d].dominion);
+            masterpieceData.push(dateMap[d].masterpiece);
+        });
+
+        window.laporanChartInstance = new Chart(ctxLaporan, {
+            type: 'bar',
+            data: {
+                labels: laporanChartLabels,
+                datasets: [
+                    {
+                        label: 'Dominion Lounge',
+                        data: dominionData,
+                        backgroundColor: '#0f2847', // Warna Navy
+                        borderRadius: 4
+                    },
+                    {
+                        label: 'Masterpiece',
+                        data: masterpieceData,
+                        backgroundColor: '#c9a84c', // Warna Emas
+                        borderRadius: 4
+                    }
+                ]
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false,
+                scales: { 
+                    x: { stacked: true }, 
+                    y: { stacked: true, beginAtZero: true } 
+                } 
+            }
+        });
 
     } catch(err) {
         console.error('Load laporan error:', err);
@@ -6213,6 +6278,31 @@ async function printRekapHarian() {
             });
         }
 
+        // === HITUNG DATA UNTUK GRAFIK LAPORAN ===
+        var laporanChartLabels = [];
+        var dominionData = [];
+        var masterpieceData = [];
+        var dateMap = {};
+        
+        reportRows.forEach(function(r) {
+            var d = r.date;
+            if (!dateMap[d]) dateMap[d] = { dominion: 0, masterpiece: 0 };
+            
+            var floor = (r.floor || '').toLowerCase();
+            // Cek apakah lantai masuk Masterpiece (5, 6, 7)
+            if (floor.indexOf('5') !== -1 || floor.indexOf('6') !== -1 || floor.indexOf('7') !== -1) {
+                dateMap[d].masterpiece++;
+            } else {
+                dateMap[d].dominion++;
+            }
+        });
+
+        Object.keys(dateMap).sort().forEach(function(d) {
+            laporanChartLabels.push(fmtDate(d));
+            dominionData.push(dateMap[d].dominion);
+            masterpieceData.push(dateMap[d].masterpiece);
+        });
+
         // 3. Buat HTML untuk di-Print
         var now = new Date();
         var printDate = now.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
@@ -6244,6 +6334,8 @@ async function printRekapHarian() {
             '</tbody></table>' +
             
             '<h3>B. LAPORAN HARIAN TEKNISI</h3>' +
+                        '<h3>B. LAPORAN HARIAN TEKNISI</h3>' +
+            '<div style="width:100%; height:250px; margin-bottom:20px;"><canvas id="printLaporanChart"></canvas></div>' +
             '<table><thead><tr><th style="width:5%;">No</th><th style="width:12%;">Tanggal</th><th style="width:20%;">Petugas</th><th style="width:18%;">Lokasi</th><th style="width:35%;">Pekerjaan</th><th style="width:10%;">Status</th></tr></thead><tbody>' +
             laporanHtml +
             '</tbody></table>' +
@@ -6296,6 +6388,40 @@ async function printRekapHarian() {
                 }]
             },
             options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+        });
+        
+        // Tunggu grafik selesai digambar sebelum print
+        await new Promise(function(resolve) { setTimeout(resolve, 800); });
+
+        // Render grafik laporan untuk print
+        var laporanCtx = document.getElementById('printLaporanChart').getContext('2d');
+        new Chart(laporanCtx, {
+            type: 'bar',
+            data: {
+                labels: laporanChartLabels,
+                datasets: [
+                    {
+                        label: 'Dominion Lounge',
+                        data: dominionData,
+                        backgroundColor: '#0f2847', // Warna Navy
+                        borderRadius: 4
+                    },
+                    {
+                        label: 'Masterpiece',
+                        data: masterpieceData,
+                        backgroundColor: '#c9a84c', // Warna Emas
+                        borderRadius: 4
+                    }
+                ]
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false,
+                scales: { 
+                    x: { stacked: true }, 
+                    y: { stacked: true, beginAtZero: true } 
+                } 
+            }
         });
         
         // Tunggu grafik selesai digambar sebelum print
