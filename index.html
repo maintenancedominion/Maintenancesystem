@@ -719,7 +719,17 @@
                     </table>
                 </div>
             </div>
-        </div>
+
+            <!-- MANAJEMEN TUGAS ROUTINE -->
+            <div class="bg-white rounded-2xl border border-navy-100 overflow-hidden">
+                <div class="px-5 py-4 border-b border-navy-100 flex items-center justify-between">
+                    <h3 class="font-700 text-navy-800 text-sm"><i class="fa-solid fa-arrows-rotate mr-2 text-gold-500"></i>Daftar Tugas Routine</h3>
+                    <button onclick="openRoutineForm()" class="gold-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-plus text-[10px]"></i>Tambah Routine</button>
+                </div>
+                <div id="routineList" class="p-4 space-y-2"><p class="text-xs text-navy-300 text-center py-4">Memuat...</p></div>
+            </div>
+
+        </div> <!-- INI PENUTUP HALAMAN PENGATURAN -->
         <!-- USERS -->
         <div id="page-users" class="page-content hidden p-4 md:p-7 space-y-5"><div id="usersList" class="space-y-2"><p class="text-xs text-navy-300 text-center py-10">Memuat...</p></div></div>
     </main>
@@ -860,6 +870,23 @@
             <button onclick="closeModal('waterModal')" class="px-4 py-2 rounded-xl text-sm font-500 text-navy-400 hover:bg-navy-50 transition">Batal</button>
             <button onclick="saveWater()" id="saveWaterBtn" class="px-5 py-2 rounded-xl text-sm gold-btn">Simpan</button>
         </div>
+    </div>
+</div>
+<!-- MODAL: ROUTINE TASK -->
+<div id="routineModal" class="modal-overlay">
+    <div class="modal-content max-w-md">
+        <div class="px-5 py-4 border-b border-navy-100 flex items-center justify-between"><h3 class="font-700 text-navy-800">Tambah Tugas Routine</h3><button onclick="closeModal('routineModal')" class="w-8 h-8 rounded-lg hover:bg-navy-50 flex items-center justify-center text-navy-300 hover:text-navy-600 transition"><i class="fa-solid fa-xmark text-sm"></i></button></div>
+        <div class="p-5 space-y-4">
+            <input type="hidden" id="routineEditId">
+            <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Nama Routine *</label><input type="text" id="routineName" class="form-input" placeholder="Contoh: Cek MEP Basement"></div>
+            <div class="grid sm:grid-cols-2 gap-3">
+                <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Lantai</label><input type="text" id="routineFloor" class="form-input" placeholder="Contoh: Basement"></div>
+                <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Ruangan</label><input type="text" id="routineRoom" class="form-input" placeholder="Contoh: Pompa Room"></div>
+            </div>
+            <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Deskripsi Pekerjaan *</label><textarea id="routineDesc" class="form-input" rows="3" placeholder="Deskripsi pekerjaan routine"></textarea></div>
+            <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Status Default</label><select id="routineStatus" class="form-input"><option value="done">Done</option><option value="proses">Proses</option><option value="pending">Pending</option></select></div>
+        </div>
+        <div class="px-5 py-3.5 border-t border-navy-100 flex justify-end gap-2"><button onclick="closeModal('routineModal')" class="px-4 py-2 rounded-xl text-sm font-500 text-navy-400 hover:bg-navy-50 transition">Batal</button><button onclick="saveRoutineTask()" id="saveRoutineBtn" class="px-5 py-2 rounded-xl text-sm gold-btn">Simpan</button></div>
     </div>
 </div>
 <!-- MODAL: STOCK REQUEST -->
@@ -1048,6 +1075,15 @@
         <div class="px-5 py-4 border-b border-navy-100 flex items-center justify-between"><h3 class="font-700 text-navy-800" id="laporanModalTitle">Buat Laporan Harian</h3><button onclick="closeModal('laporanModal')" class="w-8 h-8 rounded-lg hover:bg-navy-50 flex items-center justify-center text-navy-300 hover:text-navy-600 transition"><i class="fa-solid fa-xmark text-sm"></i></button></div>
         <div class="p-5 space-y-4">
             <input type="hidden" id="laporanEditId">
+            
+            <!-- DROPDOWN ROUTINE OTOMATIS -->
+            <div id="routineSelectWrap" class="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                <label class="text-[10px] font-600 text-emerald-700 uppercase tracking-wider mb-1.5 block">Isi Cepat (Routine)</label>
+                <select id="laporanRoutineSelect" class="form-input" onchange="applyRoutineTask(this.value)">
+                    <option value="">- Pilih Routine (Opsional) -</option>
+                </select>
+            </div>
+
             <div class="grid sm:grid-cols-2 gap-3">
                 <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Tanggal *</label><input type="date" id="laporanDate" class="form-input"></div>
                 <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Petugas * <span class="text-navy-300 font-400 normal-case">(bisa >1)</span></label><select id="laporanTeknisi" class="form-input" multiple style="min-height:80px"><option value="">Pilih teknisi</option></select></div>
@@ -1396,7 +1432,10 @@ function switchPage(page) {
         populateToolCatFilter();
         loadTools();
     }
-    
+        if (page === 'pengaturan') { 
+        loadLokasiManagement(); loadKategoriManagement(); loadRoleMenuTable(); loadSlaSettings(); loadToolCatManagement(); 
+        loadRoutineTasks(); // <--- TAMBAHKAN INI
+    }
         // TAMBAHAN: Load data untuk Aset Alat Baru
     if (page === 'aset-alat') {
         if (currentUser.role === 'user') {
@@ -2310,7 +2349,6 @@ async function doSelesai() {
 /* ============================================================
    ===== LAPORAN HARIAN — FUNGSI YANG DIPERBAIKI/DITAMBAHKAN =====
    ============================================================ */
-
 /* Buka form laporan harian */
 async function openLaporanForm(editId) {
     document.getElementById('laporanEditId').value = editId || '';
@@ -2350,12 +2388,53 @@ async function openLaporanForm(editId) {
     document.getElementById('laporanFilesPreview').innerHTML = '';
     document.getElementById('laporanFileInput').value = '';
 
+    // PANGGIL FUNGSI ROUTINE DI SINI (cukup 1 kali)
+    await loadLaporanRoutineOptions();
+    var routineSel = document.getElementById('laporanRoutineSelect');
+    if (routineSel) routineSel.value = '';
+
     /* Jika edit, load data lama */
     if (editId) {
         loadLaporanDataForEdit(editId);
     }
 
-    openModal('laporanModal');
+    openModal('laporanModal'); // Cukup 1 kali
+}
+
+// FUNGSI INI DILETAKKAN DI LUAR (BERDIRI SENDIRI)
+async function loadLaporanRoutineOptions() {
+    var sel = document.getElementById('laporanRoutineSelect');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">- Pilih Routine (Opsional) -</option>';
+    try {
+        var res = await sb.from('routine_tasks').select('*').order('task_name');
+        if (res.data) {
+            res.data.forEach(function(r) {
+                sel.innerHTML += '<option value="' + r.id + '">' + r.task_name + ' (' + (r.floor || '-') + ')</option>';
+            });
+            window.routineCache = {};
+            res.data.forEach(function(r) { window.routineCache[r.id] = r; });
+        }
+    } catch(e) { 
+        console.error('Load routine options error:', e); 
+    }
+}
+
+// FUNGSI INI JUGA DILETAKKAN DI LUAR (BERDIRI SENDIRI)
+function applyRoutineTask(id) {
+    if (!id || !window.routineCache || !window.routineCache[id]) return;
+    var r = window.routineCache[id];
+    
+    document.getElementById('laporanWorkType').value = 'Routine';
+    document.getElementById('laporanFloor').value = r.floor || '';
+    populateRoomSelect('laporanRoom', r.floor || '');
+    document.getElementById('laporanRoom').value = r.room || '';
+    document.getElementById('laporanDesc').value = r.description || '';
+    document.getElementById('laporanStatus').value = r.status || 'done';
+    
+    if (typeof onLaporanStatusChange === 'function') onLaporanStatusChange();
+    
+    showToast('Form terisi otomatis. Silakan tambah catatan jika ada.');
 }
 
 /* Load data laporan untuk edit */
@@ -6209,9 +6288,17 @@ async function printRekapHarian() {
     
     if (!startDate || !endDate) { showToast('Pilih rentang tanggal dulu', 'error'); return; }
     
+    // 1. Buka tab baru di detik pertama agar tidak kena blokir Pop-up HP
+    var printWin = window.open('', '_blank');
+    if (!printWin) {
+        showToast('Pop-up diblokir browser. Mohon izinkan pop-up untuk situs ini di pengaturan browser.', 'error');
+        return;
+    }
+    printWin.document.write('<html><head><title>Menyiapkan dokumen...</title></head><body style="font-family:Arial;padding:20px;text-align:center;">Menyiapkan dokumen, mohon tunggu...</body></html>');
+    
     showToast('Menyiapkan dokumen...');
     try {
-        // 1. Ambil Data Air PAM
+        // 2. Ambil Data Air PAM
         var prevRes = await sb.from('water_readings').select('*').lt('reading_date', startDate).order('reading_date', { ascending: false }).limit(1);
         var prevRecord = (prevRes.data && prevRes.data.length > 0) ? prevRes.data[0] : null;
         var waterRes = await sb.from('water_readings').select('*').gte('reading_date', startDate).lte('reading_date', endDate).order('reading_date', { ascending: true });
@@ -6220,6 +6307,8 @@ async function printRekapHarian() {
         var lastMeter = prevRecord ? parseFloat(prevRecord.meter_reading) : null;
         var totalAir = 0;
         var waterHtml = '<tr><td colspan="4" style="text-align:center;color:#888;">Tidak ada data</td></tr>';
+        var waterChartLabels = [];
+        var waterChartData = [];
         
         if (waterRows.length > 0) {
             waterHtml = '';
@@ -6235,20 +6324,17 @@ async function printRekapHarian() {
                 }
                 lastMeter = currentMeter;
                 
-                waterHtml += '<tr>' +
-                    '<td>' + fmtDate(d.reading_date) + '</td>' +
-                    '<td>' + currentMeter.toFixed(2) + '</td>' +
-                    '<td>' + (isFirstUntracked ? '-' : usage.toFixed(2)) + '</td>' +
-                    '<td>' + (d.weather || '-') + '</td>' +
-                '</tr>';
+                waterHtml += '<tr><td>' + fmtDate(d.reading_date) + '</td><td>' + currentMeter.toFixed(2) + '</td><td>' + (isFirstUntracked ? '-' : usage.toFixed(2)) + '</td><td>' + (d.weather || '-') + '</td></tr>';
+                
+                waterChartLabels.push(fmtDate(d.reading_date));
+                waterChartData.push(usage.toFixed(2));
             });
         }
 
-        // 2. Ambil Data Laporan Harian
+        // 3. Ambil Data Laporan Harian
         var reportRes = await sb.from('daily_reports').select('*').gte('date', startDate).lte('date', endDate).order('date', { ascending: true });
         var reportRows = reportRes.data || [];
         
-        // Ambil nama petugas
         var allIds = [];
         reportRows.forEach(function(r) { if (Array.isArray(r.teknisi_ids)) allIds = allIds.concat(r.teknisi_ids); });
         var uniqueIds = allIds.filter(function(v, i, a) { return a.indexOf(v) === i; });
@@ -6259,55 +6345,45 @@ async function printRekapHarian() {
         }
 
         var laporanHtml = '<tr><td colspan="6" style="text-align:center;color:#888;">Tidak ada data</td></tr>';
-        if (reportRows.length > 0) {
-            laporanHtml = '';
-            reportRows.forEach(function(r, idx) {
-                var names = Array.isArray(r.teknisi_ids) ? r.teknisi_ids.map(function(id) { return tkMap[id] || '?'; }).join(', ') : '-';
-                // Gabungkan Lantai dan Ruangan
-                var lokasi = (r.floor || '-');
-                if (r.room) lokasi += ' - ' + r.room;
-                
-                laporanHtml += '<tr>' +
-                    '<td style="width:5%; text-align:center;">' + (idx + 1) + '</td>' +
-                    '<td style="width:12%; text-align:center;">' + fmtDate(r.date) + '</td>' +
-                    '<td style="width:20%;">' + names + '</td>' +
-                    '<td style="width:18%;">' + lokasi + '</td>' +
-                    '<td style="width:35%;">' + (r.description || '-') + '</td>' +
-                    '<td style="width:10%; text-align:center;">' + (r.status || '-') + '</td>' +
-                '</tr>';
-            });
-        }
-
-        // === HITUNG DATA UNTUK GRAFIK LAPORAN ===
         var laporanChartLabels = [];
         var dominionData = [];
         var masterpieceData = [];
         var dateMap = {};
         
-        reportRows.forEach(function(r) {
-            var d = r.date;
-            if (!dateMap[d]) dateMap[d] = { dominion: 0, masterpiece: 0 };
+        if (reportRows.length > 0) {
+            laporanHtml = '';
+            reportRows.forEach(function(r, idx) {
+                var names = Array.isArray(r.teknisi_ids) ? r.teknisi_ids.map(function(id) { return tkMap[id] || '?'; }).join(', ') : '-';
+                var lokasi = (r.floor || '-');
+                if (r.room) lokasi += ' - ' + r.room;
+                
+                laporanHtml += '<tr><td style="width:5%; text-align:center;">' + (idx + 1) + '</td><td style="width:12%; text-align:center;">' + fmtDate(r.date) + '</td><td style="width:20%;">' + names + '</td><td style="width:18%;">' + lokasi + '</td><td style="width:35%;">' + (r.description || '-') + '</td><td style="width:10%; text-align:center;">' + (r.status || '-') + '</td></tr>';
+                
+                // Hitung grafik
+                var d = r.date;
+                if (!dateMap[d]) dateMap[d] = { dominion: 0, masterpiece: 0 };
+                var floor = (r.floor || '').toLowerCase();
+                if (floor.indexOf('5') !== -1 || floor.indexOf('6') !== -1 || floor.indexOf('7') !== -1) {
+                    dateMap[d].masterpiece++;
+                } else {
+                    dateMap[d].dominion++;
+                }
+            });
             
-            var floor = (r.floor || '').toLowerCase();
-            // Cek apakah lantai masuk Masterpiece (5, 6, 7)
-            if (floor.indexOf('5') !== -1 || floor.indexOf('6') !== -1 || floor.indexOf('7') !== -1) {
-                dateMap[d].masterpiece++;
-            } else {
-                dateMap[d].dominion++;
-            }
-        });
+            Object.keys(dateMap).sort().forEach(function(d) {
+                laporanChartLabels.push(fmtDate(d));
+                dominionData.push(dateMap[d].dominion);
+                masterpieceData.push(dateMap[d].masterpiece);
+            });
+        }
 
-        Object.keys(dateMap).sort().forEach(function(d) {
-            laporanChartLabels.push(fmtDate(d));
-            dominionData.push(dateMap[d].dominion);
-            masterpieceData.push(dateMap[d].masterpiece);
-        });
-
-        // 3. Buat HTML untuk di-Print
+        // 4. Susun HTML lengkap dengan Chart.js di dalamnya
         var now = new Date();
         var printDate = now.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
         
-        var html = '<html><head><title>Rekap Laporan</title><style>' +
+        var html = '<html><head><title>Rekap Laporan</title>' +
+            '<script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script>' + // Library Chart.js
+            '<style>' +
             'body { font-family: Arial, sans-serif; margin: 40px; color: #1F2937; }' +
             'h1 { text-align: center; font-size: 18px; margin-bottom: 2px; }' +
             'h2 { text-align: center; font-size: 14px; margin-top: 0; margin-bottom: 20px; color: #4B5563; }' +
@@ -6326,7 +6402,6 @@ async function printRekapHarian() {
             '<h2>REKAP LAPORAN HARIAN TEKNISI & PEMAKAIAN AIR PAM<br>Periode: ' + fmtDate(startDate) + ' s/d ' + fmtDate(endDate) + '</h2>' +
             
             '<h3>A. PEMAKAIAN AIR PAM</h3>' +
-            '<h3>A. PEMAKAIAN AIR PAM</h3>' +
             '<div style="width:100%; height:250px; margin-bottom:20px;"><canvas id="printWaterChart"></canvas></div>' +
             '<table><thead><tr><th>Tanggal</th><th>Meter Akhir (m³)</th><th>Pemakaian (m³)</th><th>Cuaca</th></tr></thead><tbody>' +
             waterHtml +
@@ -6334,7 +6409,6 @@ async function printRekapHarian() {
             '</tbody></table>' +
             
             '<h3>B. LAPORAN HARIAN TEKNISI</h3>' +
-                        '<h3>B. LAPORAN HARIAN TEKNISI</h3>' +
             '<div style="width:100%; height:250px; margin-bottom:20px;"><canvas id="printLaporanChart"></canvas></div>' +
             '<table><thead><tr><th style="width:5%;">No</th><th style="width:12%;">Tanggal</th><th style="width:20%;">Petugas</th><th style="width:18%;">Lokasi</th><th style="width:35%;">Pekerjaan</th><th style="width:10%;">Status</th></tr></thead><tbody>' +
             laporanHtml +
@@ -6345,101 +6419,100 @@ async function printRekapHarian() {
                 '<div><p>Ibu Fitri<br>(Office)</p></div>' +
                 '<div><p>Bpk Adiib<br>(General Manager)</p></div>' +
             '</div>' +
-            
             '<div class="footer">Dicetak Sistem: ' + printDate + '</div>' +
+            
+            '<script>' +
+            'window.onload = function() {' +
+                'var waterCtx = document.getElementById("printWaterChart").getContext("2d");' +
+                'new Chart(waterCtx, {' +
+                    'type: "bar",' +
+                    'data: { labels: ' + JSON.stringify(waterChartLabels) + ', datasets: [{ label: "Pemakaian (m³)", data: ' + JSON.stringify(waterChartData) + ', backgroundColor: "#0ea5e9", borderRadius: 4 }] },' +
+                    'options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }' +
+                '});' +
+                'var laporanCtx = document.getElementById("printLaporanChart").getContext("2d");' +
+                'new Chart(laporanCtx, {' +
+                    'type: "bar",' +
+                    'data: { labels: ' + JSON.stringify(laporanChartLabels) + ', datasets: [{ label: "Dominion Lounge", data: ' + JSON.stringify(dominionData) + ', backgroundColor: "#0f2847", borderRadius: 4 }, { label: "Masterpiece", data: ' + JSON.stringify(masterpieceData) + ', backgroundColor: "#c9a84c", borderRadius: 4 }] },' +
+                    'options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } }' +
+                '});' +
+                'setTimeout(function() { window.print(); }, 1000);' + // Print setelah 1 detik
+            '};' +
+            '<\/script>' +
             '</body></html>';
 
-                // 4. Sembunyikan aplikasi, tampilkan dokumen print secara fisik
-        var printArea = document.createElement('div');
-        printArea.id = 'printArea';
-        printArea.innerHTML = html;
-        document.body.appendChild(printArea);
-
-        // Sembunyikan seluruh aplikasi asli
-        var mainApp = document.getElementById('mainApp');
-        if (mainApp) mainApp.style.display = 'none';
-
-        // Render grafik untuk print
-        var printCtx = document.getElementById('printWaterChart').getContext('2d');
-        var printChartLabels = [];
-        var printChartData = [];
-        var lastMeterPrint = prevRecord ? parseFloat(prevRecord.meter_reading) : null;
-        waterRows.forEach(function(d, idx) {
-            var usage = 0;
-            var isFirst = (!prevRecord && idx === 0);
-            if (!isFirst && lastMeterPrint !== null) {
-                usage = parseFloat(d.meter_reading) - lastMeterPrint;
-                if (usage < 0) usage = 0;
-            }
-            printChartLabels.push(fmtDate(d.reading_date));
-            printChartData.push(usage.toFixed(2));
-            lastMeterPrint = parseFloat(d.meter_reading);
-        });
-
-        new Chart(printCtx, {
-            type: 'bar',
-            data: {
-                labels: printChartLabels,
-                datasets: [{
-                    label: 'Pemakaian (m³)',
-                    data: printChartData,
-                    backgroundColor: '#0ea5e9',
-                    borderRadius: 4
-                }]
-            },
-            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
-        });
-        
-        // Tunggu grafik selesai digambar sebelum print
-        await new Promise(function(resolve) { setTimeout(resolve, 800); });
-
-        // Render grafik laporan untuk print
-        var laporanCtx = document.getElementById('printLaporanChart').getContext('2d');
-        new Chart(laporanCtx, {
-            type: 'bar',
-            data: {
-                labels: laporanChartLabels,
-                datasets: [
-                    {
-                        label: 'Dominion Lounge',
-                        data: dominionData,
-                        backgroundColor: '#0f2847', // Warna Navy
-                        borderRadius: 4
-                    },
-                    {
-                        label: 'Masterpiece',
-                        data: masterpieceData,
-                        backgroundColor: '#c9a84c', // Warna Emas
-                        borderRadius: 4
-                    }
-                ]
-            },
-            options: { 
-                responsive: true, 
-                maintainAspectRatio: false,
-                scales: { 
-                    x: { stacked: true }, 
-                    y: { stacked: true, beginAtZero: true } 
-                } 
-            }
-        });
-        
-        // Tunggu grafik selesai digambar sebelum print
-        await new Promise(function(resolve) { setTimeout(resolve, 800); });
-
-        // Munculkan dialog print
-        window.print();
-
-        // Kembalikan aplikasi seperti semula setelah dialog print ditutup
-        setTimeout(function() {
-            if (mainApp) mainApp.style.display = '';
-            if (document.getElementById('printArea')) document.body.removeChild(printArea);
-        }, 500);
+        // 5. Tulis HTML ke tab baru
+        printWin.document.open();
+        printWin.document.write(html);
+        printWin.document.close();
+        printWin.focus();
         
     } catch(err) {
         console.error('Print error:', err);
         showToast('Gagal mencetak: ' + err.message, 'error');
     }
+}
+
+/* ===== TUGAS ROUTINE ===== */
+var allRoutineTasks = [];
+
+async function loadRoutineTasks() {
+    var listEl = document.getElementById('routineList');
+    if (!listEl) return;
+    listEl.innerHTML = '<p class="text-xs text-navy-300 text-center py-4">Memuat...</p>';
+    try {
+        var res = await sb.from('routine_tasks').select('*').order('task_name');
+        allRoutineTasks = res.data || [];
+        if (allRoutineTasks.length === 0) {
+            listEl.innerHTML = '<p class="text-xs text-navy-300 text-center py-4">Belum ada tugas routine</p>';
+            return;
+        }
+        listEl.innerHTML = allRoutineTasks.map(function(r) {
+            return '<div class="p-3 rounded-xl bg-navy-50/50 border border-navy-100 flex items-center justify-between">' +
+                '<div><p class="text-xs font-700 text-navy-800">' + r.task_name + '</p><p class="text-[10px] text-navy-400 mt-0.5">' + (r.floor || '-') + ' - ' + (r.room || '-') + '</p></div>' +
+                '<button onclick="deleteRoutineTask(\'' + r.id + '\')" class="text-red-400 hover:text-red-600 text-xs"><i class="fa-solid fa-trash text-[10px]"></i></button>' +
+            '</div>';
+        }).join('');
+    } catch(e) { listEl.innerHTML = '<p class="text-xs text-red-500 text-center py-4">Gagal memuat</p>'; }
+}
+
+function openRoutineForm() {
+    document.getElementById('routineEditId').value = '';
+    document.getElementById('routineName').value = '';
+    document.getElementById('routineFloor').value = '';
+    document.getElementById('routineRoom').value = '';
+    document.getElementById('routineDesc').value = '';
+    document.getElementById('routineStatus').value = 'done';
+    openModal('routineModal');
+}
+
+async function saveRoutineTask() {
+    var name = document.getElementById('routineName').value.trim();
+    var floor = document.getElementById('routineFloor').value.trim();
+    var room = document.getElementById('routineRoom').value.trim();
+    var desc = document.getElementById('routineDesc').value.trim();
+    var status = document.getElementById('routineStatus').value;
+    
+    if (!name || !desc) { showToast('Nama dan deskripsi wajib diisi', 'error'); return; }
+    
+    var btn = document.getElementById('saveRoutineBtn');
+    btn.disabled = true; btn.textContent = 'Menyimpan...';
+    try {
+        var res = await sb.from('routine_tasks').insert({ task_name: name, floor: floor, room: room, description: desc, status: status });
+        if (res.error) throw res.error;
+        showToast('Tugas routine ditambahkan');
+        closeModal('routineModal');
+        loadRoutineTasks();
+    } catch(e) { showToast('Gagal: ' + e.message, 'error'); }
+    finally { btn.disabled = false; btn.textContent = 'Simpan'; }
+}
+
+async function deleteRoutineTask(id) {
+    if (!confirm('Hapus tugas routine ini?')) return;
+    try {
+        await sb.from('routine_tasks').delete().eq('id', id);
+        showToast('Tugas routine dihapus');
+        loadRoutineTasks();
+    } catch(e) { showToast('Gagal: ' + e.message, 'error'); }
 }
 
 </script>
