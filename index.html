@@ -4570,10 +4570,57 @@ async function downloadWaterExcel() {
         var rows = res.data;
         showToast('Membuat file Excel...');
 
+        // 1. Buat Grafik Sementara untuk di-render jadi Gambar
         var prevRes = await sb.from('water_readings').select('*').lt('reading_date', startDate).order('reading_date', { ascending: false }).limit(1);
         var prevRecord = (prevRes.data && prevRes.data.length > 0) ? prevRes.data[0] : null;
         var lastMeter = prevRecord ? parseFloat(prevRecord.meter_reading) : null;
 
+        var chartLabels = [];
+        var chartData = [];
+        var totalUsage = 0;
+
+        rows.forEach(function(d, idx) {
+            var currentMeter = parseFloat(d.meter_reading);
+            var usage = 0;
+            var isFirstUntracked = (!prevRecord && idx === 0);
+            if (!isFirstUntracked && lastMeter !== null) {
+                usage = currentMeter - lastMeter;
+                if (usage < 0) usage += 10000;
+                totalUsage += usage;
+            }
+            lastMeter = currentMeter;
+            chartLabels.push(fmtDate(d.reading_date));
+            chartData.push(usage.toFixed(2));
+        });
+
+        // Buat canvas tersembunyi
+        var hiddenCanvas = document.createElement('canvas');
+        hiddenCanvas.width = 800;
+        hiddenCanvas.height = 400;
+        document.body.appendChild(hiddenCanvas);
+        hiddenCanvas.style.display = 'none';
+
+        var chartInstance = new Chart(hiddenCanvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: chartLabels,
+                datasets: [{ label: 'Pemakaian (m³)', data: chartData, backgroundColor: '#0ea5e9', borderRadius: 4 }]
+            },
+            options: { responsive: false, animation: false, scales: { y: { beginAtZero: true } } }
+        });
+
+        // Tunggu 1 detik agar chart selesai digambar
+        await new Promise(function(resolve) { setTimeout(resolve, 1000); });
+        
+        // Ubah chart jadi gambar (Base64)
+        var chartImageBase64 = hiddenCanvas.toDataURL('image/png', 1.0);
+        var chartImageId = chartImageBase64.substring('data:image/png;base64,'.length);
+        
+        // Hapus canvas tersembunyi
+        chartInstance.destroy();
+        document.body.removeChild(hiddenCanvas);
+
+        // 2. Buat File Excel
         var workbook = new ExcelJS.Workbook();
         var worksheet = workbook.addWorksheet('Air PAM');
         worksheet.columns = [
@@ -4596,6 +4643,16 @@ async function downloadWaterExcel() {
 
         worksheet.addRow([]);
 
+        // Sisipkan Gambar Grafik (Dari baris 4 sampai 18)
+        var imageId = workbook.addImage({ base64: chartImageBase64, extension: 'png' });
+        worksheet.addImage(imageId, 'A4:E18');
+
+        // Tambahkan 16 baris kosong agar tabel turun ke bawah grafik
+        for (var i = 0; i < 16; i++) {
+            worksheet.addRow([]);
+        }
+
+        // Lanjutkan tabel di bawah grafik
         var headers = ["Tanggal", "Meter Saat Ini", "Pemakaian Hari Ini", "Cuaca", "Catatan"];
         var headerRow = worksheet.addRow(headers);
         headerRow.height = 20;
@@ -4606,22 +4663,21 @@ async function downloadWaterExcel() {
             cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
         });
 
-        var totalUsage = 0;
+        var lastMeterTable = prevRecord ? parseFloat(prevRecord.meter_reading) : null;
         rows.forEach(function(d, idx) {
             var currentMeter = parseFloat(d.meter_reading);
             var usage = 0;
             var isFirstUntracked = (!prevRecord && idx === 0);
 
-            if (!isFirstUntracked && lastMeter !== null) {
-                usage = currentMeter - lastMeter;
-                if (usage < 0) usage += 10000; // Jika meteran balik ke 0 (rollover)
-                totalUsage += usage;
+            if (!isFirstUntracked && lastMeterTable !== null) {
+                usage = currentMeter - lastMeterTable;
+                if (usage < 0) usage += 10000;
             }
-            lastMeter = currentMeter;
+            lastMeterTable = currentMeter;
 
             var dataRow = worksheet.addRow([
                 d.reading_date || '',
-                d.meter_reading || 0,
+                formatWaterMeter(d.meter_reading), // Gunakan format 0005,90
                 isFirstUntracked ? '-' : usage.toFixed(2),
                 d.weather || '-',
                 d.notes || ''
