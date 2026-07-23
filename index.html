@@ -4557,6 +4557,7 @@ async function deleteWaterRecord(date) {
     }
 }
 
+// downloadWaterExcel //
 async function downloadWaterExcel() {
     try {
         var startDate = document.getElementById('waterFilterStart').value;
@@ -4564,13 +4565,14 @@ async function downloadWaterExcel() {
         if (!startDate || !endDate) { showToast('Pilih rentang tanggal dulu', 'error'); return; }
 
         showToast('Mengambil data...');
+        // Ambil data HANYA sesuai rentang tanggal yang dipilih
         var res = await sb.from('water_readings').select('*').gte('reading_date', startDate).lte('reading_date', endDate).order('reading_date', { ascending: true });
         if (!res.data || res.data.length === 0) { showToast('Tidak ada data untuk diunduh', 'error'); return; }
 
         var rows = res.data;
         showToast('Membuat file Excel...');
 
-        // 1. Buat Grafik Sementara untuk di-render jadi Gambar
+        // 1. Ambil 1 data sebelum startDate untuk perhitungan meteran hari pertama
         var prevRes = await sb.from('water_readings').select('*').lt('reading_date', startDate).order('reading_date', { ascending: false }).limit(1);
         var prevRecord = (prevRes.data && prevRes.data.length > 0) ? prevRes.data[0] : null;
         var lastMeter = prevRecord ? parseFloat(prevRecord.meter_reading) : null;
@@ -4579,13 +4581,14 @@ async function downloadWaterExcel() {
         var chartData = [];
         var totalUsage = 0;
 
+        // Hitung pemakaian untuk Grafik & Total
         rows.forEach(function(d, idx) {
             var currentMeter = parseFloat(d.meter_reading);
             var usage = 0;
             var isFirstUntracked = (!prevRecord && idx === 0);
             if (!isFirstUntracked && lastMeter !== null) {
                 usage = currentMeter - lastMeter;
-                if (usage < 0) usage += 10000;
+                if (usage < 0) usage += 10000; // Rollover
                 totalUsage += usage;
             }
             lastMeter = currentMeter;
@@ -4593,7 +4596,7 @@ async function downloadWaterExcel() {
             chartData.push(usage.toFixed(2));
         });
 
-        // Buat canvas tersembunyi
+        // Buat canvas tersembunyi untuk gambar grafik
         var hiddenCanvas = document.createElement('canvas');
         hiddenCanvas.width = 800;
         hiddenCanvas.height = 400;
@@ -4609,14 +4612,8 @@ async function downloadWaterExcel() {
             options: { responsive: false, animation: false, scales: { y: { beginAtZero: true } } }
         });
 
-        // Tunggu 1 detik agar chart selesai digambar
         await new Promise(function(resolve) { setTimeout(resolve, 1000); });
-        
-        // Ubah chart jadi gambar (Base64)
         var chartImageBase64 = hiddenCanvas.toDataURL('image/png', 1.0);
-        var chartImageId = chartImageBase64.substring('data:image/png;base64,'.length);
-        
-        // Hapus canvas tersembunyi
         chartInstance.destroy();
         document.body.removeChild(hiddenCanvas);
 
@@ -4643,7 +4640,7 @@ async function downloadWaterExcel() {
 
         worksheet.addRow([]);
 
-        // Sisipkan Gambar Grafik (Dari baris 4 sampai 18)
+        // Sisipkan Gambar Grafik
         var imageId = workbook.addImage({ base64: chartImageBase64, extension: 'png' });
         worksheet.addImage(imageId, 'A4:E18');
 
@@ -4652,7 +4649,7 @@ async function downloadWaterExcel() {
             worksheet.addRow([]);
         }
 
-        // Lanjutkan tabel di bawah grafik
+        // Header Tabel
         var headers = ["Tanggal", "Meter Saat Ini", "Pemakaian Hari Ini", "Cuaca", "Catatan"];
         var headerRow = worksheet.addRow(headers);
         headerRow.height = 20;
@@ -4663,6 +4660,7 @@ async function downloadWaterExcel() {
             cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
         });
 
+        // Isi Tabel Riwayat Sesuai Rentang Tanggal
         var lastMeterTable = prevRecord ? parseFloat(prevRecord.meter_reading) : null;
         rows.forEach(function(d, idx) {
             var currentMeter = parseFloat(d.meter_reading);
@@ -4671,13 +4669,13 @@ async function downloadWaterExcel() {
 
             if (!isFirstUntracked && lastMeterTable !== null) {
                 usage = currentMeter - lastMeterTable;
-                if (usage < 0) usage += 10000;
+                if (usage < 0) usage += 10000; // Rollover
             }
             lastMeterTable = currentMeter;
 
             var dataRow = worksheet.addRow([
                 d.reading_date || '',
-                formatWaterMeter(d.meter_reading), // Gunakan format 0005,90
+                formatWaterMeter(d.meter_reading), // Format 0005,90
                 isFirstUntracked ? '-' : usage.toFixed(2),
                 d.weather || '-',
                 d.notes || ''
@@ -4693,6 +4691,7 @@ async function downloadWaterExcel() {
             });
         });
 
+        // Baris Total di paling bawah
         var totalRow = worksheet.addRow(["", "TOTAL PEMAKAIAN", totalUsage.toFixed(2), "", ""]);
         totalRow.eachCell(function(cell, colNumber) {
             cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF1F2937' } };
