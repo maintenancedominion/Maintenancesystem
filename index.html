@@ -1131,6 +1131,21 @@
 <div id="lightbox" onclick="this.style.display='none'"><img id="lightboxImg" src="" class="max-w-[90vw] max-h-[90vh] rounded-lg"></div>
 <div class="toast-container" id="toastContainer"></div>
 
+<!-- MODAL KONFIRMASI HAPUS -->
+<div id="confirmDeleteModal" class="modal-overlay hidden">
+    <div class="modal-content max-w-sm text-center p-6">
+        <div class="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+            <i class="fa-solid fa-triangle-exclamation text-red-500 text-xl"></i>
+        </div>
+        <h3 class="text-lg font-700 text-navy-800 mb-2">Hapus Laporan?</h3>
+        <p class="text-sm text-navy-400 mb-6">Data yang dihapus tidak bisa dikembalikan.</p>
+        <div class="flex gap-3">
+            <button onclick="closeModal('confirmDeleteModal')" class="flex-1 px-4 py-2.5 rounded-xl border border-navy-200 text-navy-600 font-600 hover:bg-navy-50 transition">Batal</button>
+            <button onclick="executeDeleteLaporan()" class="flex-1 px-4 py-2.5 rounded-xl bg-red-500 text-white font-600 hover:bg-red-600 transition">Ya, Hapus</button>
+        </div>
+    </div>
+</div>
+
 <script>
 /* ===== KONFIGURASI SUPABASE ===== */
 var SUPABASE_URL = 'https://ooxprzrjexvicusamgvw.supabase.co';
@@ -2708,6 +2723,12 @@ async function loadLaporan() {
             }
 
             var editBtn = canEdit ? '<button onclick="openLaporanForm(\'' + r.id + '\')" class="text-[10px] font-600 text-navy-400 hover:text-gold-600 transition mt-1"><i class="fa-solid fa-pen-to-square mr-0.5"></i>Edit</button>' : '';
+            
+            // Tombol Hapus hanya untuk Head
+            var deleteBtn = '';
+            if (currentUser.role === 'head') {
+                deleteBtn = '<button onclick="deleteLaporan(\'' + r.id + '\')" class="text-[10px] font-600 text-red-400 hover:text-red-600 transition mt-1 ml-2"><i class="fa-solid fa-trash mr-0.5"></i>Hapus</button>';
+            }
 
             var locHtml = r.floor ? '<span><i class="fa-solid fa-location-dot mr-1"></i>' + r.floor + (r.room ? ' - ' + r.room : '') + '</span>' : '';
             var replHtml = r.has_replacement ? '<span class="text-amber-600"><i class="fa-solid fa-screwdriver-wrench mr-1"></i>Replacement: ' + (r.replacement_item || '-') + '</span>' : '';
@@ -2729,7 +2750,7 @@ async function loadLaporan() {
                         notesHtml +
                     '</div>' +
                     '<div class="flex flex-col items-end gap-1 flex-shrink-0">' +
-                        photosHtml + editBtn +
+                        photosHtml + '<div class="flex gap-2">' + editBtn + deleteBtn + '</div>' +
                     '</div>' +
                 '</div>' +
             '</div>';
@@ -2923,6 +2944,31 @@ async function downloadLaporanExcel() {
         showToast('Gagal: ' + err.message, 'error');
     }
 }
+
+var deleteTargetId = null;
+
+function deleteLaporan(id) {
+    deleteTargetId = id;
+    openModal('confirmDeleteModal');
+}
+
+async function executeDeleteLaporan() {
+    if (!deleteTargetId) return;
+    try {
+        var res = await sb.from('daily_reports').delete().eq('id', deleteTargetId);
+        if (res.error) throw res.error;
+        
+        await logActivity('Delete', 'Laporan Harian', 'Menghapus laporan ID: ' + deleteTargetId);
+        showToast('Laporan berhasil dihapus');
+        closeModal('confirmDeleteModal');
+        loadLaporan();
+    } catch(err) {
+        console.error('Delete laporan error:', err);
+        showToast('Gagal menghapus: ' + err.message, 'error');
+        closeModal('confirmDeleteModal');
+    }
+}
+
 
 /* ===== DOWNLOAD LAPORAN PDF ===== */
 function downloadLaporanPDF() {
