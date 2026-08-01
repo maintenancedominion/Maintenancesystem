@@ -244,6 +244,7 @@
             <div class="nav-item" data-page="performa" data-menu="performa" onclick="switchPage('performa')"><i class="fa-solid fa-chart-line"></i><span>Performa Teknisi</span></div>
             <div class="nav-item" data-page="aset-alat" onclick="switchPage('aset-alat')" style="display: flex !important;"><i class="fa-solid fa-toolbox"></i><span>Aset Alat Baru</span></div>
             <div class="nav-item" data-page="water" data-menu="water" onclick="switchPage('water')"><i class="fa-solid fa-droplet"></i><span>Air PAM</span></div>
+            <div class="nav-item" data-page="power-outage" onclick="switchPage('power-outage')" style="display: flex !important;"><i class="fa-solid fa-bolt"></i><span>Mati Listrik (PLN)</span></div>
             <div class="nav-item" data-page="stock-request" onclick="switchPage('stock-request')" style="display: flex !important;"><i class="fa-solid fa-boxes-stacked"></i><span>Stock Request</span></div>
             <div class="nav-item" data-page="vendor" data-menu="vendor" onclick="switchPage('vendor')"><i class="fa-solid fa-truck"></i><span>Data Vendor</span></div>
             <p class="nav-label px-2.5 mb-1.5 mt-4">Lainnya</p>
@@ -447,6 +448,43 @@
     </div>
     <div id="waterList" class="space-y-3"><p class="text-xs text-navy-300 text-center py-10">Pilih rentang tanggal untuk melihat data</p></div>
 </div>
+
+<!-- HALAMAN MATI LISTRIK -->
+<div id="page-power-outage" class="page-content hidden p-4 md:p-7 space-y-5">
+    <div class="bg-white rounded-2xl border border-navy-100 p-4 flex flex-wrap items-center gap-3">
+        <div class="flex-1"></div>
+        <button id="btnTambahPower" onclick="openPowerForm()" class="gold-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-plus text-[10px]"></i>Input Mati Listrik</button>
+    </div>
+    <div id="powerList" class="space-y-3"><p class="text-xs text-navy-300 text-center py-10">Memuat...</p></div>
+</div>
+
+<!-- MODAL: MATI LISTRIK -->
+<div id="powerModal" class="modal-overlay">
+    <div class="modal-content max-w-md">
+        <div class="px-5 py-4 border-b border-navy-100 flex items-center justify-between"><h3 class="font-700 text-navy-800">Input Pemadaman Listrik</h3><button onclick="closeModal('powerModal')" class="w-8 h-8 rounded-lg hover:bg-navy-50 flex items-center justify-center text-navy-300 hover:text-navy-600 transition"><i class="fa-solid fa-xmark text-sm"></i></button></div>
+        <div class="p-5 space-y-4">
+            <input type="hidden" id="powerEditId">
+            <div class="grid grid-cols-2 gap-3">
+                <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Tgl Mulai *</label><input type="date" id="powerStartDate" class="form-input"></div>
+                <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Tgl Selesai *</label><input type="date" id="powerEndDate" class="form-input"></div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Jam Listrik Padam *</label><input type="time" id="powerStartTime" class="form-input"></div>
+                <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Jam Listrik Normal *</label><input type="time" id="powerEndTime" class="form-input"></div>
+            </div>
+            <div class="bg-navy-50 rounded-xl p-3 flex items-center justify-between">
+                <span class="text-xs font-600 text-navy-400">Total Durasi Pemadaman</span>
+                <span class="text-lg font-800 text-navy-800" id="durationDisplay">0 Jam</span>
+            </div>
+            <div><label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">Catatan</label><textarea id="powerNotes" class="form-input" rows="2" placeholder="Catatan tambahan"></textarea></div>
+        </div>
+        <div class="px-5 py-3.5 border-t border-navy-100 flex justify-end gap-2">
+            <button onclick="closeModal('powerModal')" class="px-4 py-2 rounded-xl text-sm font-500 text-navy-400 hover:bg-navy-50 transition">Batal</button>
+            <button onclick="savePower()" id="savePowerBtn" class="px-5 py-2 rounded-xl text-sm gold-btn">Simpan</button>
+        </div>
+    </div>
+</div>
+
         <!-- DATA VENDOR -->
         <div id="page-vendor" class="page-content hidden p-4 md:p-7 space-y-5">
             <div class="bg-white rounded-2xl border border-navy-100 p-4 flex flex-wrap items-center gap-3">
@@ -1403,6 +1441,7 @@ function switchPage(page) {
         'vendor': ['Data Vendor', 'Daftar vendor dan supplier'],
         'preventive': ['Preventive Maint.', 'Jadwal maintenance berkala'],
         'logs': ['Log Aktivitas', 'Riwayat aktivitas pengguna'],
+        'power-outage': ['Mati Listrik (PLN)', 'Catatan pemadaman listrik & genset'],
     };
     document.getElementById('pageTitle').textContent = (titles[page] || ['', ''])[0] || '';
     document.getElementById('pageSubtitle').textContent = (titles[page] || ['', ''])[1] || '';
@@ -1511,6 +1550,10 @@ function switchPage(page) {
         document.getElementById('btnTambahAset').style.display = isSuper ? 'none' : '';
         loadCategories();
         loadAset();
+    }
+    
+    if (page === 'power-outage') {
+        loadPower();
     }
     
     if (page === 'buat-tiket') {
@@ -6451,7 +6494,63 @@ async function printRekapHarian() {
             });
         }
 
-        // 3. Ambil Data Laporan Harian
+        // === AMBIL DATA MATI LISTRIK ===
+        var powerRes = await sb.from('power_outages').select('*').gte('end_date', startDate).lte('start_date', endDate).order('start_date', { ascending: true });
+        var powerRows = powerRes.data || [];
+        var totalPowerDuration = 0;
+        
+        var powerHtml = '<tr><td colspan="4" style="text-align:center;color:#888;">Tidak ada data pemadaman</td></tr>';
+        if (powerRows.length > 0) {
+            powerHtml = '';
+            powerRows.forEach(function(p, idx) {
+                var dateText = fmtDate(p.start_date);
+                if (p.start_date !== p.end_date) {
+                    dateText += ' s/d ' + fmtDate(p.end_date);
+                }
+                var timeText = p.start_time + ' - ' + p.end_time;
+                totalPowerDuration += parseFloat(p.duration_hours) || 0;
+                
+                powerHtml += '<tr>' +
+                    '<td style="width:5%; text-align:center;">' + (idx + 1) + '</td>' +
+                    '<td style="width:35%; text-align:center;">' + dateText + '</td>' +
+                    '<td style="width:30%; text-align:center;">' + timeText + '</td>' +
+                    '<td style="width:30%; text-align:center; font-weight:bold;">' + parseFloat(p.duration_hours).toFixed(2) + ' Jam</td>' +
+                '</tr>';
+            });
+        }
+
+                // === AMBIL DATA KUNJUNGAN VENDOR ===
+        var vendorVisitRes = await sb.from('vendor_visits').select('*').gte('visit_date', startDate).lte('visit_date', endDate).order('visit_date', { ascending: true });
+        var vendorVisitRows = vendorVisitRes.data || [];
+        
+        // Ambil semua data vendor untuk memetakan ID ke Nama
+        var allVendorsRes = await sb.from('vendors').select('id, name');
+        var vendorMap = {};
+        if (allVendorsRes.data) {
+            allVendorsRes.data.forEach(function(v) { vendorMap[v.id] = v.name; });
+        }
+        
+        var vendorHtml = '<tr><td colspan="5" style="text-align:center;color:#888;">Tidak ada data kunjungan</td></tr>';
+        if (vendorVisitRows.length > 0) {
+            vendorHtml = '';
+            vendorVisitRows.forEach(function(v, idx) {
+                // Cari nama vendor berdasarkan ID
+                var vName = vendorMap[v.vendor_id] || v.vendor_name || '-';
+                var vDate = v.visit_date || '-';
+                var vDesc = v.purpose || '-'; // <--- UBAH JADI v.purpose
+                var vNotes = v.notes || '-';
+                
+                vendorHtml += '<tr>' +
+                    '<td style="width:5%; text-align:center;">' + (idx + 1) + '</td>' +
+                    '<td style="width:15%; text-align:center;">' + fmtDate(vDate) + '</td>' +
+                    '<td style="width:25%;">' + vName + '</td>' +
+                    '<td style="width:35%;">' + vDesc + '</td>' +
+                    '<td style="width:20%;">' + vNotes + '</td>' +
+                '</tr>';
+            });
+        }
+
+         // 3. Ambil Data Laporan Harian
         var reportRes = await sb.from('daily_reports').select('*').gte('date', startDate).lte('date', endDate).order('date', { ascending: true });
         var reportRows = reportRes.data || [];
         
@@ -6469,6 +6568,10 @@ async function printRekapHarian() {
         var dominionData = [];
         var masterpieceData = [];
         var dateMap = {};
+        
+        // VARIABEL UNTUK REKAP TOTAL
+        var workTypeMap = {};
+        var userSummaryMap = {}; 
         
         if (reportRows.length > 0) {
             laporanHtml = '';
@@ -6488,6 +6591,19 @@ async function printRekapHarian() {
                 } else {
                     dateMap[d].dominion++;
                 }
+
+                // HITUNG REKAP JENIS PEKERJAAN
+                var wt = r.work_type || 'Lainnya';
+                if (!workTypeMap[wt]) workTypeMap[wt] = 0;
+                workTypeMap[wt]++;
+
+                // HITUNG REKAP PETUGAS
+                if (Array.isArray(r.teknisi_ids)) {
+                    r.teknisi_ids.forEach(function(uid) {
+                        if (!userSummaryMap[uid]) userSummaryMap[uid] = 0;
+                        userSummaryMap[uid]++;
+                    });
+                }
             });
             
             Object.keys(dateMap).sort().forEach(function(d) {
@@ -6496,6 +6612,23 @@ async function printRekapHarian() {
                 masterpieceData.push(dateMap[d].masterpiece);
             });
         }
+
+        // SUSUN HTML REKAP
+        var totalJobs = reportRows.length;
+        
+        var workTypeHtml = '';
+        Object.keys(workTypeMap).forEach(function(wt) {
+            workTypeHtml += '<tr><td style="text-align:left; padding:5px; border:1px solid #ddd;">' + wt + '</td><td style="text-align:center; padding:5px; border:1px solid #ddd;">' + workTypeMap[wt] + '</td></tr>';
+        });
+        if (workTypeHtml === '') workTypeHtml = '<tr><td colspan="2" style="text-align:center; padding:5px; border:1px solid #ddd; color:#888;">Tidak ada data</td></tr>';
+
+        var userSummaryHtml = '';
+        Object.keys(userSummaryMap).forEach(function(uid) {
+            if (userSummaryMap[uid] > 0) {
+                userSummaryHtml += '<tr><td style="text-align:left; padding:5px; border:1px solid #ddd;">' + (tkMap[uid] || '-') + '</td><td style="text-align:center; padding:5px; border:1px solid #ddd;">' + userSummaryMap[uid] + '</td></tr>';
+            }
+        });
+        if (userSummaryHtml === '') userSummaryHtml = '<tr><td colspan="2" style="text-align:center; padding:5px; border:1px solid #ddd; color:#888;">Tidak ada data</td></tr>';
 
         // 4. Susun HTML lengkap dengan Chart.js di dalamnya
         var now = new Date();
@@ -6520,25 +6653,44 @@ async function printRekapHarian() {
             '<h1>DOMINION LOUNGE & MASTERPIECE</h1>' +
             '<h2>Maintenance System Technician</h2>' +
             '<h2>REKAP LAPORAN HARIAN TEKNISI & PEMAKAIAN AIR PAM<br>Periode: ' + fmtDate(startDate) + ' s/d ' + fmtDate(endDate) + '</h2>' +
-            
-            '<h3>A. PEMAKAIAN AIR PAM</h3>' +
+            '<h3>A. PEMADAMAN LISTRIK (PLN)</h3>' +
+            '<table><thead><tr><th style="width:5%;">No</th><th style="width:35%;">Rentang Tanggal</th><th style="width:30%;">Jam Padam - Normal</th><th style="width:30%;">Durasi (Jam)</th></tr></thead><tbody>' +
+            powerHtml +
+            '<tr style="background:#f3f4f6; font-weight:bold;"><td colspan="3" style="text-align:right;">TOTAL DURASI PEMADAMAN</td><td style="text-align:center;">' + totalPowerDuration.toFixed(2) + ' Jam</td></tr>' +
+            '</tbody></table>' +
+            '<h3>B. PEMAKAIAN AIR PAM</h3>' +
             '<div style="width:100%; height:250px; margin-bottom:20px;"><canvas id="printWaterChart"></canvas></div>' +
             '<table><thead><tr><th>Tanggal</th><th>Meter Akhir (m³)</th><th>Pemakaian (m³)</th><th>Cuaca</th></tr></thead><tbody>' +
             waterHtml +
             '<tr class="total"><td colspan="2">TOTAL PEMAKAIAN AIR</td><td colspan="2">' + totalAir.toFixed(2) + ' m³</td></tr>' +
             '</tbody></table>' +
             
-            '<h3>B. LAPORAN HARIAN TEKNISI</h3>' +
+            '<h3>C. KUNJUNGAN VENDOR</h3>' +
+            '<table><thead><tr><th style="width:5%;">No</th><th style="width:15%;">Tanggal</th><th style="width:25%;">Vendor</th><th style="width:35%;">Keterangan</th><th style="width:20%;">Catatan</th></tr></thead><tbody>' +
+            vendorHtml +
+            '</tbody></table>' +
+            
+            '<h3>D. LAPORAN HARIAN TEKNISI</h3>' +
             '<div style="width:100%; height:250px; margin-bottom:20px;"><canvas id="printLaporanChart"></canvas></div>' +
+            
+            '<div style="margin-bottom:20px;">' +
+                '<p style="font-weight:bold; margin-bottom:10px; font-size:13px;">Total Pekerjaan Periode Ini: ' + totalJobs + ' Pekerjaan</p>' +
+                '<div style="display:flex; gap:20px;">' +
+                    '<div style="flex:1;">' +
+                        '<p style="font-size:11px; margin-bottom:5px; font-weight:bold;">Rekap per Jenis Pekerjaan</p>' +
+                        '<table style="font-size:11px; width:100%; border-collapse:collapse;"><thead><tr style="background:#f3f4f6;"><th style="text-align:left; padding:5px; border:1px solid #ddd;">Jenis</th><th style="text-align:center; padding:5px; border:1px solid #ddd;">Jumlah</th></tr></thead><tbody>' + workTypeHtml + '</tbody></table>' +
+                    '</div>' +
+                    '<div style="flex:1;">' +
+                        '<p style="font-size:11px; margin-bottom:5px; font-weight:bold;">Rekap per Petugas</p>' +
+                        '<table style="font-size:11px; width:100%; border-collapse:collapse;"><thead><tr style="background:#f3f4f6;"><th style="text-align:left; padding:5px; border:1px solid #ddd;">Petugas</th><th style="text-align:center; padding:5px; border:1px solid #ddd;">Jumlah</th></tr></thead><tbody>' + userSummaryHtml + '</tbody></table>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+            
             '<table><thead><tr><th style="width:5%;">No</th><th style="width:12%;">Tanggal</th><th style="width:20%;">Petugas</th><th style="width:18%;">Lokasi</th><th style="width:35%;">Pekerjaan</th><th style="width:10%;">Status</th></tr></thead><tbody>' +
             laporanHtml +
             '</tbody></table>' +
             
-            '<div class="sign">' +
-                '<div><p>Billy Suhendi<br>(Head Teknisi)</p></div>' +
-                '<div><p>Ibu Fitri<br>(Office)</p></div>' +
-                '<div><p>Bpk Adiib<br>(General Manager)</p></div>' +
-            '</div>' +
             '<div class="footer">Dicetak Sistem: ' + printDate + '</div>' +
             
             '<script>' +
@@ -6633,6 +6785,147 @@ async function deleteRoutineTask(id) {
         showToast('Tugas routine dihapus');
         loadRoutineTasks();
     } catch(e) { showToast('Gagal: ' + e.message, 'error'); }
+}
+
+/* ===== MATI LISTRIK (PLN) ===== */
+function openPowerForm() {
+    document.getElementById('powerEditId').value = '';
+    document.getElementById('powerStartDate').value = todayStr();
+    document.getElementById('powerEndDate').value = todayStr();
+    document.getElementById('powerStartTime').value = '';
+    document.getElementById('powerEndTime').value = '';
+    document.getElementById('powerNotes').value = '';
+    document.getElementById('durationDisplay').textContent = '0 Jam';
+    openModal('powerModal');
+}
+
+async function editPower(id) {
+    try {
+        var res = await sb.from('power_outages').select('*').eq('id', id).single();
+        if (!res.data) return;
+        var p = res.data;
+        
+        document.getElementById('powerEditId').value = p.id;
+        document.getElementById('powerStartDate').value = p.start_date || '';
+        document.getElementById('powerEndDate').value = p.end_date || '';
+        document.getElementById('powerStartTime').value = p.start_time || '';
+        document.getElementById('powerEndTime').value = p.end_time || '';
+        document.getElementById('powerNotes').value = p.notes || '';
+        document.getElementById('durationDisplay').textContent = parseFloat(p.duration_hours).toFixed(2) + ' Jam';
+        openModal('powerModal');
+    } catch(err) {
+        showToast('Gagal memuat data untuk edit', 'error');
+    }
+}
+
+async function deletePower(id) {
+    if (!confirm('Hapus data pemadaman listrik ini?')) return;
+    try {
+        var res = await sb.from('power_outages').delete().eq('id', id);
+        if (res.error) throw res.error;
+        showToast('Data berhasil dihapus');
+        loadPower();
+    } catch(err) {
+        showToast('Gagal menghapus: ' + err.message, 'error');
+    }
+}
+
+function calcDuration() {
+    var startDate = document.getElementById('powerStartDate').value;
+    var endDate = document.getElementById('powerEndDate').value;
+    var startTime = document.getElementById('powerStartTime').value;
+    var endTime = document.getElementById('powerEndTime').value;
+    
+    if (!startDate || !endDate || !startTime || !endTime) return 0;
+    
+    var sDate = new Date(startDate + 'T' + startTime + ':00');
+    var eDate = new Date(endDate + 'T' + endTime + ':00');
+    var diff = (eDate - sDate) / (1000 * 60 * 60); // Dalam jam
+    
+    if (diff < 0) diff = 0;
+    return diff;
+}
+
+async function savePower() {
+    var editId = document.getElementById('powerEditId').value;
+    var startDate = document.getElementById('powerStartDate').value;
+    var endDate = document.getElementById('powerEndDate').value;
+    var startTime = document.getElementById('powerStartTime').value;
+    var endTime = document.getElementById('powerEndTime').value;
+    var notes = document.getElementById('powerNotes').value.trim();
+
+    if (!startDate || !endDate || !startTime || !endTime) { showToast('Tanggal dan jam wajib diisi', 'error'); return; }
+
+    var duration = calcDuration();
+    document.getElementById('durationDisplay').textContent = duration.toFixed(2) + ' Jam';
+
+    var btn = document.getElementById('savePowerBtn');
+    btn.disabled = true; btn.textContent = 'Menyimpan...';
+
+    try {
+        var dataPayload = {
+            start_date: startDate,
+            end_date: endDate,
+            start_time: startTime,
+            end_time: endTime,
+            duration_hours: duration,
+            notes: notes || null,
+            created_by: currentUser.id
+        };
+
+        var res;
+        if (editId) {
+            // Jika edit, update datanya
+            res = await sb.from('power_outages').update(dataPayload).eq('id', editId);
+        } else {
+            // Jika baru, insert datanya
+            res = await sb.from('power_outages').insert(dataPayload);
+        }
+
+        if (res.error) throw res.error;
+        showToast('Data pemadaman listrik berhasil disimpan');
+        closeModal('powerModal');
+        loadPower();
+    } catch(err) {
+        showToast('Gagal: ' + err.message, 'error');
+    } finally {
+        btn.disabled = false; btn.textContent = 'Simpan';
+    }
+}
+
+async function loadPower() {
+    var listEl = document.getElementById('powerList');
+    listEl.innerHTML = '<p class="text-xs text-navy-300 text-center py-10">Memuat...</p>';
+    try {
+        var res = await sb.from('power_outages').select('*').order('start_date', { ascending: false });
+        if (!res.data || res.data.length === 0) {
+            listEl.innerHTML = '<p class="text-xs text-navy-300 text-center py-10">Belum ada data pemadaman listrik</p>';
+            return;
+        }
+        listEl.innerHTML = res.data.map(function(p) {
+            var dateText = fmtDate(p.start_date);
+            if (p.start_date !== p.end_date) {
+                dateText += ' s/d ' + fmtDate(p.end_date);
+            }
+            return '<div class="bg-white rounded-2xl border border-navy-100 p-4 flex items-center gap-4">' +
+                '<div class="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center"><i class="fa-solid fa-bolt text-red-500"></i></div>' +
+                '<div class="flex-1 min-w-0">' +
+                    '<p class="text-sm font-700 text-navy-800">' + dateText + '</p>' +
+                    '<p class="text-xs text-navy-400 mt-0.5">Padam: ' + p.start_time + ' | Normal: ' + p.end_time + '</p>' +
+                    (p.notes ? '<p class="text-[10px] text-navy-400 mt-1 italic">' + p.notes + '</p>' : '') +
+                '</div>' +
+                '<div class="text-right flex flex-col items-end gap-2">' +
+                    '<div><p class="text-sm font-800 text-red-600">' + parseFloat(p.duration_hours).toFixed(2) + '</p><p class="text-[9px] text-navy-300">Jam</p></div>' +
+                    '<div class="flex gap-2">' +
+                        '<button onclick="editPower(\'' + p.id + '\')" class="text-[10px] font-600 text-navy-400 hover:text-gold-600 transition">Edit</button>' +
+                        '<button onclick="deletePower(\'' + p.id + '\')" class="text-[10px] font-600 text-red-400 hover:text-red-600 transition">Hapus</button>' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+        }).join('');
+    } catch(err) {
+        listEl.innerHTML = '<p class="text-xs text-red-500 text-center py-10">Gagal memuat</p>';
+    }
 }
 
 </script>
