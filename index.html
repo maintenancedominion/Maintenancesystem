@@ -375,25 +375,36 @@
             </div>
             <div id="riwayatList" class="space-y-3"><p class="text-xs text-navy-300 text-center py-10">Memuat...</p></div>
         </div>
-        <!-- LAPORAN HARIAN -->
-        <div id="page-laporan" class="page-content hidden p-4 md:p-7 space-y-5">
-            <div class="bg-white rounded-2xl border border-navy-100 p-4 flex flex-wrap items-center gap-3">
-                <label class="text-xs text-navy-400 font-500">Pilih Bulan:</label>
-                <input type="month" id="laporanFilterMonth" class="form-input w-auto" onchange="loadLaporan()">
-                <div class="flex-1"></div>
-                <button onclick="downloadLaporanExcel()" class="dark-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-file-excel text-[10px]"></i>Excel</button>
-                <button onclick="downloadLaporanPDF()" class="dark-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-file-pdf text-[10px]"></i>PDF</button>
-                <button id="btnBuatLaporan" onclick="openLaporanForm()" class="gold-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-plus text-[10px]"></i>Buat Laporan</button>
-            </div>
-                <!-- GRAFIK LAPORAN HARIAN -->
+
+<!-- LAPORAN HARIAN -->
+<div id="page-laporan" class="page-content hidden p-4 md:p-7 space-y-5">
+    <div class="bg-white rounded-2xl border border-navy-100 p-4 flex flex-wrap items-center gap-3">
+        <div class="flex items-center gap-2">
+            <label class="text-xs text-navy-400 font-500">Dari:</label>
+            <input type="date" id="laporanFilterStart" class="form-input w-auto" onchange="loadLaporan()">
+        </div>
+        <div class="flex items-center gap-2">
+            <label class="text-xs text-navy-400 font-500">Sampai:</label>
+            <input type="date" id="laporanFilterEnd" class="form-input w-auto" onchange="loadLaporan()">
+        </div>
+        <div class="flex-1"></div>
+        <button onclick="printLaporanHarianPDF()" class="dark-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-print text-[10px]"></i>Print / PDF</button>
+        <button onclick="downloadLaporanExcel()" class="dark-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-file-excel text-[10px]"></i>Excel</button>
+        <button id="btnBuatLaporan" onclick="openLaporanForm()" class="gold-btn text-xs px-3 py-2 rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-plus text-[10px]"></i>Buat Laporan</button>
+    </div>
+    
+    <!-- GRAFIK LAPORAN HARIAN -->
     <div class="bg-white rounded-2xl border border-navy-100 p-4">
         <h3 class="text-sm font-700 text-navy-800 mb-3">Grafik Aktivitas Pekerjaan Harian</h3>
         <div style="height: 300px; position: relative;">
             <canvas id="laporanChart"></canvas>
         </div>
     </div>
-            <div id="laporanList" class="space-y-3"><p class="text-xs text-navy-300 text-center py-10">Memuat...</p></div>
-        </div>
+
+    <!-- LIST LAPORAN -->
+    <div id="laporanList" class="space-y-3"><p class="text-xs text-navy-300 text-center py-10">Memuat...</p></div>
+</div>
+
         <!-- ANNOUNCEMENTS -->
         <div id="page-announcements" class="page-content hidden p-4 md:p-7 space-y-5"><div id="announceList" class="space-y-3"><p class="text-xs text-navy-300 text-center py-10">Memuat...</p></div></div>
         <!-- SCHEDULE -->
@@ -1211,6 +1222,8 @@ var currentPage = 'dashboard';
 var menuIds = ['dashboard','buat-tiket','antrian','riwayat','laporan','aset','tools','aset-alat','stock-request','performa','water','vendor','preventive','pengumuman','schedule','users','pengaturan'];
 var menuLabels = {'dashboard':'Dashboard','buat-tiket':'Buat Tiket','antrian':'Antrian Tiket','riwayat':'Riwayat Tiket','laporan':'Laporan Harian','aset':'Manajemen Aset','tools':'Tools Teknisi','aset-alat':'Aset Alat Baru','stock-request':'Stock Request','performa':'Performa Teknisi','water':'Air PAM','vendor':'Data Vendor','preventive':'Preventive Maint.','pengumuman':'Pengumuman','schedule':'Schedule Shift','users':'Kelola User','pengaturan':'Pengaturan'};
 var roleList = ['admin','head','supervisi','teknisi','user'];
+var laporanSelectMode = false;
+var selectedLaporanIds = [];
 
 // Fungsi global untuk mencatat aktivitas
 async function logActivity(action, module, details) {
@@ -1470,9 +1483,10 @@ function switchPage(page) {
     if (page === 'antrian') loadAntrian();
     if (page === 'riwayat') loadRiwayat();
     if (page === 'laporan') {
-        if (!document.getElementById('laporanFilterMonth').value) {
-            document.getElementById('laporanFilterMonth').value = monthStr();
-        }
+        var startEl = document.getElementById('laporanFilterStart');
+        var endEl = document.getElementById('laporanFilterEnd');
+        if (startEl && !startEl.value) startEl.value = monthStr() + '-01'; // Default awal bulan
+        if (endEl && !endEl.value) endEl.value = todayStr(); // Default hari ini
         loadLaporan();
     }
     if (page === 'announcements') loadAnnouncements();
@@ -2707,22 +2721,22 @@ async function saveLaporan() {
 
 /* ===== LOAD DAFTAR LAPORAN ===== */
 async function loadLaporan() {
-    var month = document.getElementById('laporanFilterMonth').value;
+    var startDate = document.getElementById('laporanFilterStart').value;
+    var endDate = document.getElementById('laporanFilterEnd').value;
     var listEl = document.getElementById('laporanList');
+    
+    if (!startDate || !endDate) { 
+        listEl.innerHTML = '<p class="text-xs text-navy-300 text-center py-10">Pilih rentang tanggal</p>'; 
+        return; 
+    }
     listEl.innerHTML = '<p class="text-xs text-navy-300 text-center py-10">Memuat...</p>';
 
     try {
-        /* Query sederhana dulu, tanpa order kompleks */
         var query = sb.from('daily_reports').select('*');
-        if (month) {
-            var ym = month.split('-');
-            var lastDay = new Date(parseInt(ym[0]), parseInt(ym[1]), 0).getDate();
-            query = query.gte('date', month + '-01').lte('date', month + '-' + String(lastDay).padStart(2, '0'));
-        }
+        if (startDate) query = query.gte('date', startDate);
+        if (endDate) query = query.lte('date', endDate);
         query = query.order('date', { ascending: false });
         var res = await query;
-
-        console.log('Load laporan result:', res);
 
         if (res.error) {
             listEl.innerHTML = '<p class="text-xs text-red-500 text-center py-10">Query error: ' + res.error.message + '</p>';
@@ -2730,11 +2744,11 @@ async function loadLaporan() {
         }
 
         if (!res.data || res.data.length === 0) {
-            listEl.innerHTML = '<p class="text-xs text-navy-300 text-center py-10">Belum ada laporan' + (month ? ' untuk bulan ini' : '') + '</p>';
+            listEl.innerHTML = '<p class="text-xs text-navy-300 text-center py-10">Belum ada laporan pada rentang tanggal ini</p>';
+            if (window.laporanChartInstance) window.laporanChartInstance.destroy();
             return;
         }
 
-        /* Resolve nama teknisi */
         var allIds = [];
         res.data.forEach(function(r) {
             if (Array.isArray(r.teknisi_ids)) allIds = allIds.concat(r.teknisi_ids);
@@ -2747,6 +2761,14 @@ async function loadLaporan() {
         }
 
         var sColors = { proses: 'bg-amber-100 text-amber-700', done: 'bg-emerald-100 text-emerald-700', pending: 'bg-red-100 text-red-700' };
+        var wtColors = {
+            'corrective': '#dc2626',
+            'preventive': '#0ea5e9',
+            'routine': '#6366f1',
+            'request': '#f97316',
+            'improvement': '#14b8a6',
+            'lainnya': '#64748b'
+        };
 
         listEl.innerHTML = res.data.map(function(r) {
             var names = Array.isArray(r.teknisi_ids) ? r.teknisi_ids.map(function(id) { return tkMap[id] || '?'; }).join(', ') : '-';
@@ -2766,8 +2788,6 @@ async function loadLaporan() {
             }
 
             var editBtn = canEdit ? '<button onclick="openLaporanForm(\'' + r.id + '\')" class="text-[10px] font-600 text-navy-400 hover:text-gold-600 transition mt-1"><i class="fa-solid fa-pen-to-square mr-0.5"></i>Edit</button>' : '';
-            
-            // Tombol Hapus hanya untuk Head
             var deleteBtn = '';
             if (currentUser.role === 'head') {
                 deleteBtn = '<button onclick="deleteLaporan(\'' + r.id + '\')" class="text-[10px] font-600 text-red-400 hover:text-red-600 transition mt-1 ml-2"><i class="fa-solid fa-trash mr-0.5"></i>Hapus</button>';
@@ -2776,13 +2796,18 @@ async function loadLaporan() {
             var locHtml = r.floor ? '<span><i class="fa-solid fa-location-dot mr-1"></i>' + r.floor + (r.room ? ' - ' + r.room : '') + '</span>' : '';
             var replHtml = r.has_replacement ? '<span class="text-amber-600"><i class="fa-solid fa-screwdriver-wrench mr-1"></i>Replacement: ' + (r.replacement_item || '-') + '</span>' : '';
             var notesHtml = r.notes ? '<p class="text-[10px] text-navy-400 mt-1.5 italic">Catatan: ' + r.notes + '</p>' : '';
+            
+            var wtRaw = (r.work_type || 'Lainnya').trim();
+            var wtKey = wtRaw.toLowerCase();
+            var wColor = wtColors[wtKey] || wtColors['lainnya'];
+            var wtText = wtRaw.charAt(0).toUpperCase() + wtRaw.slice(1).toLowerCase();
 
             return '<div class="bg-white rounded-2xl border border-navy-100 p-4 hover:shadow-sm transition">' +
                 '<div class="flex items-start justify-between gap-3">' +
                     '<div class="flex-1 min-w-0">' +
                         '<div class="flex items-center gap-2 mb-1.5 flex-wrap">' +
                             '<span class="text-[10px] font-700 px-2 py-0.5 rounded-md ' + sClass + '">' + (laporanStatusLabel[r.status] || r.status) + '</span>' +
-                            '<span class="text-[10px] font-600 px-2 py-0.5 rounded-md bg-navy-50 text-navy-600">' + (workTypeLabel[r.work_type] || r.work_type || '-') + '</span>' +
+                            '<span class="text-[10px] font-700 px-2 py-0.5 rounded-md text-white" style="background-color:' + wColor + ';">' + wtText + '</span>' +
                             '<span class="text-[10px] text-navy-300">' + fmtDate(r.date) + '</span>' +
                         '</div>' +
                         '<p class="text-sm font-600 text-navy-800" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">' + (r.description || '-') + '</p>' +
@@ -2804,26 +2829,27 @@ async function loadLaporan() {
         if (window.laporanChartInstance) window.laporanChartInstance.destroy();
         
         var laporanChartLabels = [];
+        var midpointData = [];
         var dominionData = [];
         var masterpieceData = [];
         var dateMap = {};
         
         res.data.forEach(function(r) {
             var d = r.date;
-            if (!dateMap[d]) dateMap[d] = { dominion: 0, masterpiece: 0 };
-            
+            if (!dateMap[d]) dateMap[d] = { midpoint: 0, dominion: 0, masterpiece: 0 };
             var floor = (r.floor || '').toLowerCase();
-            // Cek apakah lantai masuk Masterpiece (5, 6, 7)
             if (floor.indexOf('5') !== -1 || floor.indexOf('6') !== -1 || floor.indexOf('7') !== -1) {
                 dateMap[d].masterpiece++;
-            } else {
+            } else if (floor.indexOf('3') !== -1) {
                 dateMap[d].dominion++;
+            } else {
+                dateMap[d].midpoint++;
             }
         });
 
-        // Urutkan tanggal dari terlama ke terbaru
         Object.keys(dateMap).sort().forEach(function(d) {
             laporanChartLabels.push(fmtDate(d));
+            midpointData.push(dateMap[d].midpoint);
             dominionData.push(dateMap[d].dominion);
             masterpieceData.push(dateMap[d].masterpiece);
         });
@@ -2833,28 +2859,12 @@ async function loadLaporan() {
             data: {
                 labels: laporanChartLabels,
                 datasets: [
-                    {
-                        label: 'Dominion Lounge',
-                        data: dominionData,
-                        backgroundColor: '#0f2847', // Warna Navy
-                        borderRadius: 4
-                    },
-                    {
-                        label: 'Masterpiece',
-                        data: masterpieceData,
-                        backgroundColor: '#c9a84c', // Warna Emas
-                        borderRadius: 4
-                    }
+                    { label: 'Midpoint Square Building', data: midpointData, backgroundColor: '#991b1b', borderRadius: 4 },
+                    { label: 'Dominion Lounge', data: dominionData, backgroundColor: '#1e3a8a', borderRadius: 4 },
+                    { label: 'Masterpiece', data: masterpieceData, backgroundColor: '#c9a84c', borderRadius: 4 }
                 ]
             },
-            options: { 
-                responsive: true, 
-                maintainAspectRatio: false,
-                scales: { 
-                    x: { stacked: true }, 
-                    y: { stacked: true, beginAtZero: true } 
-                } 
-            }
+            options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } }
         });
 
     } catch(err) {
@@ -6461,39 +6471,6 @@ async function printRekapHarian() {
     
     showToast('Menyiapkan dokumen...');
     try {
-        // 2. Ambil Data Air PAM
-        var prevRes = await sb.from('water_readings').select('*').lt('reading_date', startDate).order('reading_date', { ascending: false }).limit(1);
-        var prevRecord = (prevRes.data && prevRes.data.length > 0) ? prevRes.data[0] : null;
-        var waterRes = await sb.from('water_readings').select('*').gte('reading_date', startDate).lte('reading_date', endDate).order('reading_date', { ascending: true });
-        var waterRows = waterRes.data || [];
-        
-        var lastMeter = prevRecord ? parseFloat(prevRecord.meter_reading) : null;
-        var totalAir = 0;
-        var waterHtml = '<tr><td colspan="4" style="text-align:center;color:#888;">Tidak ada data</td></tr>';
-        var waterChartLabels = [];
-        var waterChartData = [];
-        
-        if (waterRows.length > 0) {
-            waterHtml = '';
-            waterRows.forEach(function(d) {
-                var currentMeter = parseFloat(d.meter_reading);
-                var usage = 0;
-                var isFirstUntracked = (!prevRecord && lastMeter === null);
-                
-                if (!isFirstUntracked && lastMeter !== null) {
-                    usage = currentMeter - lastMeter;
-                    if (usage < 0) usage += 10000; // Jika meteran balik ke 0 (rollover)
-                    totalAir += usage;
-                }
-                lastMeter = currentMeter;
-                
-                waterHtml += '<tr><td>' + fmtDate(d.reading_date) + '</td><td>' + currentMeter.toFixed(2) + '</td><td>' + (isFirstUntracked ? '-' : usage.toFixed(2)) + '</td><td>' + (d.weather || '-') + '</td></tr>';
-                
-                waterChartLabels.push(fmtDate(d.reading_date));
-                waterChartData.push(usage.toFixed(2));
-            });
-        }
-
         // === AMBIL DATA MATI LISTRIK ===
         var powerRes = await sb.from('power_outages').select('*').gte('end_date', startDate).lte('start_date', endDate).order('start_date', { ascending: true });
         var powerRows = powerRes.data || [];
@@ -6519,11 +6496,43 @@ async function printRekapHarian() {
             });
         }
 
-                // === AMBIL DATA KUNJUNGAN VENDOR ===
+        // === AMBIL DATA AIR PAM ===
+        var prevRes = await sb.from('water_readings').select('*').lt('reading_date', startDate).order('reading_date', { ascending: false }).limit(1);
+        var prevRecord = (prevRes.data && prevRes.data.length > 0) ? prevRes.data[0] : null;
+        var waterRes = await sb.from('water_readings').select('*').gte('reading_date', startDate).lte('reading_date', endDate).order('reading_date', { ascending: true });
+        var waterRows = waterRes.data || [];
+        
+        var lastMeter = prevRecord ? parseFloat(prevRecord.meter_reading) : null;
+        var totalAir = 0;
+        var waterHtml = '<tr><td colspan="4" style="text-align:center;color:#888;">Tidak ada data</td></tr>';
+        var waterChartLabels = [];
+        var waterChartData = [];
+        
+        if (waterRows.length > 0) {
+            waterHtml = '';
+            waterRows.forEach(function(d) {
+                var currentMeter = parseFloat(d.meter_reading);
+                var usage = 0;
+                var isFirstUntracked = (!prevRecord && lastMeter === null);
+                
+                if (!isFirstUntracked && lastMeter !== null) {
+                    usage = currentMeter - lastMeter;
+                    if (usage < 0) usage += 10000;
+                    totalAir += usage;
+                }
+                lastMeter = currentMeter;
+                
+                waterHtml += '<tr><td>' + fmtDate(d.reading_date) + '</td><td>' + formatWaterMeter(currentMeter) + '</td><td>' + (isFirstUntracked ? '-' : usage.toFixed(2)) + '</td><td>' + (d.weather || '-') + '</td></tr>';
+                
+                waterChartLabels.push(fmtDate(d.reading_date));
+                waterChartData.push(usage.toFixed(2));
+            });
+        }
+
+        // === AMBIL DATA KUNJUNGAN VENDOR ===
         var vendorVisitRes = await sb.from('vendor_visits').select('*').gte('visit_date', startDate).lte('visit_date', endDate).order('visit_date', { ascending: true });
         var vendorVisitRows = vendorVisitRes.data || [];
         
-        // Ambil semua data vendor untuk memetakan ID ke Nama
         var allVendorsRes = await sb.from('vendors').select('id, name');
         var vendorMap = {};
         if (allVendorsRes.data) {
@@ -6534,10 +6543,9 @@ async function printRekapHarian() {
         if (vendorVisitRows.length > 0) {
             vendorHtml = '';
             vendorVisitRows.forEach(function(v, idx) {
-                // Cari nama vendor berdasarkan ID
                 var vName = vendorMap[v.vendor_id] || v.vendor_name || '-';
                 var vDate = v.visit_date || '-';
-                var vDesc = v.purpose || '-'; // <--- UBAH JADI v.purpose
+                var vDesc = v.purpose || '-';
                 var vNotes = v.notes || '-';
                 
                 vendorHtml += '<tr>' +
@@ -6550,7 +6558,7 @@ async function printRekapHarian() {
             });
         }
 
-         // 3. Ambil Data Laporan Harian
+        // === AMBIL DATA LAPORAN HARIAN ===
         var reportRes = await sb.from('daily_reports').select('*').gte('date', startDate).lte('date', endDate).order('date', { ascending: true });
         var reportRows = reportRes.data || [];
         
@@ -6563,13 +6571,29 @@ async function printRekapHarian() {
             if (tkRes.data) tkRes.data.forEach(function(u) { tkMap[u.id] = u.name; });
         }
 
-        var laporanHtml = '<tr><td colspan="6" style="text-align:center;color:#888;">Tidak ada data</td></tr>';
+        // Mapping warna teknis (pakai huruf kecil semua agar mudah dicocokkan)
+        var wtColors = {
+            'corrective': '#dc2626',
+            'preventive': '#0ea5e9',
+            'routine': '#6366f1',
+            'request': '#f97316',
+            'improvement': '#14b8a6',
+            'lainnya': '#64748b'
+        };
+
+        // Fungsi bantu untuk ambil warna
+        function getWtColor(typeStr) {
+            var key = (typeStr || 'lainnya').toLowerCase().trim();
+            return wtColors[key] || wtColors['lainnya'];
+        }
+
+        var laporanHtml = '<tr><td colspan="7" style="text-align:center;color:#888;">Tidak ada data</td></tr>';
         var laporanChartLabels = [];
+        var midpointData = [];
         var dominionData = [];
         var masterpieceData = [];
         var dateMap = {};
         
-        // VARIABEL UNTUK REKAP TOTAL
         var workTypeMap = {};
         var userSummaryMap = {}; 
         
@@ -6579,25 +6603,41 @@ async function printRekapHarian() {
                 var names = Array.isArray(r.teknisi_ids) ? r.teknisi_ids.map(function(id) { return tkMap[id] || '?'; }).join(', ') : '-';
                 var lokasi = (r.floor || '-');
                 if (r.room) lokasi += ' - ' + r.room;
+            
+                // Format teks Jenis Pekerjaan (Kapital di awal)
+                var wtRaw = (r.work_type || 'Lainnya').trim();
+                var wtTextDisplay = wtRaw.charAt(0).toUpperCase() + wtRaw.slice(1).toLowerCase();
                 
-                laporanHtml += '<tr><td style="width:5%; text-align:center;">' + (idx + 1) + '</td><td style="width:12%; text-align:center;">' + fmtDate(r.date) + '</td><td style="width:20%;">' + names + '</td><td style="width:18%;">' + lokasi + '</td><td style="width:35%;">' + (r.description || '-') + '</td><td style="width:10%; text-align:center;">' + (r.status || '-') + '</td></tr>';
+                // Ambil warna dan buat kotak
+                var wColorRow = getWtColor(wtRaw);
+                var wtBoxRow = '<span style="display:inline-block; width:8px; height:8px; background-color:' + wColorRow + '; border-radius:2px; margin-right:4px; vertical-align:middle;"></span>' + wtTextDisplay;
+
+                laporanHtml += '<tr>' +
+                    '<td style="width:5%; text-align:center;">' + (idx + 1) + '</td>' +
+                    '<td style="width:10%; text-align:center;">' + fmtDate(r.date) + '</td>' +
+                    '<td style="width:15%;">' + names + '</td>' +
+                    '<td style="width:15%;">' + wtBoxRow + '</td>' +
+                    '<td style="width:15%;">' + lokasi + '</td>' +
+                    '<td style="width:30%;">' + (r.description || '-') + '</td>' +
+                    '<td style="width:10%; text-align:center;">' + (r.status || '-') + '</td>' +
+                '</tr>';
                 
-                // Hitung grafik
                 var d = r.date;
-                if (!dateMap[d]) dateMap[d] = { dominion: 0, masterpiece: 0 };
+                if (!dateMap[d]) dateMap[d] = { midpoint: 0, dominion: 0, masterpiece: 0 };
                 var floor = (r.floor || '').toLowerCase();
                 if (floor.indexOf('5') !== -1 || floor.indexOf('6') !== -1 || floor.indexOf('7') !== -1) {
                     dateMap[d].masterpiece++;
-                } else {
+                } else if (floor.indexOf('3') !== -1) {
                     dateMap[d].dominion++;
+                } else {
+                    dateMap[d].midpoint++;
                 }
 
-                // HITUNG REKAP JENIS PEKERJAAN
-                var wt = r.work_type || 'Lainnya';
-                if (!workTypeMap[wt]) workTypeMap[wt] = 0;
-                workTypeMap[wt]++;
+                // Hitung Rekap Jenis Pekerjaan
+                if (!workTypeMap[wtTextDisplay]) workTypeMap[wtTextDisplay] = 0;
+                workTypeMap[wtTextDisplay]++;
 
-                // HITUNG REKAP PETUGAS
+                // Hitung Rekap Petugas
                 if (Array.isArray(r.teknisi_ids)) {
                     r.teknisi_ids.forEach(function(uid) {
                         if (!userSummaryMap[uid]) userSummaryMap[uid] = 0;
@@ -6608,34 +6648,46 @@ async function printRekapHarian() {
             
             Object.keys(dateMap).sort().forEach(function(d) {
                 laporanChartLabels.push(fmtDate(d));
+                midpointData.push(dateMap[d].midpoint);
                 dominionData.push(dateMap[d].dominion);
                 masterpieceData.push(dateMap[d].masterpiece);
             });
         }
 
-        // SUSUN HTML REKAP
         var totalJobs = reportRows.length;
         
+        // SUSUN HTML REKAP JENIS PEKERJAAN (Dengan Warna)
         var workTypeHtml = '';
-        Object.keys(workTypeMap).forEach(function(wt) {
-            workTypeHtml += '<tr><td style="text-align:left; padding:5px; border:1px solid #ddd;">' + wt + '</td><td style="text-align:center; padding:5px; border:1px solid #ddd;">' + workTypeMap[wt] + '</td></tr>';
+        Object.keys(workTypeMap).forEach(function(wtLabel) {
+            var wColor = getWtColor(wtLabel); // Ambil warna berdasarkan label
+            var colorBox = '<span style="display:inline-block; width:10px; height:10px; background-color:' + wColor + '; border-radius:2px; margin-right:8px; vertical-align:middle;"></span>';
+            workTypeHtml += '<tr><td style="text-align:left; padding:5px; border:1px solid #ddd;">' + colorBox + wtLabel + '</td><td style="text-align:center; padding:5px; border:1px solid #ddd;">' + workTypeMap[wtLabel] + '</td></tr>';
         });
         if (workTypeHtml === '') workTypeHtml = '<tr><td colspan="2" style="text-align:center; padding:5px; border:1px solid #ddd; color:#888;">Tidak ada data</td></tr>';
 
+        // SUSUN HTML REKAP PETUGAS (Urut Alfabetis)
+        var sortedUserIds = Object.keys(userSummaryMap).sort(function(a, b) {
+            var nameA = (tkMap[a] || '').toLowerCase();
+            var nameB = (tkMap[b] || '').toLowerCase();
+            if (nameA < nameB) return -1;
+            if (nameA > nameB) return 1;
+            return 0;
+        });
+
         var userSummaryHtml = '';
-        Object.keys(userSummaryMap).forEach(function(uid) {
+        sortedUserIds.forEach(function(uid) {
             if (userSummaryMap[uid] > 0) {
                 userSummaryHtml += '<tr><td style="text-align:left; padding:5px; border:1px solid #ddd;">' + (tkMap[uid] || '-') + '</td><td style="text-align:center; padding:5px; border:1px solid #ddd;">' + userSummaryMap[uid] + '</td></tr>';
             }
         });
         if (userSummaryHtml === '') userSummaryHtml = '<tr><td colspan="2" style="text-align:center; padding:5px; border:1px solid #ddd; color:#888;">Tidak ada data</td></tr>';
 
-        // 4. Susun HTML lengkap dengan Chart.js di dalamnya
+        // === SUSUN HTML KE PDF ===
         var now = new Date();
         var printDate = now.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
         
         var html = '<html><head><title>Rekap Laporan</title>' +
-            '<script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script>' + // Library Chart.js
+            '<script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script>' +
             '<style>' +
             'body { font-family: Arial, sans-serif; margin: 40px; color: #1F2937; }' +
             'h1 { text-align: center; font-size: 18px; margin-bottom: 2px; }' +
@@ -6645,19 +6697,18 @@ async function printRekapHarian() {
             'th, td { border: 1px solid #D1D5DB; padding: 8px; text-align: left; }' +
             'th { background-color: #1F2937; color: white; }' +
             '.total { font-weight: bold; background-color: #F3F4F6; }' +
-            '.sign { margin-top: 60px; width: 100%; display: flex; justify-content: space-around; text-align: center; font-size: 12px; }' +
-            '.sign div { width: 30%; }' +
-            '.sign p { margin-top: 60px; border-top: 1px solid #000; padding-top: 5px; }' +
             '.footer { margin-top: 50px; text-align: center; font-size: 10px; color: #9CA3AF; border-top: 1px solid #E5E7EB; padding-top: 10px; }' +
             '</style></head><body>' +
             '<h1>DOMINION LOUNGE & MASTERPIECE</h1>' +
             '<h2>Maintenance System Technician</h2>' +
             '<h2>REKAP LAPORAN HARIAN TEKNISI & PEMAKAIAN AIR PAM<br>Periode: ' + fmtDate(startDate) + ' s/d ' + fmtDate(endDate) + '</h2>' +
+            
             '<h3>A. PEMADAMAN LISTRIK (PLN)</h3>' +
             '<table><thead><tr><th style="width:5%;">No</th><th style="width:35%;">Rentang Tanggal</th><th style="width:30%;">Jam Padam - Normal</th><th style="width:30%;">Durasi (Jam)</th></tr></thead><tbody>' +
             powerHtml +
             '<tr style="background:#f3f4f6; font-weight:bold;"><td colspan="3" style="text-align:right;">TOTAL DURASI PEMADAMAN</td><td style="text-align:center;">' + totalPowerDuration.toFixed(2) + ' Jam</td></tr>' +
             '</tbody></table>' +
+            
             '<h3>B. PEMAKAIAN AIR PAM</h3>' +
             '<div style="width:100%; height:250px; margin-bottom:20px;"><canvas id="printWaterChart"></canvas></div>' +
             '<table><thead><tr><th>Tanggal</th><th>Meter Akhir (m³)</th><th>Pemakaian (m³)</th><th>Cuaca</th></tr></thead><tbody>' +
@@ -6687,7 +6738,7 @@ async function printRekapHarian() {
                 '</div>' +
             '</div>' +
             
-            '<table><thead><tr><th style="width:5%;">No</th><th style="width:12%;">Tanggal</th><th style="width:20%;">Petugas</th><th style="width:18%;">Lokasi</th><th style="width:35%;">Pekerjaan</th><th style="width:10%;">Status</th></tr></thead><tbody>' +
+            '<table><thead><tr><th style="width:5%;">No</th><th style="width:10%;">Tanggal</th><th style="width:15%;">Petugas</th><th style="width:15%;">Jenis</th><th style="width:15%;">Lokasi</th><th style="width:30%;">Pekerjaan</th><th style="width:10%;">Status</th></tr></thead><tbody>' +
             laporanHtml +
             '</tbody></table>' +
             
@@ -6704,10 +6755,10 @@ async function printRekapHarian() {
                 'var laporanCtx = document.getElementById("printLaporanChart").getContext("2d");' +
                 'new Chart(laporanCtx, {' +
                     'type: "bar",' +
-                    'data: { labels: ' + JSON.stringify(laporanChartLabels) + ', datasets: [{ label: "Dominion Lounge", data: ' + JSON.stringify(dominionData) + ', backgroundColor: "#0f2847", borderRadius: 4 }, { label: "Masterpiece", data: ' + JSON.stringify(masterpieceData) + ', backgroundColor: "#c9a84c", borderRadius: 4 }] },' +
+                    'data: { labels: ' + JSON.stringify(laporanChartLabels) + ', datasets: [{ label: "Midpoint Square Building", data: ' + JSON.stringify(midpointData) + ', backgroundColor: "#991b1b", borderRadius: 4 }, { label: "Dominion Lounge", data: ' + JSON.stringify(dominionData) + ', backgroundColor: "#1e3a8a", borderRadius: 4 }, { label: "Masterpiece", data: ' + JSON.stringify(masterpieceData) + ', backgroundColor: "#c9a84c", borderRadius: 4 }] },' +
                     'options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } }' +
                 '});' +
-                'setTimeout(function() { window.print(); }, 1000);' + // Print setelah 1 detik
+                'setTimeout(function() { window.print(); }, 1000);' +
             '};' +
             '<\/script>' +
             '</body></html>';
