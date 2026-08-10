@@ -2860,7 +2860,7 @@ async function loadLaporan() {
                 labels: laporanChartLabels,
                 datasets: [
                     { label: 'Midpoint Square Building', data: midpointData, backgroundColor: '#991b1b', borderRadius: 4 },
-                    { label: 'Dominion Lounge', data: dominionData, backgroundColor: '#1e3a8a', borderRadius: 4 },
+                    { label: 'Dominion Lounge', data: dominionData, backgroundColor: '#0f2847', borderRadius: 4 },
                     { label: 'Masterpiece', data: masterpieceData, backgroundColor: '#c9a84c', borderRadius: 4 }
                 ]
             },
@@ -6690,7 +6690,7 @@ async function printRekapHarian() {
             '<script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script>' +
             '<style>' +
             'body { font-family: Arial, sans-serif; margin: 40px; color: #1F2937; }' +
-            'h1 { text-align: center; font-size: 18px; margin-bottom: 2px; }' +
+            'h1 { text-align: center; font-size: 22px; margin-bottom: 2px; }' +
             'h2 { text-align: center; font-size: 14px; margin-top: 0; margin-bottom: 20px; color: #4B5563; }' +
             'h3 { font-size: 13px; margin-top: 30px; border-bottom: 2px solid #1F2937; padding-bottom: 5px; }' +
             'table { width: 100%; border-collapse: collapse; font-size: 12px; }' +
@@ -6699,9 +6699,12 @@ async function printRekapHarian() {
             '.total { font-weight: bold; background-color: #F3F4F6; }' +
             '.footer { margin-top: 50px; text-align: center; font-size: 10px; color: #9CA3AF; border-top: 1px solid #E5E7EB; padding-top: 10px; }' +
             '</style></head><body>' +
-            '<h1>DOMINION LOUNGE & MASTERPIECE</h1>' +
-            '<h2>Maintenance System Technician</h2>' +
-            '<h2>REKAP LAPORAN HARIAN TEKNISI & PEMAKAIAN AIR PAM<br>Periode: ' + fmtDate(startDate) + ' s/d ' + fmtDate(endDate) + '</h2>' +
+            '<div style="text-align: center; margin-bottom: 20px;">' +
+                '<h1 style="margin:0; font-size: 22px;">MIDPOINT SQUARE BUILDING</h1>' +
+                '<h1 style="margin:0; font-size: 16px;">DOMINION LOUNGE & MASTERPIECE</h1>' +
+                '<p style="margin:2px 0 12px 0; font-size: 12px; color: #4B5563;">Maintenance System Technician</p>' +
+                '<h2 style="margin:0; font-size: 14px; color: #1F2937;">REKAP LAPORAN TEKNISI & IT<br>Periode: ' + fmtDate(startDate) + ' s/d ' + fmtDate(endDate) + '</h2>' +
+            '</div>' +
             
             '<h3>A. PEMADAMAN LISTRIK (PLN)</h3>' +
             '<table><thead><tr><th style="width:5%;">No</th><th style="width:35%;">Rentang Tanggal</th><th style="width:30%;">Jam Padam - Normal</th><th style="width:30%;">Durasi (Jam)</th></tr></thead><tbody>' +
@@ -6755,7 +6758,7 @@ async function printRekapHarian() {
                 'var laporanCtx = document.getElementById("printLaporanChart").getContext("2d");' +
                 'new Chart(laporanCtx, {' +
                     'type: "bar",' +
-                    'data: { labels: ' + JSON.stringify(laporanChartLabels) + ', datasets: [{ label: "Midpoint Square Building", data: ' + JSON.stringify(midpointData) + ', backgroundColor: "#991b1b", borderRadius: 4 }, { label: "Dominion Lounge", data: ' + JSON.stringify(dominionData) + ', backgroundColor: "#1e3a8a", borderRadius: 4 }, { label: "Masterpiece", data: ' + JSON.stringify(masterpieceData) + ', backgroundColor: "#c9a84c", borderRadius: 4 }] },' +
+                    'data: { labels: ' + JSON.stringify(laporanChartLabels) + ', datasets: [{ label: "Midpoint Square Building", data: ' + JSON.stringify(midpointData) + ', backgroundColor: "#991b1b", borderRadius: 4 }, { label: "Dominion Lounge", data: ' + JSON.stringify(dominionData) + ', backgroundColor: "#0f2847", borderRadius: 4 }, { label: "Masterpiece", data: ' + JSON.stringify(masterpieceData) + ', backgroundColor: "#c9a84c", borderRadius: 4 }] },' +
                     'options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } }' +
                 '});' +
                 'setTimeout(function() { window.print(); }, 1000);' +
