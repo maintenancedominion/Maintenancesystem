@@ -2200,15 +2200,18 @@ async function submitTicket() {
             if (upRes.error) throw upRes.error;
             photoUrls.push(sb.storage.from('photos').getPublicUrl(fname).data.publicUrl);
         }
-                var slaDeadline = new Date();
-        var slaDays = slaConfig[priority] || 3;
-        slaDeadline.setDate(slaDeadline.getDate() + slaDays);
-        slaDeadline.setHours(23, 59, 59, 0);
+            var slaDeadline = null;
+            if (priority !== 'tanpa') {
+            slaDeadline = new Date();
+            var slaDays = slaConfig[priority] || 3;
+            slaDeadline.setDate(slaDeadline.getDate() + slaDays);
+            slaDeadline.setHours(23, 59, 59, 0);
+        }
 
         var insRes = await sb.from('tickets').insert({
             title: title, description: desc, floor: floor, room: room,
             location_detail: locDetail, priority: priority, status: 'open',
-            created_by: currentUser.id, photos: photoUrls, sla_deadline: slaDeadline.toISOString()
+            created_by: currentUser.id, photos: photoUrls, sla_deadline: slaDeadline ? slaDeadline.toISOString() : null
         });
         if (insRes.error) throw insRes.error;
         showToast('Tiket berhasil dibuat!');
@@ -2272,9 +2275,19 @@ function renderTicketList(list, containerId, showActions) {
         var statusColors = { open: 'bg-blue-100 text-blue-700', diambil: 'bg-indigo-100 text-indigo-700', dikerjakan: 'bg-amber-100 text-amber-700', selesai: 'bg-emerald-100 text-emerald-700', checked: 'bg-teal-100 text-teal-700', ditutup: 'bg-gray-100 text-gray-600' };
         var prioClass = prioColors[t.priority] || 'bg-gray-100 text-gray-600';
         var statusClass = statusColors[t.status] || 'bg-gray-100 text-gray-600';
+        var prioText = (t.priority === 'tanpa') ? 'tanpa prioritas' : (t.priority || '-');
         var isClosed = (t.status === 'ditutup' && t.closed_at);
-        var slaInfo = isClosed ? getSlaClosedInfo(t) : getSlaInfo(t.sla_deadline);
-        var slaHtml = '<span class="text-[10px] font-600 ' + slaInfo.color + '"><i class="fa-solid ' + (isClosed ? 'fa-circle-check' : 'fa-hourglass-half') + ' mr-0.5"></i>' + slaInfo.text + '</span>';
+        var slaInfo;
+        var slaHtml = '';
+        if (isClosed) {
+            slaInfo = getSlaClosedInfo(t);
+            slaHtml = '<span class="text-[10px] font-600 ' + slaInfo.color + '"><i class="fa-solid fa-circle-check mr-0.5"></i>' + slaInfo.text + '</span>';
+        } else if (t.sla_deadline) {
+            slaInfo = getSlaInfo(t.sla_deadline);
+            slaHtml = '<span class="text-[10px] font-600 ' + slaInfo.color + '"><i class="fa-solid fa-hourglass-half mr-0.5"></i>' + slaInfo.text + '</span>';
+        } else {
+            slaInfo = { overdue: false };
+        }
         var cardBorder = slaInfo.overdue ? 'border-red-300 bg-red-50/30' : 'border-navy-100';
         var actionsHtml = '';
         if (showActions) {
@@ -2300,7 +2313,7 @@ function renderTicketList(list, containerId, showActions) {
             '<div class="flex items-start justify-between gap-3">' +
                 '<div class="flex-1 min-w-0">' +
                     '<div class="flex items-center gap-2 mb-1.5">' +
-                        '<span class="text-[10px] font-700 px-2 py-0.5 rounded-md ' + prioClass + '">' + (t.priority || '-') + '</span>' +
+                        '<span class="text-[10px] font-700 px-2 py-0.5 rounded-md ' + prioClass + '">' + prioText + '</span>' +
                         '<span class="text-[10px] font-700 px-2 py-0.5 rounded-md ' + statusClass + '">' + (t.status || '-') + '</span>' +
                         '<span class="text-[10px] text-navy-300">#' + t.id.substring(0, 8) + '</span>' +
                     '</div>' +
@@ -2344,7 +2357,7 @@ async function openTicketDetail(id) {
     html += '<div class="bg-navy-50 rounded-xl p-3"><span class="text-navy-400 block mb-0.5">Lokasi</span><span class="font-600 text-navy-800">' + (t.floor || '-') + ' - ' + (t.room || '-') + '</span></div>';
     html += '<div class="bg-navy-50 rounded-xl p-3"><span class="text-navy-400 block mb-0.5">Dibuat</span><span class="font-600 text-navy-800">' + fmtDateTime(t.created_at) + '</span></div>';
     var tClosed = (t.status === 'ditutup' && t.closed_at);
-    var detailSla = tClosed ? getSlaClosedInfo(t) : getSlaInfo(t.sla_deadline);
+    var detailSla = tClosed ? getSlaClosedInfo(t) : (t.sla_deadline ? getSlaInfo(t.sla_deadline) : { text: '-', color: 'text-navy-300', overdue: false });
     html += '<div class="bg-navy-50 rounded-xl p-3"><span class="text-navy-400 block mb-0.5">' + (tClosed ? 'Waktu Penyelesaian' : 'SLA') + '</span><span class="font-600 ' + detailSla.color + '">' + (tClosed ? fmtDateTime(t.closed_at) + ' (' + detailSla.text + ')' : (t.sla_deadline ? fmtDateTime(t.sla_deadline) + ' (' + detailSla.text + ')' : '-')) + '</span></div>';
     html += '<div class="bg-navy-50 rounded-xl p-3 sm:col-span-2"><span class="text-navy-400 block mb-0.5">Teknisi</span><span class="font-600 text-navy-800">' + (teknisiNames.length > 0 ? teknisiNames.join(', ') : 'Belum diassign') + '</span></div>';
     html += '</div>';
@@ -7096,7 +7109,7 @@ async function openEditTicket(id) {
             '<input id="editLocDetail" value="' + escAttr(t.location_detail) + '" style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:12px;">' +
             '<label class="text-[10px] font-700 text-navy-400" style="display:block;margin-bottom:4px;">PRIORITAS *</label>' +
             '<select id="editPriority" style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:16px;background:#fff;">' +
-                ['urgent','sedang','rendah'].map(function(p) { return '<option value="' + p + '"' + (t.priority === p ? ' selected' : '') + '>' + p + '</option>'; }).join('') +
+                [{ v: 'urgent', l: 'Urgent' }, { v: 'sedang', l: 'Sedang' }, { v: 'rendah', l: 'Rendah' }, { v: 'tanpa', l: 'Tanpa Prioritas' }].map(function(p) { return '<option value="' + p.v + '"' + (t.priority === p.v ? ' selected' : '') + '>' + p.l + '</option>'; }).join('') +
             '</select>' +
             '<button onclick="saveEditTicket(\'' + t.id + '\')" style="width:100%;background:#1e293b;color:#fff;font-weight:700;padding:12px;border-radius:12px;">Simpan Perubahan</button>' +
         '</div>';
@@ -7310,6 +7323,128 @@ function addSignatureBlock(ws, lastDataRow) {
     ws.getCell('I' + rNama).value = '( .................................... )';
     ws.getCell('I' + rNama).font = { bold: true, size: 11, color: { argb: 'FF1E293B' } };
 }
+
+/* ===== OPSI "TANPA PRIORITAS" OTOMATIS ===== */
+(function() {
+    function addTanpaOption() {
+        ['tiketPriority', 'antrianFilterPrio', 'riwayatFilterPrio'].forEach(function(id) {
+            var sel = document.getElementById(id);
+            if (!sel) return;
+            if (sel.querySelector('option[value="tanpa"]')) return;
+            var opt = document.createElement('option');
+            opt.value = 'tanpa';
+            opt.textContent = 'Tanpa Prioritas';
+            sel.appendChild(opt);
+        });
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', addTanpaOption);
+    } else {
+        addTanpaOption();
+    }
+})();
+
+/* ===== TOMBOL "TAMBAH USER" UNTUK HP (v2) ===== */
+(function() {
+    function isMobile() { return window.innerWidth < 768; }
+
+    function openAddUser() {
+        /* Reset form ke mode "Tambah" (bukan Edit) */
+        var idEl = document.getElementById('userEditId'); if (idEl) idEl.value = '';
+        var t = document.getElementById('userModalTitle'); if (t) t.textContent = 'Tambah User';
+        ['userName', 'userEmail', 'userPassword', 'userDivision'].forEach(function(id) {
+            var el = document.getElementById(id); if (el) el.value = '';
+        });
+        var r = document.getElementById('userRole'); if (r) r.value = '';
+        var c = document.getElementById('userCanAnnounce'); if (c) c.checked = false;
+        openModal('userModal');
+    }
+
+    function place() {
+        var btn = document.getElementById('mobileAddUserBtn');
+        if (!isMobile()) { if (btn) btn.style.display = 'none'; return; }
+        if (btn) { btn.style.display = 'inline-flex'; return; }
+        if (typeof currentUser === 'undefined' || !currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'head')) return;
+
+        btn = document.createElement('button');
+        btn.id = 'mobileAddUserBtn';
+        btn.innerHTML = '<i class="fa-solid fa-user-plus"></i>';
+        btn.title = 'Tambah User';
+        btn.style.cssText = 'background:#d4af37;color:#1e293b;border:none;border-radius:12px;padding:9px 13px;font-weight:700;display:inline-flex;align-items:center;cursor:pointer;margin-right:8px;';
+        btn.onclick = openAddUser;
+
+        var bell = document.querySelector('.fa-bell');
+        var anchor = bell ? (bell.closest('button') || bell.parentElement) : null;
+        if (anchor && anchor.parentElement) {
+            anchor.parentElement.insertBefore(btn, anchor);
+        } else {
+            btn.style.position = 'fixed'; btn.style.top = '14px'; btn.style.right = '14px'; btn.style.zIndex = 70;
+            document.body.appendChild(btn);
+        }
+    }
+
+    var tries = 0;
+    (function wait() {
+        if (document.getElementById('userModal') && typeof currentUser !== 'undefined' && currentUser) { place(); return; }
+        if (++tries < 30) setTimeout(wait, 400);
+    })();
+    window.addEventListener('resize', place);
+})();
+
+/* ===== OPSI "PROJECT" PADA JENIS PEKERJAAN ===== */
+(function() {
+    function addProjectOption() {
+        document.querySelectorAll('select').forEach(function(sel) {
+            /* Cek apakah select ini adalah dropdown jenis pekerjaan (punya opsi Improvement) */
+            var hasJenis = Array.from(sel.options).some(function(o) {
+                var v = (o.value || '').toLowerCase();
+                var t = (o.textContent || '').trim().toLowerCase();
+                return v === 'improvement' || t === 'improvement';
+            });
+            if (!hasJenis) return;
+            /* Jangan dobel kalau sudah ada */
+            var already = Array.from(sel.options).some(function(o) {
+                return (o.value || '').toLowerCase() === 'project';
+            });
+            if (already) return;
+            var opt = document.createElement('option');
+            opt.value = 'project';
+            opt.textContent = 'Project';
+            sel.appendChild(opt);
+        });
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', addProjectOption);
+    } else {
+        addProjectOption();
+    }
+})();
+
+/* ===== WARNA COKLAT OTOMATIS UNTUK BADGE "PROJECT" ===== */
+(function() {
+    function applyBrown() {
+        document.querySelectorAll('span, div').forEach(function(el) {
+            var t = (el.textContent || '').trim().toLowerCase();
+            /* Hanya elemen badge: teksnya persis "project", tidak punya anak, dan bergaya rounded */
+            var cls = el.className || '';
+            if (t === 'project' && el.children.length === 0 && String(cls).indexOf('rounded') !== -1 && !el.dataset.brown) {
+                el.dataset.brown = '1';
+                el.style.backgroundColor = '#8B5E3C';
+                el.style.color = '#ffffff';
+                el.style.fontWeight = '700';
+            }
+        });
+    }
+    var timer = null;
+    function throttled() {
+        if (timer) return;
+        timer = setTimeout(function() { timer = null; applyBrown(); }, 200);
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+        applyBrown();
+        new MutationObserver(throttled).observe(document.body, { childList: true, subtree: true });
+    });
+})();
 </script>
 </body>
 </html>
