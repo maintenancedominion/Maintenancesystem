@@ -2384,9 +2384,19 @@ async function openTicketDetail(id) {
 }
 
 /* ===== ASSIGN TEKNISI ===== */
-function openAssignModal(ticketId) {
+async function openAssignModal(ticketId) {
     document.getElementById('assignTicketId').value = ticketId;
-    document.getElementById('assignTeknisiSelect').innerHTML = allTeknisi.map(function(t) { return '<option value="' + t.id + '">' + t.name + '</option>'; }).join('');
+    var sel = document.getElementById('assignTeknisiSelect');
+    sel.innerHTML = '<option value="">Memuat daftar teknisi...</option>';
+    var res = await sb.from('users').select('id, name, role').in('role', ['teknisi', 'head']).eq('active', true).order('name');
+    var list = res.data || [];
+    if (list.length === 0) {
+        sel.innerHTML = '<option value="">Tidak ada teknisi aktif</option>';
+    } else {
+        sel.innerHTML = list.map(function(u) {
+            return '<option value="' + u.id + '">' + u.name + (u.role === 'head' ? ' (Head)' : '') + '</option>';
+        }).join('');
+    }
     openModal('assignModal');
 }
 
@@ -2406,6 +2416,8 @@ async function doAssign() {
 function openSelesaiModal(ticketId) {
     document.getElementById('selesaiTicketId').value = ticketId;
     document.getElementById('selesaiNote').value = '';
+    var wt = document.getElementById('selesaiWorkType');
+    if (wt) wt.value = '';
     selesaiFiles = [];
     document.getElementById('selesaiFilesPreview').innerHTML = '';
     openModal('selesaiModal');
@@ -2422,19 +2434,47 @@ function handleSelesaiFiles(fileList) {
 async function doSelesai() {
     var ticketId = document.getElementById('selesaiTicketId').value;
     var note = document.getElementById('selesaiNote').value.trim();
+    var wtEl = document.getElementById('selesaiWorkType');
+    var workType = wtEl ? wtEl.value : '';
+    if (!workType) { showToast('Pilih jenis pekerjaan dulu', 'error'); return; }
     try {
         var photoUrls = [];
         for (var i = 0; i < selesaiFiles.length; i++) {
             var compressed = await compressImage(selesaiFiles[i], 1200, 0.7);
             var fname = 'completion/' + Date.now() + '_' + i + '.jpg';
-            var upRes = await sb.storage.from('ticket-images').upload(fname, compressed, { contentType: 'image/jpeg', upsert: true });
+            var upRes = await sb.storage.from('photos').upload(fname, compressed, { contentType: 'image/jpeg', upsert: true });
             if (upRes.error) throw upRes.error;
             photoUrls.push(sb.storage.from('photos').getPublicUrl(fname).data.publicUrl);
         }
+        /* Ambil data tiket untuk bahan laporan harian */
+        var tRes = await sb.from('tickets').select('title, description, floor, room, assigned_to').eq('id', ticketId).single();
+        if (tRes.error) throw tRes.error;
+        var t = tRes.data;
         var updateData = { status: 'selesai', completion_note: note, completion_photos: photoUrls };
         var res = await sb.from('tickets').update(updateData).eq('id', ticketId);
         if (res.error) throw res.error;
-        showToast('Tiket berhasil diselesaikan');
+        /* Buat laporan harian otomatis atas nama petugas */
+        var teknisiIds = (t.assigned_to && t.assigned_to.length > 0) ? t.assigned_to : [currentUser.id];
+        var repRes = await sb.from('daily_reports').insert({
+            date: todayStr(),
+            work_type: workType,
+            description: t.title + (t.description ? ' - ' + t.description : ''),
+            notes: note || 'Penyelesaian tiket #' + ticketId.substring(0, 8),
+            status: 'done',
+            date_done: todayStr(),
+            has_replacement: false,
+            replacement_item: '',
+            teknisi_ids: teknisiIds,
+            floor: t.floor || '',
+            room: t.room || '',
+            photos: photoUrls
+        });
+        if (repRes.error) {
+            console.error(repRes.error);
+            showToast('Tiket selesai, tapi laporan harian GAGAL: ' + repRes.error.message, 'error');
+        } else {
+            showToast('Tiket selesai & laporan harian otomatis dibuat!');
+        }
         closeModal('selesaiModal');
         loadAntrian();
     } catch(err) {
@@ -7444,6 +7484,35 @@ function addSignatureBlock(ws, lastDataRow) {
         applyBrown();
         new MutationObserver(throttled).observe(document.body, { childList: true, subtree: true });
     });
+})();
+
+/* ===== TAMBAH "JENIS PEKERJAAN" DI MODAL SELESAI TIKET ===== */
+(function() {
+    function inject() {
+        if (document.getElementById('selesaiWorkType')) return true;
+        var noteEl = document.getElementById('selesaiNote');
+        if (!noteEl) return false;
+        var wrap = document.createElement('div');
+        wrap.innerHTML =
+            '<label class="text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block">JENIS PEKERJAAN *</label>' +
+            '<select id="selesaiWorkType" class="form-input">' +
+                '<option value="">Pilih jenis pekerjaan</option>' +
+                '<option value="Routine">Routine</option>' +
+                '<option value="Corrective">Corrective</option>' +
+                '<option value="Preventive">Preventive</option>' +
+                '<option value="Request">Request</option>' +
+                '<option value="Improvement">Improvement</option>' +
+                '<option value="Project">Project</option>' +
+            '</select>';
+        var parent = noteEl.parentElement;
+        parent.parentNode.insertBefore(wrap, parent);
+        return true;
+    }
+    var tries = 0;
+    (function wait() {
+        if (inject()) return;
+        if (++tries < 30) setTimeout(wait, 400);
+    })();
 })();
 </script>
 </body>
