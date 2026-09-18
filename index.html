@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="id" class="scroll-smooth">
 <head>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- KODE PWA -->
     <link rel="manifest" href="manifest.json">
@@ -2271,8 +2272,9 @@ function renderTicketList(list, containerId, showActions) {
         var statusColors = { open: 'bg-blue-100 text-blue-700', diambil: 'bg-indigo-100 text-indigo-700', dikerjakan: 'bg-amber-100 text-amber-700', selesai: 'bg-emerald-100 text-emerald-700', checked: 'bg-teal-100 text-teal-700', ditutup: 'bg-gray-100 text-gray-600' };
         var prioClass = prioColors[t.priority] || 'bg-gray-100 text-gray-600';
         var statusClass = statusColors[t.status] || 'bg-gray-100 text-gray-600';
-        var slaInfo = getSlaInfo(t.sla_deadline);
-        var slaHtml = '<span class="text-[10px] font-600 ' + slaInfo.color + '"><i class="fa-solid fa-hourglass-half mr-0.5"></i>' + slaInfo.text + '</span>';
+        var isClosed = (t.status === 'ditutup' && t.closed_at);
+        var slaInfo = isClosed ? getSlaClosedInfo(t) : getSlaInfo(t.sla_deadline);
+        var slaHtml = '<span class="text-[10px] font-600 ' + slaInfo.color + '"><i class="fa-solid ' + (isClosed ? 'fa-circle-check' : 'fa-hourglass-half') + ' mr-0.5"></i>' + slaInfo.text + '</span>';
         var cardBorder = slaInfo.overdue ? 'border-red-300 bg-red-50/30' : 'border-navy-100';
         var actionsHtml = '';
         if (showActions) {
@@ -2341,8 +2343,9 @@ async function openTicketDetail(id) {
     html += '<div class="bg-navy-50 rounded-xl p-3"><span class="text-navy-400 block mb-0.5">Prioritas</span><span class="font-600 text-navy-800">' + (t.priority || '-') + '</span></div>';
     html += '<div class="bg-navy-50 rounded-xl p-3"><span class="text-navy-400 block mb-0.5">Lokasi</span><span class="font-600 text-navy-800">' + (t.floor || '-') + ' - ' + (t.room || '-') + '</span></div>';
     html += '<div class="bg-navy-50 rounded-xl p-3"><span class="text-navy-400 block mb-0.5">Dibuat</span><span class="font-600 text-navy-800">' + fmtDateTime(t.created_at) + '</span></div>';
-    var detailSla = getSlaInfo(t.sla_deadline);
-    html += '<div class="bg-navy-50 rounded-xl p-3"><span class="text-navy-400 block mb-0.5">SLA</span><span class="font-600 ' + detailSla.color + '">' + (t.sla_deadline ? fmtDateTime(t.sla_deadline) + ' (' + detailSla.text + ')' : '-') + '</span></div>';
+    var tClosed = (t.status === 'ditutup' && t.closed_at);
+    var detailSla = tClosed ? getSlaClosedInfo(t) : getSlaInfo(t.sla_deadline);
+    html += '<div class="bg-navy-50 rounded-xl p-3"><span class="text-navy-400 block mb-0.5">' + (tClosed ? 'Waktu Penyelesaian' : 'SLA') + '</span><span class="font-600 ' + detailSla.color + '">' + (tClosed ? fmtDateTime(t.closed_at) + ' (' + detailSla.text + ')' : (t.sla_deadline ? fmtDateTime(t.sla_deadline) + ' (' + detailSla.text + ')' : '-')) + '</span></div>';
     html += '<div class="bg-navy-50 rounded-xl p-3 sm:col-span-2"><span class="text-navy-400 block mb-0.5">Teknisi</span><span class="font-600 text-navy-800">' + (teknisiNames.length > 0 ? teknisiNames.join(', ') : 'Belum diassign') + '</span></div>';
     html += '</div>';
     html += '<div class="bg-navy-50 rounded-xl p-3"><span class="text-[10px] font-600 text-navy-400 block mb-1">Deskripsi</span><p class="text-xs text-navy-700 leading-relaxed">' + (t.description || '-') + '</p></div>';
@@ -2353,6 +2356,15 @@ async function openTicketDetail(id) {
     }
     if (t.completion_photos && t.completion_photos.length > 0) {
         html += '<div><span class="text-[10px] font-600 text-emerald-600 block mb-2">Foto Bukti Selesai</span><div class="grid grid-cols-4 gap-2">' + t.completion_photos.map(function(p) { return '<div class="file-preview cursor-pointer" onclick="event.stopPropagation();document.getElementById(\'lightboxImg\').src=\'' + p + '\';document.getElementById(\'lightbox\').style.display=\'flex\'"><img src="' + p + '"></div>'; }).join('') + '</div></div>';
+    }
+        if (currentUser.role === 'head' || currentUser.role === 'admin') {
+        html += '<div class="flex gap-2 pt-1">';
+        if (t.status === 'selesai' || t.status === 'checked') {
+            html += '<button onclick="closeTicket(\'' + t.id + '\')" class="flex-1 bg-emerald-600 text-white text-xs font-700 py-3 rounded-xl"><i class="fa-solid fa-check-double mr-1"></i>Tutup</button>';
+        }
+        html += '<button onclick="openEditTicket(\'' + t.id + '\')" class="flex-1 bg-navy-800 text-white text-xs font-700 py-3 rounded-xl"><i class="fa-solid fa-pen mr-1"></i>Edit</button>';
+        html += '<button onclick="deleteTicket(\'' + t.id + '\')" class="flex-1 bg-red-50 text-red-600 border border-red-200 text-xs font-700 py-3 rounded-xl"><i class="fa-solid fa-trash mr-1"></i>Hapus</button>';
+        html += '</div>';
     }
     document.getElementById('detailBody').innerHTML = html;
     openModal('detailModal');
@@ -3300,7 +3312,7 @@ async function deleteUser(id) {
     }
 }
 
-/* ===== DOWNLOAD RIWAYAT EXCEL ===== */
+/* ===== DOWNLOAD RIWAYAT EXCEL (xlsx profesional) ===== */
 function downloadRiwayatExcel() {
     (async function() {
         var search = document.getElementById('riwayatSearch').value.toLowerCase();
@@ -3312,31 +3324,76 @@ function downloadRiwayatExcel() {
         if (dateFrom) query = query.gte('closed_at', dateFrom);
         if (dateTo) query = query.lte('closed_at', dateTo + 'T23:59:59');
         var res = await query;
-        if (!res.data || res.data.length === 0) { showToast('Tidak ada data', 'error'); return; }
+        var list = (res.data || []).filter(function(t) {
+            if (search && t.title.toLowerCase().indexOf(search) === -1 && (t.description || '').toLowerCase().indexOf(search) === -1) return false;
+            return true;
+        });
+        if (list.length === 0) { showToast('Tidak ada data', 'error'); return; }
 
-        var lines = ['No,Judul,Deskripsi,Lantai,Ruangan,Prioritas,Status,Dibuat,Ditutup,Catatan Penyelesaian'];
-        res.data.forEach(function(t, idx) {
-            if (search && t.title.toLowerCase().indexOf(search) === -1) return;
-            lines.push([
-                idx + 1,
-                '"' + (t.title || '').replace(/"/g, '""') + '"',
-                '"' + (t.description || '').replace(/"/g, '""') + '"',
-                t.floor || '',
-                t.room || '',
-                t.priority || '',
-                t.status || '',
-                fmtDateTime(t.created_at),
-                fmtDateTime(t.closed_at),
-                '"' + (t.completion_note || '').replace(/"/g, '""') + '"'
-            ].join(','));
+        var wb = new ExcelJS.Workbook();
+        var ws = wb.addWorksheet('Riwayat Tiket', { pageSetup: { orientation: 'landscape', fitToPage: true } });
+
+        var headers = ['No', 'Judul', 'Deskripsi', 'Lantai', 'Ruangan', 'Prioritas', 'Status', 'Dibuat', 'Ditutup', 'Waktu Penyelesaian', 'Catatan Penyelesaian'];
+        var lastCol = String.fromCharCode(64 + headers.length);
+
+        /* Baris 1: Judul dokumen */
+        ws.mergeCells('A1:' + lastCol + '1');
+        var title = ws.getCell('A1');
+        title.value = 'LAPORAN RIWAYAT TIKET PERAWATAN';
+        title.font = { bold: true, size: 14, color: { argb: 'FF1E293B' } };
+        title.alignment = { horizontal: 'center', vertical: 'middle' };
+        ws.getRow(1).height = 28;
+
+        /* Baris 2: Subjudul periode & info cetak */
+        ws.mergeCells('A2:' + lastCol + '2');
+        var sub = ws.getCell('A2');
+        var periode = (dateFrom || dateTo) ? ('Periode: ' + (dateFrom || '...') + ' s/d ' + (dateTo || '...')) : 'Semua Periode';
+        sub.value = periode + '  |  Total: ' + list.length + ' tiket  |  Disusun oleh: Billy Suhendi (Head Teknisi)  |  Dicetak: ' + new Date().toLocaleString('id-ID');
+        sub.font = { italic: true, size: 10, color: { argb: 'FF64748B' } };
+        sub.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        /* Baris 4: Header tabel - biru gelap, teks putih */
+        var headerRow = ws.getRow(4);
+        headerRow.values = headers;
+        headerRow.eachCell(function(cell) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3864' } };
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        });
+        headerRow.height = 22;
+
+        /* Isi data mulai baris 5 */
+        list.forEach(function(t, idx) {
+            var durasi = '-';
+            if (t.closed_at && t.created_at) {
+                var diff = new Date(t.closed_at) - new Date(t.created_at);
+                var d = Math.floor(diff / 86400000), h = Math.floor((diff % 86400000) / 3600000), m = Math.floor((diff % 3600000) / 60000);
+                durasi = d > 0 ? d + ' hari ' + h + ' jam' : (h > 0 ? h + ' jam ' + m + ' menit' : m + ' menit');
+            }
+            var row = ws.getRow(5 + idx);
+            row.values = [idx + 1, t.title, t.description || '-', t.floor || '-', t.room || '-', t.priority || '-', t.status || '-', fmtDateTime(t.created_at), fmtDateTime(t.closed_at), durasi, t.completion_note || '-'];
+            row.eachCell(function(cell, col) {
+                cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+                cell.alignment = { vertical: 'middle', horizontal: (col === 1 || col === 4 || col === 5 || col === 6 || col === 7) ? 'center' : 'left', wrapText: (col === 3 || col === 11) };
+                if (idx % 2 === 1) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+            });
         });
 
-        var blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-        var link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = 'riwayat_tiket.csv';
-        link.click();
-        showToast('File berhasil di-download');
+        /* Lebar kolom & header tetap saat scroll */
+        ws.columns = [{ width: 5 }, { width: 24 }, { width: 38 }, { width: 9 }, { width: 14 }, { width: 11 }, { width: 11 }, { width: 16 }, { width: 16 }, { width: 18 }, { width: 32 }];
+        ws.views = [{ state: 'frozen', ySplit: 4 }];
+
+        addSignatureBlock(ws, 4 + list.length);
+        var buf = await wb.xlsx.writeBuffer();
+        var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'Laporan_Riwayat_Tiket_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        showToast('Excel berhasil di-download');
     })();
 }
 /* ===== KUNJUNGAN VENDOR ===== */
@@ -6981,7 +7038,278 @@ async function loadPower() {
         listEl.innerHTML = '<p class="text-xs text-red-500 text-center py-10">Gagal memuat</p>';
     }
 }
+/* ===== TUTUP TIKET (head) ===== */
+async function closeTicket(id) {
+    if (!confirm('Tutup tiket ini? Tiket akan masuk ke Riwayat.')) return;
+    var res = await sb.from('tickets').update({ status: 'ditutup', closed_at: new Date().toISOString() }).eq('id', id);
+    if (res.error) { showToast('Gagal: ' + res.error.message, 'error'); return; }
+    showToast('Tiket ditutup & masuk Riwayat');
+    closeModal('detailModal');
+    loadAntrian(); loadRiwayat();
+}
 
+/* ===== HAPUS TIKET (head) ===== */
+async function deleteTicket(id) {
+    if (!confirm('HAPUS tiket ini secara permanen? Tidak bisa dibatalkan!')) return;
+    var res = await sb.from('tickets').delete().eq('id', id);
+    if (res.error) { showToast('Gagal hapus: ' + res.error.message, 'error'); return; }
+    showToast('Tiket dihapus');
+    closeModal('detailModal');
+    loadAntrian(); loadRiwayat();
+}
+
+/* ===== EDIT TIKET (head) ===== */
+function escAttr(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function openEditTicket(id) {
+    var res = await sb.from('tickets').select('*').eq('id', id).single();
+    if (!res.data) { showToast('Tiket tidak ditemukan', 'error'); return; }
+    var t = res.data;
+    var old = document.getElementById('editTicketModal');
+    if (old) old.remove();
+    var modal = document.createElement('div');
+    modal.id = 'editTicketModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:60;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:16px;';
+    modal.innerHTML =
+        '<div style="background:#fff;border-radius:20px;max-width:420px;width:100%;max-height:90vh;overflow-y:auto;padding:20px;">' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">' +
+                '<h3 style="font-weight:700;font-size:16px;">Edit Tiket</h3>' +
+                '<button onclick="document.getElementById(\'editTicketModal\').remove()" style="width:32px;height:32px;border-radius:50%;background:#f1f5f9;">✕</button>' +
+            '</div>' +
+            '<label class="text-[10px] font-700 text-navy-400" style="display:block;margin-bottom:4px;">JUDUL *</label>' +
+            '<input id="editTitle" value="' + escAttr(t.title) + '" style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:12px;">' +
+            '<label class="text-[10px] font-700 text-navy-400" style="display:block;margin-bottom:4px;">DESKRIPSI *</label>' +
+            '<textarea id="editDesc" rows="3" style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:12px;">' + escAttr(t.description) + '</textarea>' +
+            '<div style="display:flex;gap:8px;">' +
+                '<div style="flex:1;">' +
+                    '<label class="text-[10px] font-700 text-navy-400" style="display:block;margin-bottom:4px;">LANTAI *</label>' +
+                    '<input id="editFloor" value="' + escAttr(t.floor) + '" style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:12px;">' +
+                '</div>' +
+                '<div style="flex:1;">' +
+                    '<label class="text-[10px] font-700 text-navy-400" style="display:block;margin-bottom:4px;">ROOM *</label>' +
+                    '<input id="editRoom" value="' + escAttr(t.room) + '" style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:12px;">' +
+                '</div>' +
+            '</div>' +
+            '<label class="text-[10px] font-700 text-navy-400" style="display:block;margin-bottom:4px;">DETAIL LOKASI</label>' +
+            '<input id="editLocDetail" value="' + escAttr(t.location_detail) + '" style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:12px;">' +
+            '<label class="text-[10px] font-700 text-navy-400" style="display:block;margin-bottom:4px;">PRIORITAS *</label>' +
+            '<select id="editPriority" style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:16px;background:#fff;">' +
+                ['urgent','sedang','rendah'].map(function(p) { return '<option value="' + p + '"' + (t.priority === p ? ' selected' : '') + '>' + p + '</option>'; }).join('') +
+            '</select>' +
+            '<button onclick="saveEditTicket(\'' + t.id + '\')" style="width:100%;background:#1e293b;color:#fff;font-weight:700;padding:12px;border-radius:12px;">Simpan Perubahan</button>' +
+        '</div>';
+    document.body.appendChild(modal);
+}
+
+async function saveEditTicket(id) {
+    var title = document.getElementById('editTitle').value.trim();
+    var desc = document.getElementById('editDesc').value.trim();
+    var floor = document.getElementById('editFloor').value.trim();
+    var room = document.getElementById('editRoom').value.trim();
+    var locDetail = document.getElementById('editLocDetail').value.trim();
+    var priority = document.getElementById('editPriority').value;
+    if (!title || !desc || !priority) { showToast('Lengkapi field wajib (*)', 'error'); return; }
+    var res = await sb.from('tickets').update({
+        title: title, description: desc, floor: floor, room: room,
+        location_detail: locDetail, priority: priority
+    }).eq('id', id);
+    if (res.error) { showToast('Gagal: ' + res.error.message, 'error'); return; }
+    showToast('Tiket berhasil diperbarui!');
+    document.getElementById('editTicketModal').remove();
+    loadAntrian(); loadRiwayat();
+    openTicketDetail(id);
+}
+
+/* ===== INFO WAKTU PENYELESAIAN (tiket ditutup) ===== */
+function getSlaClosedInfo(t) {
+    var start = new Date(t.created_at).getTime();
+    var end = new Date(t.closed_at).getTime();
+    var diff = Math.max(0, end - start);
+    var days = Math.floor(diff / 86400000);
+    var hours = Math.floor((diff % 86400000) / 3600000);
+    var minutes = Math.floor((diff % 3600000) / 60000);
+    var text;
+    if (days > 0) text = days + ' hari ' + hours + ' jam';
+    else if (hours > 0) text = hours + ' jam ' + minutes + ' menit';
+    else text = minutes + ' menit';
+    var overdue = t.sla_deadline ? (end > new Date(t.sla_deadline).getTime()) : false;
+    return {
+        text: 'Diselesaikan dalam ' + text,
+        color: overdue ? 'text-red-600' : 'text-emerald-600',
+        overdue: overdue
+    };
+}
+/* ===== DOWNLOAD ANTRIAN EXCEL (xlsx profesional) ===== */
+function downloadAntrianExcel() {
+    (async function() {
+        var search = document.getElementById('antrianSearch').value.toLowerCase();
+        var prio = document.getElementById('antrianFilterPrio').value;
+        var status = document.getElementById('antrianFilterStatus').value;
+        var query = sb.from('tickets').select('*').in('status', ['open', 'diambil', 'dikerjakan', 'selesai', 'checked']).order('created_at', { ascending: false });
+        if (prio) query = query.eq('priority', prio);
+        if (status) query = query.eq('status', status);
+        showToast('Menyiapkan file Excel...');
+        var res = await query;
+        var list = (res.data || []).filter(function(t) {
+            if (search && t.title.toLowerCase().indexOf(search) === -1 && (t.description || '').toLowerCase().indexOf(search) === -1) return false;
+            return true;
+        });
+        if (list.length === 0) { showToast('Tidak ada data', 'error'); return; }
+
+        /* Map nama teknisi */
+        var uRes = await sb.from('users').select('id, name');
+        var userMap = {};
+        (uRes.data || []).forEach(function(u) { userMap[u.id] = u.name; });
+
+        var wb = new ExcelJS.Workbook();
+        var ws = wb.addWorksheet('Antrian Tiket', { pageSetup: { orientation: 'landscape', fitToPage: true } });
+
+        var headers = ['No', 'Judul', 'Deskripsi', 'Lantai', 'Ruangan', 'Prioritas', 'Status', 'Dibuat', 'SLA Deadline', 'Sisa Waktu SLA', 'Teknisi'];
+        var lastCol = String.fromCharCode(64 + headers.length);
+
+        /* Baris 1: Judul dokumen */
+        ws.mergeCells('A1:' + lastCol + '1');
+        var title = ws.getCell('A1');
+        title.value = 'LAPORAN ANTRIAN TIKET MAINTENANCE';
+        title.font = { bold: true, size: 14, color: { argb: 'FF1E293B' } };
+        title.alignment = { horizontal: 'center', vertical: 'middle' };
+        ws.getRow(1).height = 28;
+
+        /* Baris 2: Subjudul info filter & cetak */
+        ws.mergeCells('A2:' + lastCol + '2');
+        var sub = ws.getCell('A2');
+        sub.value = 'Status: ' + (status || 'Semua Status') + '  |  Prioritas: ' + (prio || 'Semua') + '  |  Total: ' + list.length + ' tiket aktif  |  Disusun oleh: Billy Suhendi (Head Teknisi)  |  Dicetak: ' + new Date().toLocaleString('id-ID');
+        sub.font = { italic: true, size: 10, color: { argb: 'FF64748B' } };
+        sub.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        /* Baris 4: Header tabel - biru gelap, teks putih */
+        var headerRow = ws.getRow(4);
+        headerRow.values = headers;
+        headerRow.eachCell(function(cell) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3864' } };
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        });
+        headerRow.height = 22;
+
+        /* Warna kolom prioritas */
+        var prioFill = {
+            urgent: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } },
+            sedang: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } },
+            rendah: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } }
+        };
+        var prioFont = {
+            urgent: { bold: true, color: { argb: 'FFB91C1C' }, size: 10 },
+            sedang: { bold: true, color: { argb: 'FFB45309' }, size: 10 },
+            rendah: { bold: true, color: { argb: 'FF15803D' }, size: 10 }
+        };
+
+        /* Isi data mulai baris 5 */
+        list.forEach(function(t, idx) {
+            var sla = t.sla_deadline ? getSlaInfo(t.sla_deadline) : { text: '-', overdue: false };
+            var teknisi = (t.assigned_to && t.assigned_to.length > 0)
+                ? t.assigned_to.map(function(id) { return userMap[id] || '-'; }).join(', ')
+                : 'Belum diassign';
+            var row = ws.getRow(5 + idx);
+            row.values = [idx + 1, t.title, t.description || '-', t.floor || '-', t.room || '-', t.priority || '-', t.status || '-', fmtDateTime(t.created_at), t.sla_deadline ? fmtDateTime(t.sla_deadline) : '-', sla.text, teknisi];
+            row.eachCell(function(cell, col) {
+                cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+                cell.alignment = { vertical: 'middle', horizontal: (col === 1 || col === 4 || col === 5 || col === 6 || col === 7) ? 'center' : 'left', wrapText: (col === 3 || col === 11) };
+                if (col === 6 && prioFill[t.priority]) {
+                    cell.fill = prioFill[t.priority]; cell.font = prioFont[t.priority];
+                } else if (col === 10 && sla.overdue) {
+                    cell.font = { bold: true, color: { argb: 'FFDC2626' }, size: 10 };
+                } else if (idx % 2 === 1) {
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+                }
+            });
+        });
+
+        /* Lebar kolom & header tetap saat scroll */
+        ws.columns = [{ width: 5 }, { width: 24 }, { width: 38 }, { width: 9 }, { width: 14 }, { width: 11 }, { width: 11 }, { width: 16 }, { width: 16 }, { width: 18 }, { width: 22 }];
+        ws.views = [{ state: 'frozen', ySplit: 4 }];
+
+        addSignatureBlock(ws, 4 + list.length);
+        var buf = await wb.xlsx.writeBuffer();
+        var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'Laporan_Antrian_Tiket_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        showToast('Excel berhasil di-download');
+    })();
+}
+
+/* ===== TOMBOL EXCEL OTOMATIS DI HALAMAN ANTRIAN ===== */
+(function() {
+    function addAntrianExcelBtn() {
+        var statusSel = document.getElementById('antrianFilterStatus');
+        if (!statusSel) return; /* halaman antrian tidak ditemukan */
+        if (document.getElementById('antrianExcelBtn')) return; /* sudah ada, jangan dobel */
+
+        var btn = document.createElement('button');
+        btn.id = 'antrianExcelBtn';
+        btn.className = 'bg-navy-800 text-white text-xs font-700 px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition';
+        btn.innerHTML = '<i class="fa-solid fa-file-excel mr-1"></i> Excel';
+        btn.onclick = downloadAntrianExcel;
+
+        /* Sisipkan tombol tepat di bawah dropdown status antrian */
+        statusSel.parentNode.insertBefore(btn, statusSel.nextSibling);
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', addAntrianExcelBtn);
+    } else {
+        addAntrianExcelBtn();
+    }
+})();
+/* ===== BLOK TANDA TANGAN UNTUK EXPORT EXCEL ===== */
+function addSignatureBlock(ws, lastDataRow) {
+    var NAMA = 'Billy Suhendi';      /* <-- ganti nama di sini */
+    var JABATAN = 'Head Teknisi';  /* <-- ganti jabatan di sini */
+    var bulan = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+    var now = new Date();
+    var tglStr = now.getDate() + ' ' + bulan[now.getMonth()] + ' ' + now.getFullYear();
+
+    var rTgl = lastDataRow + 3;   /* 1 baris kosong setelah data */
+    var rLabel = rTgl + 1;
+    var rNama = rLabel + 5;       /* ruang kosong untuk tanda tangan */
+
+    /* Tanggal di sisi kanan */
+    ws.mergeCells('I' + rTgl + ':K' + rTgl);
+    ws.getCell('I' + rTgl).value = tglStr;
+    ws.getCell('I' + rTgl).font = { size: 10, color: { argb: 'FF334155' } };
+
+    /* ----- KIRI: Disusun oleh ----- */
+    ws.mergeCells('A' + rLabel + ':C' + rLabel);
+    ws.getCell('A' + rLabel).value = 'Disusun oleh,';
+    ws.getCell('A' + rLabel).font = { size: 10, color: { argb: 'FF334155' } };
+
+    ws.mergeCells('A' + (rLabel + 1) + ':C' + (rLabel + 1));
+    ws.getCell('A' + (rLabel + 1)).value = JABATAN;
+    ws.getCell('A' + (rLabel + 1)).font = { size: 10, color: { argb: 'FF64748B' } };
+
+    ws.mergeCells('A' + rNama + ':C' + rNama);
+    ws.getCell('A' + rNama).value = NAMA;
+    ws.getCell('A' + rNama).font = { bold: true, size: 11, color: { argb: 'FF1E293B' }, underline: true };
+
+    ws.mergeCells('A' + (rNama + 1) + ':C' + (rNama + 1));
+    ws.getCell('A' + (rNama + 1)).value = JABATAN;
+    ws.getCell('A' + (rNama + 1)).font = { size: 10, color: { argb: 'FF64748B' } };
+
+    /* ----- KANAN: Disetujui oleh (untuk atasan, opsional) ----- */
+    ws.mergeCells('I' + rLabel + ':K' + rLabel);
+    ws.getCell('I' + rLabel).value = 'Disetujui oleh,';
+    ws.getCell('I' + rLabel).font = { size: 10, color: { argb: 'FF334155' } };
+
+    ws.mergeCells('I' + rNama + ':K' + rNama);
+    ws.getCell('I' + rNama).value = '( .................................... )';
+    ws.getCell('I' + rNama).font = { bold: true, size: 11, color: { argb: 'FF1E293B' } };
+}
 </script>
 </body>
 </html>
