@@ -2234,6 +2234,7 @@ async function submitTicket() {
 
 /* ===== ANTRIAN TIKET ===== */
 async function loadAntrian() {
+    await cacheUserNames();
     var search = document.getElementById('antrianSearch').value.toLowerCase();
     var prio = document.getElementById('antrianFilterPrio').value;
     var status = document.getElementById('antrianFilterStatus').value;
@@ -2250,6 +2251,7 @@ async function loadAntrian() {
 
 /* ===== RIWAYAT TIKET ===== */
 async function loadRiwayat() {
+    await cacheUserNames();
     var search = document.getElementById('riwayatSearch').value.toLowerCase();
     var prio = document.getElementById('riwayatFilterPrio').value;
     var dateFrom = document.getElementById('riwayatDateFrom').value;
@@ -2289,13 +2291,19 @@ function renderTicketList(list, containerId, showActions) {
             slaInfo = { overdue: false };
         }
         var cardBorder = slaInfo.overdue ? 'border-red-300 bg-red-50/30' : 'border-navy-100';
+        /* Keterangan petugas yang mengerjakan */
+        var teknisiText = '';
+        if (t.assigned_to && t.assigned_to.length > 0) {
+            var names = t.assigned_to.map(function(id) { return (window.__userNames && window.__userNames[id]) || ''; }).filter(function(n) { return n; });
+            if (names.length > 0) teknisiText = '<div class="mt-1 text-[10px] font-500 text-navy-500"><i class="fa-solid fa-user-gear mr-1 text-navy-300"></i>' + names.join(', ') + '</div>';
+        }
         var actionsHtml = '';
         if (showActions) {
-            if (t.status === 'open' && (currentUser.role === 'admin' || currentUser.role === 'head' || currentUser.role === 'supervisi')) {
-                actionsHtml += '<button onclick="openAssignModal(\'' + t.id + '\')" class="text-[10px] font-600 text-navy-500 hover:text-gold-600 transition">Assign</button>';
+            if (t.status === 'open') {
+                actionsHtml += '<button onclick="event.stopPropagation();openAssignModal(\'' + t.id + '\')" style="background:#d4af37;color:#1e293b;border:none;" class="text-[10px] font-700 px-3 py-1.5 rounded-lg transition hover:opacity-80">Assign</button>';
             }
-            if ((t.status === 'diambil' || t.status === 'dikerjakan') && (t.assigned_to && t.assigned_to.indexOf(currentUser.id) !== -1 || currentUser.role === 'admin' || currentUser.role === 'head')) {
-                actionsHtml += '<button onclick="openSelesaiModal(\'' + t.id + '\')" class="text-[10px] font-600 text-navy-500 hover:text-gold-600 transition">Selesaikan</button>';
+            if ((t.status === 'diambil' || t.status === 'dikerjakan') && ((t.assigned_to && t.assigned_to.indexOf(currentUser.id) !== -1) || currentUser.role === 'admin' || currentUser.role === 'head')) {
+                actionsHtml += '<button onclick="event.stopPropagation();openSelesaiModal(\'' + t.id + '\')" style="background:#059669;color:#ffffff;border:none;" class="text-[10px] font-700 px-3 py-1.5 rounded-lg transition hover:opacity-80">Selesaikan</button>';
             }
         }
         var photoHtml = '';
@@ -2324,6 +2332,7 @@ function renderTicketList(list, containerId, showActions) {
                         '<span><i class="fa-solid fa-clock mr-1"></i>' + fmtDateTime(t.created_at) + '</span>' +
                         slaHtml +
                     '</div>' +
+                    teknisiText +
                 '</div>' +
                 '<div class="flex flex-col items-end gap-1 flex-shrink-0">' +
                     photoHtml +
@@ -2403,10 +2412,10 @@ async function openAssignModal(ticketId) {
 async function doAssign() {
     var ticketId = document.getElementById('assignTicketId').value;
     var selected = Array.from(document.getElementById('assignTeknisiSelect').selectedOptions).map(function(o) { return o.value; });
-    if (selected.length === 0) { showToast('Pilih minimal 1 teknisi', 'error'); return; }
-    var res = await sb.from('tickets').update({ assigned_to: selected, status: 'diambil' }).eq('id', ticketId);
+    if (selected.length === 0) { showToast('Pilih minimal 1 petugas', 'error'); return; }
+    var res = await sb.from('tickets').update({ assigned_to: selected, status: 'dikerjakan' }).eq('id', ticketId);
     if (res.error) { showToast('Gagal: ' + res.error.message, 'error'); return; }
-    showToast('Teknisi berhasil diassign');
+    showToast('Petugas diassign, tiket sedang dikerjakan');
     closeModal('assignModal');
     sendNotifToUsers(selected, 'Tiket Baru Di-assign', 'Anda ditugaskan untuk menangani tiket: ' + ticketId.substring(0, 8), 'ticket', ticketId);
     loadAntrian();
@@ -2446,14 +2455,14 @@ async function doSelesai() {
             if (upRes.error) throw upRes.error;
             photoUrls.push(sb.storage.from('photos').getPublicUrl(fname).data.publicUrl);
         }
-        /* Ambil data tiket untuk bahan laporan harian */
         var tRes = await sb.from('tickets').select('title, description, floor, room, assigned_to').eq('id', ticketId).single();
         if (tRes.error) throw tRes.error;
         var t = tRes.data;
-        var updateData = { status: 'selesai', completion_note: note, completion_photos: photoUrls };
+        /* Langsung DITUTUP: hilang dari Antrian, masuk Riwayat */
+        var updateData = { status: 'ditutup', closed_at: new Date().toISOString(), completion_note: note, completion_photos: photoUrls };
         var res = await sb.from('tickets').update(updateData).eq('id', ticketId);
         if (res.error) throw res.error;
-        /* Buat laporan harian otomatis atas nama petugas */
+        /* Laporan harian otomatis atas nama petugas */
         var teknisiIds = (t.assigned_to && t.assigned_to.length > 0) ? t.assigned_to : [currentUser.id];
         var repRes = await sb.from('daily_reports').insert({
             date: todayStr(),
@@ -2473,10 +2482,10 @@ async function doSelesai() {
             console.error(repRes.error);
             showToast('Tiket selesai, tapi laporan harian GAGAL: ' + repRes.error.message, 'error');
         } else {
-            showToast('Tiket selesai & laporan harian otomatis dibuat!');
+            showToast('Tiket selesai! Masuk Riwayat & Laporan Harian.');
         }
         closeModal('selesaiModal');
-        loadAntrian();
+        loadAntrian(); loadRiwayat();
     } catch(err) {
         console.error(err);
         showToast('Gagal: ' + (err.message || 'Unknown error'), 'error');
@@ -7514,6 +7523,15 @@ function addSignatureBlock(ws, lastDataRow) {
         if (++tries < 30) setTimeout(wait, 400);
     })();
 })();
+
+/* ===== CACHE NAMA USER UNTUK KARTU TIKET ===== */
+window.__userNames = window.__userNames || {};
+async function cacheUserNames() {
+    try {
+        var res = await sb.from('users').select('id, name');
+        (res.data || []).forEach(function(u) { window.__userNames[u.id] = u.name; });
+    } catch(e) { console.error('cacheUserNames:', e); }
+}
 </script>
 </body>
 </html>
