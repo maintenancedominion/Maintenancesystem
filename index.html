@@ -253,6 +253,9 @@
             <div class="nav-item" data-page="schedule" data-menu="schedule" onclick="switchPage('schedule')"><i class="fa-solid fa-calendar-days"></i><span>Schedule Shift</span></div>
             <div class="nav-item" data-page="users" data-menu="users" onclick="switchPage('users')"><i class="fa-solid fa-users-gear"></i><span>Kelola User</span></div>
             <div class="nav-item" data-page="logs" onclick="switchPage('logs')" style="display: flex !important;"><i class="fa-solid fa-clock-rotate-left"></i><span>Log Aktivitas</span></div>
+            <div class="nav-item" data-page="tugas-teknisi" onclick="openTugasPage()"><i class="fa-solid fa-clipboard-check"></i><span>Tugas Teknisi</span></div>
+            <div class="nav-item" data-page="house-rules" onclick="openHouseRulesPage()"><i class="fa-solid fa-scale-balanced"></i><span>House Rules</span></div>
+            <div class="nav-item" data-page="apd-rules" onclick="openApdPage()"><i class="fa-solid fa-helmet-safety"></i><span>Aturan APD</span></div>
             <div class="nav-item" data-page="pengaturan" data-menu="pengaturan" onclick="switchPage('pengaturan')"><i class="fa-solid fa-gear"></i><span>Pengaturan</span></div>
         </nav>
         <div class="p-3.5 border-t border-white/10">
@@ -7532,6 +7535,793 @@ async function cacheUserNames() {
         (res.data || []).forEach(function(u) { window.__userNames[u.id] = u.name; });
     } catch(e) { console.error('cacheUserNames:', e); }
 }
+
+/* ===== TUGAS TEKNISI (SHIFT PAGI & MALAM) ===== */
+var tugasCurrentShift = 'pagi';
+var tugasCache = [];
+
+function isHead() {
+    return typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'head';
+}
+
+function openTugasPage() {
+    var old = document.getElementById('tugasPageModal');
+    if (old) old.remove();
+    var modal = document.createElement('div');
+    modal.id = 'tugasPageModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:55;background:#f1f5f9;overflow-y:auto;';
+    modal.innerHTML =
+        '<div style="position:sticky;top:0;background:#f1f5f9;padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #e2e8f0;z-index:5;">' +
+            '<button id="tugasBackBtn" style="width:36px;height:36px;border-radius:12px;background:#fff;border:none;font-size:16px;cursor:pointer;">←</button>' +
+            '<div style="flex:1;"><div style="font-weight:700;color:#1e293b;">Tugas Teknisi</div><div style="font-size:10px;color:#94a3b8;">Jadwal tugas shift pagi & malam</div></div>' +
+            '<button id="tugasExcelBtn" style="background:#1f3864;color:#ffffff;border:none;border-radius:12px;padding:9px 14px;font-weight:700;font-size:12px;cursor:pointer;margin-right:6px;"><i class="fa-solid fa-file-excel"></i> Excel</button>' +
+(isHead() ? '<button id="tugasAddBtn" style="background:#d4af37;color:#1e293b;border:none;border-radius:12px;padding:9px 14px;font-weight:700;font-size:12px;cursor:pointer;">+ Tambah</button>' : '') +
+        '</div>' +
+        '<div style="max-width:760px;margin:0 auto;padding:12px 16px 40px;">' +
+            '<div style="display:flex;gap:8px;margin-bottom:12px;">' +
+                '<button id="tugasTabPagi" style="padding:10px;border-radius:12px;font-weight:700;font-size:12px;border:none;cursor:pointer;flex:1;">Shift Pagi</button>' +
+                '<button id="tugasTabMalam" style="padding:10px;border-radius:12px;font-weight:700;font-size:12px;border:none;cursor:pointer;flex:1;">Shift Malam</button>' +
+            '</div>' +
+            '<div id="tugasList"></div>' +
+        '</div>';
+    document.body.appendChild(modal);
+    document.getElementById('tugasBackBtn').onclick = function() { modal.remove(); };
+    var addBtn = document.getElementById('tugasAddBtn');
+    if (addBtn) addBtn.onclick = function() { openTugasForm(''); };
+        var xlsBtn = document.getElementById('tugasExcelBtn');
+    if (xlsBtn) xlsBtn.onclick = downloadTugasExcel;
+    document.getElementById('tugasTabPagi').onclick = function() { tugasCurrentShift = 'pagi'; renderTugas(); };
+    document.getElementById('tugasTabMalam').onclick = function() { tugasCurrentShift = 'malam'; renderTugas(); };
+    loadTugas();
+}
+
+async function loadTugas() {
+    var listEl = document.getElementById('tugasList');
+    if (!listEl) return;
+    listEl.innerHTML = '<p style="text-align:center;color:#94a3b8;font-size:12px;padding:24px 0;">Memuat...</p>';
+    var res = await sb.from('technician_tasks').select('*').order('task_time', { ascending: true });
+    if (res.error) {
+        listEl.innerHTML = '<p style="text-align:center;color:#dc2626;font-size:12px;padding:24px 0;">Gagal memuat: ' + res.error.message + '</p>';
+        return;
+    }
+    tugasCache = res.data || [];
+    renderTugas();
+}
+
+function renderTugas() {
+    var listEl = document.getElementById('tugasList');
+    if (!listEl) return;
+    var tabPagi = document.getElementById('tugasTabPagi');
+    var tabMalam = document.getElementById('tugasTabMalam');
+    if (tabPagi && tabMalam) {
+        var act = 'background:#1e293b;color:#fff;';
+        var ina = 'background:#fff;color:#64748b;';
+        tabPagi.style.cssText = 'flex:1;padding:10px;border-radius:12px;font-weight:700;font-size:12px;border:none;cursor:pointer;' + (tugasCurrentShift === 'pagi' ? act : ina);
+        tabMalam.style.cssText = 'flex:1;padding:10px;border-radius:12px;font-weight:700;font-size:12px;border:none;cursor:pointer;' + (tugasCurrentShift === 'malam' ? act : ina);
+    }
+    var list = tugasCache.filter(function(x) { return x.shift === tugasCurrentShift; });
+    if (list.length === 0) {
+        listEl.innerHTML = '<p style="text-align:center;color:#94a3b8;font-size:12px;padding:32px 0;">Belum ada tugas untuk shift ini</p>';
+        return;
+    }
+    listEl.innerHTML = list.map(function(x) {
+        var editDel = '';
+        if (isHead()) {
+            editDel =
+                '<div style="display:flex;gap:6px;margin-top:8px;">' +
+                    '<button onclick="openTugasForm(\'' + x.id + '\')" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:10px;padding:6px 10px;font-size:10px;font-weight:700;cursor:pointer;">Edit</button>' +
+                    '<button onclick="deleteTugas(\'' + x.id + '\')" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:10px;padding:6px 10px;font-size:10px;font-weight:700;cursor:pointer;">Hapus</button>' +
+                '</div>';
+        }
+        return '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:14px;margin-bottom:10px;display:flex;gap:12px;">' +
+            '<div style="flex-shrink:0;width:56px;text-align:center;background:#f8fafc;border-radius:12px;padding:10px 4px;align-self:flex-start;">' +
+                '<div style="font-weight:800;color:#1e293b;font-size:13px;">' + (x.task_time || '-') + '</div>' +
+            '</div>' +
+            '<div style="flex:1;min-width:0;">' +
+                '<div style="font-weight:700;color:#1e293b;font-size:13px;">' + (x.title || '-') + '</div>' +
+                (x.description ? '<div style="font-size:11px;color:#64748b;margin-top:2px;">' + x.description + '</div>' : '') +
+                (x.floor ? '<div style="font-size:10px;color:#94a3b8;margin-top:4px;"><i class="fa-solid fa-location-dot"></i> ' + x.floor + '</div>' : '') +
+                editDel +
+            '</div>' +
+        '</div>';
+    }).join('');
+}
+
+function openTugasForm(editId) {
+    var item = null;
+    if (editId) {
+        tugasCache.forEach(function(x) { if (x.id === editId) item = x; });
+        if (!item) { showToast('Data tidak ditemukan', 'error'); return; }
+    }
+    var old = document.getElementById('tugasFormModal');
+    if (old) old.remove();
+    var modal = document.createElement('div');
+    modal.id = 'tugasFormModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:60;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:16px;';
+    modal.innerHTML =
+        '<div style="background:#fff;border-radius:20px;max-width:420px;width:100%;max-height:90vh;overflow-y:auto;padding:20px;">' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">' +
+                '<h3 style="font-weight:700;font-size:16px;color:#1e293b;">' + (editId ? 'Edit Tugas' : 'Tambah Tugas') + '</h3>' +
+                '<button onclick="document.getElementById(\'tugasFormModal\').remove()" style="width:32px;height:32px;border-radius:50%;background:#f1f5f9;border:none;cursor:pointer;">✕</button>' +
+            '</div>' +
+            '<label style="display:block;font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:4px;">SHIFT *</label>' +
+            '<select id="tugasShift" style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:12px;background:#fff;">' +
+                '<option value="pagi">Shift Pagi</option>' +
+                '<option value="malam">Shift Malam</option>' +
+            '</select>' +
+            '<label style="display:block;font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:4px;">JAM *</label>' +
+            '<input type="time" id="tugasTime" style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:12px;">' +
+            '<label style="display:block;font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:4px;">NAMA TUGAS *</label>' +
+            '<input type="text" id="tugasTitle" placeholder="Contoh: Pengecekan MEP gedung" style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:12px;">' +
+            '<label style="display:block;font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:4px;">KETERANGAN (OPSIONAL)</label>' +
+            '<textarea id="tugasDesc" rows="2" placeholder="Detail tugas..." style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:12px;"></textarea>' +
+            '<label style="display:block;font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:4px;">LOKASI/LANTAI (OPSIONAL)</label>' +
+            '<input type="text" id="tugasFloor" placeholder="Contoh: Semua lantai / Lt. 1" style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:16px;">' +
+            '<button onclick="saveTugas(\'' + (editId || '') + '\')" style="width:100%;background:#d4af37;color:#1e293b;font-weight:700;padding:12px;border-radius:12px;border:none;cursor:pointer;">Simpan</button>' +
+        '</div>';
+    document.body.appendChild(modal);
+    if (item) {
+        document.getElementById('tugasShift').value = item.shift;
+        document.getElementById('tugasTime').value = item.task_time || '';
+        document.getElementById('tugasTitle').value = item.title || '';
+        document.getElementById('tugasDesc').value = item.description || '';
+        document.getElementById('tugasFloor').value = item.floor || '';
+    } else {
+        document.getElementById('tugasShift').value = tugasCurrentShift;
+    }
+}
+
+async function saveTugas(editId) {
+    var shift = document.getElementById('tugasShift').value;
+    var time = document.getElementById('tugasTime').value;
+    var title = document.getElementById('tugasTitle').value.trim();
+    var desc = document.getElementById('tugasDesc').value.trim();
+    var floor = document.getElementById('tugasFloor').value.trim();
+    if (!time || !title) { showToast('Lengkapi Jam & Nama Tugas', 'error'); return; }
+    var payload = { shift: shift, task_time: time, title: title, description: desc, floor: floor };
+    var res;
+    if (editId) {
+        res = await sb.from('technician_tasks').update(payload).eq('id', editId);
+    } else {
+        payload.created_by = currentUser.id;
+        res = await sb.from('technician_tasks').insert(payload);
+    }
+    if (res.error) { showToast('Gagal: ' + res.error.message, 'error'); return; }
+    showToast(editId ? 'Tugas diperbarui' : 'Tugas ditambahkan');
+    document.getElementById('tugasFormModal').remove();
+    tugasCurrentShift = shift;
+    loadTugas();
+}
+
+async function deleteTugas(id) {
+    if (!confirm('Hapus tugas ini?')) return;
+    var res = await sb.from('technician_tasks').delete().eq('id', id);
+    if (res.error) { showToast('Gagal hapus: ' + res.error.message, 'error'); return; }
+    showToast('Tugas dihapus');
+    loadTugas();
+}
+/* ===== DOWNLOAD TUGAS TEKNISI (EXCEL PROFESIONAL) ===== */
+function downloadTugasExcel() {
+    (async function() {
+        showToast('Menyiapkan file Excel...');
+        var res = await sb.from('technician_tasks').select('*').order('task_time', { ascending: true });
+        var data = res.data || [];
+        if (data.length === 0) { showToast('Tidak ada data tugas', 'error'); return; }
+        var pagi = data.filter(function(x) { return x.shift === 'pagi'; });
+        var malam = data.filter(function(x) { return x.shift === 'malam'; });
+        var ordered = pagi.concat(malam); /* shift pagi dulu, lalu malam */
+
+        var wb = new ExcelJS.Workbook();
+        var ws = wb.addWorksheet('Tugas Teknisi', { pageSetup: { orientation: 'portrait', fitToPage: true } });
+
+        var headers = ['No', 'Shift', 'Jam', 'Nama Tugas', 'Keterangan', 'Lokasi / Lantai'];
+
+        /* Baris 1: Judul dokumen */
+        ws.mergeCells('A1:F1');
+        var title = ws.getCell('A1');
+        title.value = 'JADWAL TUGAS OPERASIONAL TEKNISI';
+        title.font = { bold: true, size: 14, color: { argb: 'FF1E293B' } };
+        title.alignment = { horizontal: 'center', vertical: 'middle' };
+        ws.getRow(1).height = 28;
+
+        /* Baris 2: Subjudul */
+        ws.mergeCells('A2:F2');
+        var sub = ws.getCell('A2');
+        sub.value = 'DOMINION LOUNGE & MASTERPIECE  |  Total: ' + data.length + ' tugas (Pagi: ' + pagi.length + ', Malam: ' + malam.length + ')  |  Disusun oleh: Billy Suhendi (Kepala Teknisi)  |  Dicetak: ' + new Date().toLocaleString('id-ID');
+        sub.font = { italic: true, size: 10, color: { argb: 'FF64748B' } };
+        sub.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        /* Baris 4: Header tabel - biru gelap, teks putih */
+        var headerRow = ws.getRow(4);
+        headerRow.values = headers;
+        headerRow.eachCell(function(cell) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3864' } };
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        });
+        headerRow.height = 22;
+
+        /* Warna badge shift */
+        var shiftFill = {
+            pagi: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } },
+            malam: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E7FF' } }
+        };
+        var shiftFont = {
+            pagi: { bold: true, color: { argb: 'FF92400E' }, size: 10 },
+            malam: { bold: true, color: { argb: 'FF3730A3' }, size: 10 }
+        };
+
+        /* Isi data mulai baris 5 */
+        ordered.forEach(function(x, idx) {
+            var row = ws.getRow(5 + idx);
+            row.values = [idx + 1, x.shift === 'pagi' ? 'Pagi' : 'Malam', (x.task_time || '-').slice(0, 5), x.title, x.description || '-', x.floor || '-'];
+            row.eachCell(function(cell, col) {
+                cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+                cell.alignment = { vertical: 'middle', horizontal: (col === 1 || col === 2 || col === 3) ? 'center' : 'left', wrapText: (col === 4 || col === 5) };
+                if (col === 2 && shiftFill[x.shift]) {
+                    cell.fill = shiftFill[x.shift]; cell.font = shiftFont[x.shift];
+                } else if (idx % 2 === 1) {
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+                }
+            });
+        });
+
+        /* Lebar kolom & header tetap saat scroll */
+        ws.columns = [{ width: 5 }, { width: 10 }, { width: 9 }, { width: 34 }, { width: 38 }, { width: 18 }];
+        ws.views = [{ state: 'frozen', ySplit: 4 }];
+
+            /* Blok tanda tangan: tanggal paling kanan, nama & jabatan di bawahnya */
+        var last = 4 + ordered.length;
+        var bulan = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+        var now = new Date();
+        var tglStr = now.getDate() + ' ' + bulan[now.getMonth()] + ' ' + now.getFullYear();
+        var rTgl = last + 3;
+        var rightAlign = { horizontal: 'right' };
+
+        /* Tanggal - kolom paling kanan (F) */
+        ws.getCell('F' + rTgl).value = tglStr;
+        ws.getCell('F' + rTgl).font = { size: 10, color: { argb: 'FF334155' } };
+        ws.getCell('F' + rTgl).alignment = rightAlign;
+
+        /* Nama - tepat di bawah tanggal */
+        ws.getCell('F' + (rTgl + 1)).value = 'Billy Suhendi';
+        ws.getCell('F' + (rTgl + 1)).font = { bold: true, size: 11, color: { argb: 'FF1E293B' }, underline: true };
+        ws.getCell('F' + (rTgl + 1)).alignment = rightAlign;
+
+        /* Jabatan - di bawah nama */
+        ws.getCell('F' + (rTgl + 2)).value = 'Head Teknisi';
+        ws.getCell('F' + (rTgl + 2)).font = { size: 10, color: { argb: 'FF64748B' } };
+        ws.getCell('F' + (rTgl + 2)).alignment = rightAlign;
+
+        var buf = await wb.xlsx.writeBuffer();
+        var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'Jadwal_Tugas_Teknisi_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        showToast('Excel berhasil di-download');
+    })();
+}
+/* ===== HOUSE RULES (TIM TEKNISI MIDPOINT BUILDING) ===== */
+var rulesCache = [];
+
+function openHouseRulesPage() {
+    var old = document.getElementById('houseRulesPageModal');
+    if (old) old.remove();
+    var modal = document.createElement('div');
+    modal.id = 'houseRulesPageModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:55;background:#f1f5f9;overflow-y:auto;';
+    modal.innerHTML =
+        '<div style="position:sticky;top:0;background:#f1f5f9;padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #e2e8f0;z-index:5;">' +
+            '<button id="hrBackBtn" style="width:36px;height:36px;border-radius:12px;background:#fff;border:none;font-size:16px;cursor:pointer;">←</button>' +
+            '<div style="flex:1;"><div style="font-weight:700;color:#1e293b;">House Rules</div><div style="font-size:10px;color:#94a3b8;">Aturan tim teknisi Midpoint Building</div></div>' +
+            '<button id="hrExcelBtn" style="background:#1f3864;color:#ffffff;border:none;border-radius:12px;padding:9px 14px;font-weight:700;font-size:12px;cursor:pointer;margin-right:6px;"><i class="fa-solid fa-file-excel"></i> Excel</button>' +
+            (isHead() ? '<button id="hrAddBtn" style="background:#d4af37;color:#1e293b;border:none;border-radius:12px;padding:9px 14px;font-weight:700;font-size:12px;cursor:pointer;">+ Tambah</button>' : '') +
+        '</div>' +
+        '<div style="max-width:760px;margin:0 auto;padding:14px 16px 40px;">' +
+            '<div id="hrIntro"></div>' +
+            '<div id="hrList"></div>' +
+            '<div id="hrSanction"></div>' +
+        '</div>';
+    document.body.appendChild(modal);
+    document.getElementById('hrBackBtn').onclick = function() { modal.remove(); };
+    var addBtn = document.getElementById('hrAddBtn');
+    if (addBtn) addBtn.onclick = function() { openHouseRulesForm(''); };
+    document.getElementById('hrExcelBtn').onclick = downloadHouseRulesExcel;
+    loadHouseRules();
+}
+
+function renderHrIntro() {
+    var el = document.getElementById('hrIntro');
+    if (!el) return;
+    el.innerHTML =
+        '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:16px;margin-bottom:12px;">' +
+            '<div style="font-weight:800;color:#1e293b;font-size:14px;margin-bottom:4px;">HOUSE RULES — TIM TEKNISI</div>' +
+            '<div style="font-size:11px;color:#64748b;line-height:1.6;">Berlaku untuk seluruh anggota tim teknisi <b>Midpoint Building</b> — <b>SIC Masterpiece</b> &amp; <b>SIC Dominion Lounge</b>. House Rules ini dibuat untuk menjaga kedisiplinan, keselamatan kerja, dan kualitas pelayanan teknis.</div>' +
+        '</div>';
+}
+
+async function loadHouseRules() {
+    renderHrIntro();
+    var listEl = document.getElementById('hrList');
+    if (!listEl) return;
+    listEl.innerHTML = '<p style="text-align:center;color:#94a3b8;font-size:12px;padding:24px 0;">Memuat...</p>';
+    var res = await sb.from('house_rules').select('*').order('created_at', { ascending: true });
+    if (res.error) {
+        listEl.innerHTML = '<p style="text-align:center;color:#dc2626;font-size:12px;padding:24px 0;">Gagal memuat: ' + res.error.message + '</p>';
+        renderHrSanction();
+        return;
+    }
+    rulesCache = res.data || [];
+    renderHouseRulesList();
+    renderHrSanction();
+}
+
+function renderHouseRulesList() {
+    var listEl = document.getElementById('hrList');
+    if (!listEl) return;
+    if (rulesCache.length === 0) {
+        listEl.innerHTML = '<p style="text-align:center;color:#94a3b8;font-size:12px;padding:24px 0;">Belum ada aturan' + (isHead() ? ' — klik + Tambah untuk membuat' : '') + '</p>';
+        return;
+    }
+    listEl.innerHTML = rulesCache.map(function(x, i) {
+        var editDel = '';
+        if (isHead()) {
+            editDel =
+                '<div style="display:flex;gap:6px;margin-top:8px;">' +
+                    '<button onclick="openHouseRulesForm(\'' + x.id + '\')" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:10px;padding:6px 10px;font-size:10px;font-weight:700;cursor:pointer;">Edit</button>' +
+                    '<button onclick="deleteHouseRule(\'' + x.id + '\')" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:10px;padding:6px 10px;font-size:10px;font-weight:700;cursor:pointer;">Hapus</button>' +
+                '</div>';
+        }
+        return '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:14px;margin-bottom:10px;display:flex;gap:12px;">' +
+            '<div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;background:#1e293b;color:#fff;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;">' + (i + 1) + '</div>' +
+            '<div style="flex:1;min-width:0;">' +
+                '<div style="font-weight:700;color:#1e293b;font-size:13px;">' + (x.title || '-') + '</div>' +
+                (x.description ? '<div style="font-size:11px;color:#64748b;margin-top:3px;line-height:1.5;">' + x.description + '</div>' : '') +
+                editDel +
+            '</div>' +
+        '</div>';
+    }).join('');
+}
+
+function renderHrSanction() {
+    var el = document.getElementById('hrSanction');
+    if (!el) return;
+    el.innerHTML =
+        '<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:16px;padding:14px;margin-top:14px;">' +
+            '<div style="font-weight:800;color:#9a3412;font-size:12px;margin-bottom:4px;"><i class="fa-solid fa-triangle-exclamation"></i> KETENTUAN SANKSI</div>' +
+            '<div style="font-size:11px;color:#7c2d12;line-height:1.6;">Apabila terdapat pelanggaran terhadap House Rules yang tercantum di atas, pihak yang melanggar akan dikenakan sanksi sesuai dengan aturan dan ketentuan yang berlaku saat ini oleh SIC, disesuaikan dengan tingkat pelanggarannya.</div>' +
+        '</div>';
+}
+
+function openHouseRulesForm(editId) {
+    var item = null;
+    if (editId) {
+        rulesCache.forEach(function(x) { if (x.id === editId) item = x; });
+        if (!item) { showToast('Data tidak ditemukan', 'error'); return; }
+    }
+    var old = document.getElementById('hrFormModal');
+    if (old) old.remove();
+    var modal = document.createElement('div');
+    modal.id = 'hrFormModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:60;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:16px;';
+    modal.innerHTML =
+        '<div style="background:#fff;border-radius:20px;max-width:440px;width:100%;max-height:90vh;overflow-y:auto;padding:20px;">' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">' +
+                '<h3 style="font-weight:700;font-size:16px;color:#1e293b;">' + (editId ? 'Edit Aturan' : 'Tambah Aturan') + '</h3>' +
+                '<button onclick="document.getElementById(\'hrFormModal\').remove()" style="width:32px;height:32px;border-radius:50%;background:#f1f5f9;border:none;cursor:pointer;">✕</button>' +
+            '</div>' +
+            '<label style="display:block;font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:4px;">ISI ATURAN *</label>' +
+            '<input type="text" id="hrTitle" placeholder="Contoh: Teknisi wajib hadir 15 menit sebelum shift" style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:12px;">' +
+            '<label style="display:block;font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:4px;">KETERANGAN TAMBAHAN (OPSIONAL)</label>' +
+            '<textarea id="hrDesc" rows="3" placeholder="Detail aturan jika diperlukan..." style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:16px;"></textarea>' +
+            '<button onclick="saveHouseRule(\'' + (editId || '') + '\')" style="width:100%;background:#d4af37;color:#1e293b;font-weight:700;padding:12px;border-radius:12px;border:none;cursor:pointer;">Simpan</button>' +
+        '</div>';
+    document.body.appendChild(modal);
+    if (item) {
+        document.getElementById('hrTitle').value = item.title || '';
+        document.getElementById('hrDesc').value = item.description || '';
+    }
+}
+
+async function saveHouseRule(editId) {
+    var title = document.getElementById('hrTitle').value.trim();
+    var desc = document.getElementById('hrDesc').value.trim();
+    if (!title) { showToast('Isi aturan wajib diisi', 'error'); return; }
+    var payload = { title: title, description: desc };
+    var res;
+    if (editId) {
+        res = await sb.from('house_rules').update(payload).eq('id', editId);
+    } else {
+        payload.created_by = currentUser.id;
+        res = await sb.from('house_rules').insert(payload);
+    }
+    if (res.error) { showToast('Gagal: ' + res.error.message, 'error'); return; }
+    showToast(editId ? 'Aturan diperbarui' : 'Aturan ditambahkan');
+    document.getElementById('hrFormModal').remove();
+    loadHouseRules();
+}
+
+async function deleteHouseRule(id) {
+    if (!confirm('Hapus aturan ini?')) return;
+    var res = await sb.from('house_rules').delete().eq('id', id);
+    if (res.error) { showToast('Gagal hapus: ' + res.error.message, 'error'); return; }
+    showToast('Aturan dihapus');
+    loadHouseRules();
+}
+
+/* ===== DOWNLOAD HOUSE RULES (EXCEL PROFESIONAL) ===== */
+function downloadHouseRulesExcel() {
+    (async function() {
+        showToast('Menyiapkan file Excel...');
+        var res = await sb.from('house_rules').select('*').order('created_at', { ascending: true });
+        var data = res.data || [];
+        if (data.length === 0) { showToast('Belum ada aturan', 'error'); return; }
+
+        var wb = new ExcelJS.Workbook();
+        var ws = wb.addWorksheet('House Rules', { pageSetup: { orientation: 'portrait', fitToPage: true } });
+
+        /* Baris 1: Judul */
+        ws.mergeCells('A1:C1');
+        var title = ws.getCell('A1');
+        title.value = 'HOUSE RULES — TIM TEKNISI';
+        title.font = { bold: true, size: 14, color: { argb: 'FF1E293B' } };
+        title.alignment = { horizontal: 'center', vertical: 'middle' };
+        ws.getRow(1).height = 28;
+
+        /* Baris 2: Subjudul */
+        ws.mergeCells('A2:C2');
+        var sub = ws.getCell('A2');
+        sub.value = 'Midpoint Building — SIC Masterpiece & SIC Dominion Lounge  |  Disusun oleh: Billy Suhendi (Head Teknisi)  |  Dicetak: ' + new Date().toLocaleString('id-ID');
+        sub.font = { italic: true, size: 10, color: { argb: 'FF64748B' } };
+        sub.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+
+        /* Baris 4: Header tabel */
+        var headerRow = ws.getRow(4);
+        headerRow.values = ['No', 'Aturan', 'Keterangan'];
+        headerRow.eachCell(function(cell) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3864' } };
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        });
+        headerRow.height = 22;
+
+        /* Isi data */
+        data.forEach(function(x, idx) {
+            var row = ws.getRow(5 + idx);
+            row.values = [idx + 1, x.title, x.description || '-'];
+            row.eachCell(function(cell, col) {
+                cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+                cell.alignment = { vertical: 'middle', horizontal: col === 1 ? 'center' : 'left', wrapText: true };
+                if (idx % 2 === 1) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+            });
+        });
+
+        ws.columns = [{ width: 5 }, { width: 52 }, { width: 42 }];
+        ws.views = [{ state: 'frozen', ySplit: 4 }];
+
+        /* Paragraf sanksi */
+        var last = 4 + data.length;
+        var rSanksi = last + 2;
+        ws.mergeCells('A' + rSanksi + ':C' + rSanksi);
+        var sCell = ws.getCell('A' + rSanksi);
+        sCell.value = 'KETENTUAN SANKSI: Apabila terdapat pelanggaran terhadap House Rules di atas, pihak yang melanggar akan dikenakan sanksi sesuai dengan aturan dan ketentuan yang berlaku saat ini oleh SIC, disesuaikan dengan tingkat pelanggarannya.';
+        sCell.font = { italic: true, size: 10, color: { argb: 'FF9A3412' } };
+        sCell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+        sCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF7ED' } };
+        sCell.border = { top: { style: 'thin', color: { argb: 'FFFED7AA' } }, left: { style: 'thin', color: { argb: 'FFFED7AA' } }, bottom: { style: 'thin', color: { argb: 'FFFED7AA' } }, right: { style: 'thin', color: { argb: 'FFFED7AA' } } };
+        ws.getRow(rSanksi).height = 42;
+
+        /* Tanda tangan: tanggal paling kanan, nama & jabatan di bawahnya */
+        var bulan = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+        var now = new Date();
+        var tglStr = now.getDate() + ' ' + bulan[now.getMonth()] + ' ' + now.getFullYear();
+        var rTgl = rSanksi + 3;
+        var rightAlign = { horizontal: 'right' };
+        ws.getCell('C' + rTgl).value = tglStr;
+        ws.getCell('C' + rTgl).font = { size: 10, color: { argb: 'FF334155' } };
+        ws.getCell('C' + rTgl).alignment = rightAlign;
+        ws.getCell('C' + (rTgl + 1)).value = 'Billy Suhendi';
+        ws.getCell('C' + (rTgl + 1)).font = { bold: true, size: 11, color: { argb: 'FF1E293B' }, underline: true };
+        ws.getCell('C' + (rTgl + 1)).alignment = rightAlign;
+        ws.getCell('C' + (rTgl + 2)).value = 'Head Teknisi';
+        ws.getCell('C' + (rTgl + 2)).font = { size: 10, color: { argb: 'FF64748B' } };
+        ws.getCell('C' + (rTgl + 2)).alignment = rightAlign;
+
+        var buf = await wb.xlsx.writeBuffer();
+        var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'House_Rules_Tim_Teknisi_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        showToast('Excel berhasil di-download');
+    })();
+}
+/* ===== ATURAN APD (PERMENAKER NO. 8 TAHUN 2020) ===== */
+var apdCache = [];
+var apdCategories = ['APD Wajib Harian', 'APD Sesuai Jenis Pekerjaan', 'Kewajiban Teknisi', 'Hak Teknisi'];
+
+function openApdPage() {
+    var old = document.getElementById('apdPageModal');
+    if (old) old.remove();
+    var modal = document.createElement('div');
+    modal.id = 'apdPageModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:55;background:#f1f5f9;overflow-y:auto;';
+    modal.innerHTML =
+        '<div style="position:sticky;top:0;background:#f1f5f9;padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #e2e8f0;z-index:5;">' +
+            '<button id="apdBackBtn" style="width:36px;height:36px;border-radius:12px;background:#fff;border:none;font-size:16px;cursor:pointer;">←</button>' +
+            '<div style="flex:1;"><div style="font-weight:700;color:#1e293b;">Aturan APD</div><div style="font-size:10px;color:#94a3b8;">Alat Pelindung Diri tim teknisi</div></div>' +
+            '<button id="apdExcelBtn" style="background:#1f3864;color:#ffffff;border:none;border-radius:12px;padding:9px 14px;font-weight:700;font-size:12px;cursor:pointer;margin-right:6px;"><i class="fa-solid fa-file-excel"></i> Excel</button>' +
+            (isHead() ? '<button id="apdAddBtn" style="background:#d4af37;color:#1e293b;border:none;border-radius:12px;padding:9px 14px;font-weight:700;font-size:12px;cursor:pointer;">+ Tambah</button>' : '') +
+        '</div>' +
+        '<div style="max-width:760px;margin:0 auto;padding:14px 16px 40px;">' +
+            '<div id="apdIntro"></div>' +
+            '<div id="apdList"></div>' +
+            '<div id="apdSanction"></div>' +
+        '</div>';
+    document.body.appendChild(modal);
+    document.getElementById('apdBackBtn').onclick = function() { modal.remove(); };
+    var addBtn = document.getElementById('apdAddBtn');
+    if (addBtn) addBtn.onclick = function() { openApdForm(''); };
+    document.getElementById('apdExcelBtn').onclick = downloadApdExcel;
+    loadApdRules();
+}
+
+function renderApdIntro() {
+    var el = document.getElementById('apdIntro');
+    if (!el) return;
+    el.innerHTML =
+        '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:16px;margin-bottom:12px;">' +
+            '<div style="font-weight:800;color:#1e293b;font-size:14px;margin-bottom:4px;">ATURAN PENGGUNAAN APD — TIM TEKNISI</div>' +
+            '<div style="font-size:11px;color:#64748b;line-height:1.6;">Berlaku untuk seluruh tim teknisi <b>Midpoint Building</b> (SIC Masterpiece &amp; SIC Dominion Lounge). Disusun mengacu pada <b>Permenaker No. 8 Tahun 2020 tentang Alat Pelindung Diri</b>, UU No. 1 Tahun 1970 tentang Keselamatan Kerja, dan PP No. 50 Tahun 2012 tentang SMK3.</div>' +
+        '</div>';
+}
+
+async function loadApdRules() {
+    renderApdIntro();
+    var listEl = document.getElementById('apdList');
+    if (!listEl) return;
+    listEl.innerHTML = '<p style="text-align:center;color:#94a3b8;font-size:12px;padding:24px 0;">Memuat...</p>';
+    var res = await sb.from('apd_rules').select('*').order('created_at', { ascending: true });
+    if (res.error) {
+        listEl.innerHTML = '<p style="text-align:center;color:#dc2626;font-size:12px;padding:24px 0;">Gagal memuat: ' + res.error.message + '</p>';
+        renderApdSanction();
+        return;
+    }
+    apdCache = res.data || [];
+    renderApdList();
+    renderApdSanction();
+}
+
+function renderApdList() {
+    var listEl = document.getElementById('apdList');
+    if (!listEl) return;
+    if (apdCache.length === 0) {
+        listEl.innerHTML = '<p style="text-align:center;color:#94a3b8;font-size:12px;padding:24px 0;">Belum ada aturan' + (isHead() ? ' — klik + Tambah untuk membuat' : '') + '</p>';
+        return;
+    }
+    var catColors = {
+        'APD Wajib Harian': '#15803d',
+        'APD Sesuai Jenis Pekerjaan': '#1d4ed8',
+        'Kewajiban Teknisi': '#b45309',
+        'Hak Teknisi': '#7c3aed'
+    };
+    var html = '';
+    var nomor = 0;
+    apdCategories.forEach(function(cat) {
+        var items = apdCache.filter(function(x) { return x.category === cat; });
+        if (items.length === 0) return;
+        html += '<div style="font-weight:800;font-size:11px;color:#fff;background:' + (catColors[cat] || '#334155') + ';border-radius:12px;padding:8px 14px;margin:14px 0 8px;display:inline-block;">' + cat.toUpperCase() + '</div>';
+        items.forEach(function(x) {
+            nomor++;
+            var editDel = '';
+            if (isHead()) {
+                editDel =
+                    '<div style="display:flex;gap:6px;margin-top:8px;">' +
+                        '<button onclick="openApdForm(\'' + x.id + '\')" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:10px;padding:6px 10px;font-size:10px;font-weight:700;cursor:pointer;">Edit</button>' +
+                        '<button onclick="deleteApdRule(\'' + x.id + '\')" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:10px;padding:6px 10px;font-size:10px;font-weight:700;cursor:pointer;">Hapus</button>' +
+                    '</div>';
+            }
+            html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:14px;margin-bottom:8px;display:flex;gap:12px;">' +
+                '<div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;background:#1e293b;color:#fff;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;">' + nomor + '</div>' +
+                '<div style="flex:1;min-width:0;">' +
+                    '<div style="font-weight:700;color:#1e293b;font-size:13px;">' + (x.title || '-') + '</div>' +
+                    (x.description ? '<div style="font-size:11px;color:#64748b;margin-top:3px;line-height:1.5;">' + x.description + '</div>' : '') +
+                    editDel +
+                '</div>' +
+            '</div>';
+        });
+    });
+    listEl.innerHTML = html;
+}
+
+function renderApdSanction() {
+    var el = document.getElementById('apdSanction');
+    if (!el) return;
+    el.innerHTML =
+        '<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:16px;padding:14px;margin-top:14px;">' +
+            '<div style="font-weight:800;color:#9a3412;font-size:12px;margin-bottom:4px;"><i class="fa-solid fa-triangle-exclamation"></i> KETENTUAN SANKSI</div>' +
+            '<div style="font-size:11px;color:#7c2d12;line-height:1.6;">Apabila terdapat pelanggaran terhadap ketentuan penggunaan APD di atas, pihak yang melanggar akan dikenakan sanksi sesuai dengan aturan dan ketentuan yang berlaku saat ini oleh SIC, disesuaikan dengan tingkat pelanggarannya.</div>' +
+        '</div>';
+}
+
+function openApdForm(editId) {
+    var item = null;
+    if (editId) {
+        apdCache.forEach(function(x) { if (x.id === editId) item = x; });
+        if (!item) { showToast('Data tidak ditemukan', 'error'); return; }
+    }
+    var old = document.getElementById('apdFormModal');
+    if (old) old.remove();
+    var catOpts = apdCategories.map(function(c) {
+        return '<option value="' + c + '"' + (item && item.category === c ? ' selected' : '') + '>' + c + '</option>';
+    }).join('');
+    var modal = document.createElement('div');
+    modal.id = 'apdFormModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:60;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:16px;';
+    modal.innerHTML =
+        '<div style="background:#fff;border-radius:20px;max-width:440px;width:100%;max-height:90vh;overflow-y:auto;padding:20px;">' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">' +
+                '<h3 style="font-weight:700;font-size:16px;color:#1e293b;">' + (editId ? 'Edit Aturan APD' : 'Tambah Aturan APD') + '</h3>' +
+                '<button onclick="document.getElementById(\'apdFormModal\').remove()" style="width:32px;height:32px;border-radius:50%;background:#f1f5f9;border:none;cursor:pointer;">✕</button>' +
+            '</div>' +
+            '<label style="display:block;font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:4px;">KATEGORI *</label>' +
+            '<select id="apdCategory" style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:12px;background:#fff;">' + catOpts + '</select>' +
+            '<label style="display:block;font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:4px;">NAMA / ISI ATURAN *</label>' +
+            '<input type="text" id="apdTitle" placeholder="Contoh: Helm Safety" style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:12px;">' +
+            '<label style="display:block;font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:4px;">KETERANGAN</label>' +
+            '<textarea id="apdDesc" rows="3" placeholder="Kapan APD ini wajib digunakan..." style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:16px;"></textarea>' +
+            '<button onclick="saveApdRule(\'' + (editId || '') + '\')" style="width:100%;background:#d4af37;color:#1e293b;font-weight:700;padding:12px;border-radius:12px;border:none;cursor:pointer;">Simpan</button>' +
+        '</div>';
+    document.body.appendChild(modal);
+    if (item) {
+        document.getElementById('apdTitle').value = item.title || '';
+        document.getElementById('apdDesc').value = item.description || '';
+    }
+}
+
+async function saveApdRule(editId) {
+    var category = document.getElementById('apdCategory').value;
+    var title = document.getElementById('apdTitle').value.trim();
+    var desc = document.getElementById('apdDesc').value.trim();
+    if (!title) { showToast('Nama/isi aturan wajib diisi', 'error'); return; }
+    var payload = { category: category, title: title, description: desc };
+    var res;
+    if (editId) {
+        res = await sb.from('apd_rules').update(payload).eq('id', editId);
+    } else {
+        payload.created_by = currentUser.id;
+        res = await sb.from('apd_rules').insert(payload);
+    }
+    if (res.error) { showToast('Gagal: ' + res.error.message, 'error'); return; }
+    showToast(editId ? 'Aturan APD diperbarui' : 'Aturan APD ditambahkan');
+    document.getElementById('apdFormModal').remove();
+    loadApdRules();
+}
+
+async function deleteApdRule(id) {
+    if (!confirm('Hapus aturan APD ini?')) return;
+    var res = await sb.from('apd_rules').delete().eq('id', id);
+    if (res.error) { showToast('Gagal hapus: ' + res.error.message, 'error'); return; }
+    showToast('Aturan APD dihapus');
+    loadApdRules();
+}
+
+/* ===== DOWNLOAD ATURAN APD (EXCEL PROFESIONAL) ===== */
+function downloadApdExcel() {
+    (async function() {
+        showToast('Menyiapkan file Excel...');
+        var res = await sb.from('apd_rules').select('*').order('created_at', { ascending: true });
+        var data = res.data || [];
+        if (data.length === 0) { showToast('Belum ada aturan APD', 'error'); return; }
+
+        var wb = new ExcelJS.Workbook();
+        var ws = wb.addWorksheet('Aturan APD', { pageSetup: { orientation: 'portrait', fitToPage: true } });
+
+        /* Baris 1: Judul */
+        ws.mergeCells('A1:D1');
+        var title = ws.getCell('A1');
+        title.value = 'ATURAN PENGGUNAAN APD — TIM TEKNISI';
+        title.font = { bold: true, size: 14, color: { argb: 'FF1E293B' } };
+        title.alignment = { horizontal: 'center', vertical: 'middle' };
+        ws.getRow(1).height = 28;
+
+        /* Baris 2: Subjudul */
+        ws.mergeCells('A2:D2');
+        var sub = ws.getCell('A2');
+        sub.value = 'Midpoint Building — SIC Masterpiece & SIC Dominion Lounge  |  Dasar: Permenaker No. 8/2020, UU No. 1/1970, PP No. 50/2012  |  Disusun oleh: Billy Suhendi (Head Teknisi)  |  Dicetak: ' + new Date().toLocaleString('id-ID');
+        sub.font = { italic: true, size: 9, color: { argb: 'FF64748B' } };
+        sub.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        ws.getRow(2).height = 30;
+
+        /* Baris 4: Header */
+        var headerRow = ws.getRow(4);
+        headerRow.values = ['No', 'Kategori', 'Aturan APD', 'Keterangan'];
+        headerRow.eachCell(function(cell) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3864' } };
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        });
+        headerRow.height = 22;
+
+        /* Warna per kategori */
+        var catFill = {
+            'APD Wajib Harian': 'FFDCFCE7',
+            'APD Sesuai Jenis Pekerjaan': 'FFDBEAFE',
+            'Kewajiban Teknisi': 'FFFEF3C7',
+            'Hak Teknisi': 'FFEDE9FE'
+        };
+
+        var nomor = 0;
+        apdCategories.forEach(function(cat) {
+            var items = data.filter(function(x) { return x.category === cat; });
+            items.forEach(function(x) {
+                nomor++;
+                var row = ws.getRow(4 + nomor);
+                row.values = [nomor, cat, x.title, x.description || '-'];
+                row.eachCell(function(cell, col) {
+                    cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+                    cell.alignment = { vertical: 'middle', horizontal: col === 1 ? 'center' : 'left', wrapText: true };
+                    if (col === 2 && catFill[cat]) {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: catFill[cat] } };
+                        cell.font = { bold: true, size: 10, color: { argb: 'FF334155' } };
+                    } else if (nomor % 2 === 0) {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+                    }
+                });
+            });
+        });
+
+        ws.columns = [{ width: 5 }, { width: 26 }, { width: 34 }, { width: 52 }];
+        ws.views = [{ state: 'frozen', ySplit: 4 }];
+
+        /* Paragraf sanksi */
+        var last = 4 + nomor;
+        var rSanksi = last + 2;
+        ws.mergeCells('A' + rSanksi + ':D' + rSanksi);
+        var sCell = ws.getCell('A' + rSanksi);
+        sCell.value = 'KETENTUAN SANKSI: Apabila terdapat pelanggaran terhadap ketentuan penggunaan APD di atas, pihak yang melanggar akan dikenakan sanksi sesuai dengan aturan dan ketentuan yang berlaku saat ini oleh SIC, disesuaikan dengan tingkat pelanggarannya.';
+        sCell.font = { italic: true, size: 10, color: { argb: 'FF9A3412' } };
+        sCell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+        sCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF7ED' } };
+        sCell.border = { top: { style: 'thin', color: { argb: 'FFFED7AA' } }, left: { style: 'thin', color: { argb: 'FFFED7AA' } }, bottom: { style: 'thin', color: { argb: 'FFFED7AA' } }, right: { style: 'thin', color: { argb: 'FFFED7AA' } } };
+        ws.getRow(rSanksi).height = 42;
+
+        /* Tanda tangan: tanggal paling kanan, nama & jabatan di bawahnya */
+        var bulan = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+        var now = new Date();
+        var tglStr = now.getDate() + ' ' + bulan[now.getMonth()] + ' ' + now.getFullYear();
+        var rTgl = rSanksi + 3;
+        var rightAlign = { horizontal: 'right' };
+        ws.getCell('D' + rTgl).value = tglStr;
+        ws.getCell('D' + rTgl).font = { size: 10, color: { argb: 'FF334155' } };
+        ws.getCell('D' + rTgl).alignment = rightAlign;
+        ws.getCell('D' + (rTgl + 1)).value = 'Billy Suhendi';
+        ws.getCell('D' + (rTgl + 1)).font = { bold: true, size: 11, color: { argb: 'FF1E293B' }, underline: true };
+        ws.getCell('D' + (rTgl + 1)).alignment = rightAlign;
+        ws.getCell('D' + (rTgl + 2)).value = 'Head Teknisi';
+        ws.getCell('D' + (rTgl + 2)).font = { size: 10, color: { argb: 'FF64748B' } };
+        ws.getCell('D' + (rTgl + 2)).alignment = rightAlign;
+
+        var buf = await wb.xlsx.writeBuffer();
+        var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'Aturan_APD_Tim_Teknisi_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        showToast('Excel berhasil di-download');
+    })();
+}
+
 </script>
 </body>
 </html>
