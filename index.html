@@ -388,6 +388,8 @@
             <div class="nav-item" data-page="tugas-teknisi" onclick="openTugasPage()"><i class="fa-solid fa-clipboard-check"></i><span>Tugas Teknisi</span></div>
             <div class="nav-item" data-page="house-rules" onclick="openHouseRulesPage()"><i class="fa-solid fa-scale-balanced"></i><span>House Rules</span></div>
             <div class="nav-item" data-page="apd-rules" onclick="openApdPage()"><i class="fa-solid fa-helmet-safety"></i><span>Aturan APD</span></div>
+            <div class="nav-item" data-page="toilet-checklist" onclick="openToiletPage()"><i class="fa-solid fa-restroom"></i><span>Checklist Toilet</span></div>
+            <div class="nav-item" data-page="serah-terima" onclick="openHandoverPage()"><i class="fa-solid fa-right-left"></i><span>Serah Terima Barang</span></div>
             <div class="nav-item" data-page="pengaturan" data-menu="pengaturan" onclick="switchPage('pengaturan')"><i class="fa-solid fa-gear"></i><span>Pengaturan</span></div>
         </nav>
         <div class="p-3.5 border-t border-white/10">
@@ -8454,6 +8456,984 @@ function downloadApdExcel() {
     })();
 }
 
+/* ===== CHECKLIST TOILET BULANAN — MIDPOINT BUILDING (v4) ===== */
+var toiletList = [];
+var toiletCurrent = null;
+var toiletEntries = [];
+var toiletDays = 0;
+
+function bulanIndo() { return ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember']; }
+function toiletMonthLabel(ym) {
+    var p = (ym || '').split('-');
+    if (p.length < 2) return ym || '-';
+    return bulanIndo()[parseInt(p[1], 10) - 1] + ' ' + p[0];
+}
+function toiletPrefix() {
+    return (toiletCurrent && toiletCurrent.toilet_type === 'Toilet Wanita') ? 'wanita' : 'pria';
+}
+
+function openToiletPage() {
+    var old = document.getElementById('toiletPageModal');
+    if (old) old.remove();
+    var modal = document.createElement('div');
+    modal.id = 'toiletPageModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:55;background:#f1f5f9;overflow-y:auto;';
+    modal.innerHTML =
+        '<div style="position:sticky;top:0;background:#f1f5f9;padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #e2e8f0;z-index:5;">' +
+            '<button id="tlBackBtn" style="width:36px;height:36px;border-radius:12px;background:#fff;border:none;font-size:16px;cursor:pointer;">←</button>' +
+            '<div style="flex:1;"><div style="font-weight:700;color:#1e293b;">Checklist Toilet</div><div style="font-size:10px;color:#94a3b8;">Form paraf bulanan — Midpoint Building</div></div>' +
+            (isHead() ? '<button id="tlAddBtn" style="background:#d4af37;color:#1e293b;border:none;border-radius:12px;padding:9px 14px;font-weight:700;font-size:12px;cursor:pointer;">+ Buat</button>' : '') +
+        '</div>' +
+        '<div style="max-width:760px;margin:0 auto;padding:14px 16px 40px;" id="tlList"></div>';
+    document.body.appendChild(modal);
+    document.getElementById('tlBackBtn').onclick = function() { modal.remove(); };
+    if (isHead()) document.getElementById('tlAddBtn').onclick = function() { openToiletForm(); };
+    loadToiletList();
+}
+
+async function loadToiletList() {
+    var el = document.getElementById('tlList');
+    if (!el) return;
+    el.innerHTML = '<p style="text-align:center;color:#94a3b8;font-size:12px;padding:24px 0;">Memuat...</p>';
+    var res = await sb.from('toilet_checklists').select('*').order('month', { ascending: false }).order('venue').order('floor');
+    if (res.error) { el.innerHTML = '<p style="text-align:center;color:#dc2626;font-size:12px;">Gagal: ' + res.error.message + '</p>'; return; }
+    toiletList = res.data || [];
+    if (toiletList.length === 0) {
+        el.innerHTML = '<p style="text-align:center;color:#94a3b8;font-size:12px;padding:32px 0;">Belum ada form' + (isHead() ? ' — klik + Buat untuk membuat' : '') + '</p>';
+        return;
+    }
+    el.innerHTML = toiletList.map(function(c) {
+        var del = isHead() ? '<button onclick="deleteToiletChecklist(\'' + c.id + '\')" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:10px;padding:6px 10px;font-size:10px;font-weight:700;cursor:pointer;">Hapus</button>' : '';
+        return '<div onclick="openToiletChecklist(\'' + c.id + '\')" style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:14px;margin-bottom:10px;cursor:pointer;display:flex;align-items:center;gap:12px;">' +
+            '<div style="width:40px;height:40px;border-radius:12px;background:#1f3864;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="fa-solid fa-restroom"></i></div>' +
+            '<div style="flex:1;min-width:0;"><div style="font-weight:700;color:#1e293b;font-size:13px;">' + toiletMonthLabel(c.month) + ' — ' + (c.toilet_type || 'Toilet Pria') + '</div>' +
+            '<div style="font-size:11px;color:#64748b;margin-top:2px;">' + c.venue + ' • ' + c.floor + '</div></div>' +
+            '<div onclick="event.stopPropagation();">' + del + '</div>' +
+        '</div>';
+    }).join('');
+}
+
+function openToiletForm() {
+    var old = document.getElementById('toiletFormModal');
+    if (old) old.remove();
+    var now = new Date();
+    var curYm = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    var modal = document.createElement('div');
+    modal.id = 'toiletFormModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:60;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:16px;';
+    modal.innerHTML =
+        '<div style="background:#fff;border-radius:20px;max-width:420px;width:100%;padding:20px;">' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"><h3 style="font-weight:700;font-size:16px;color:#1e293b;">Buat Checklist Toilet</h3><button onclick="document.getElementById(\'toiletFormModal\').remove()" style="width:32px;height:32px;border-radius:50%;background:#f1f5f9;border:none;cursor:pointer;">✕</button></div>' +
+            '<label style="display:block;font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:4px;">PERIODE *</label>' +
+            '<input type="month" id="tlMonth" value="' + curYm + '" style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:12px;">' +
+            '<label style="display:block;font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:4px;">AREA / VENUE (SIC) *</label>' +
+            '<select id="tlVenue" style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:12px;background:#fff;"><option>SIC Masterpiece</option><option>SIC Dominion Lounge</option></select>' +
+            '<label style="display:block;font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:4px;">JENIS TOILET *</label>' +
+            '<select id="tlToiletType" style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:12px;background:#fff;"><option>Toilet Pria</option><option>Toilet Wanita</option></select>' +
+            '<label style="display:block;font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:4px;">LANTAI *</label>' +
+            '<input type="text" id="tlFloor" placeholder="Contoh: Semua Lantai / Lt. 1" style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:16px;">' +
+            '<button onclick="saveToiletChecklist()" style="width:100%;background:#d4af37;color:#1e293b;font-weight:700;padding:12px;border-radius:12px;border:none;cursor:pointer;">Buat Form</button>' +
+        '</div>';
+    document.body.appendChild(modal);
+}
+
+async function saveToiletChecklist() {
+    var month = document.getElementById('tlMonth').value;
+    var venue = document.getElementById('tlVenue').value;
+    var ttype = document.getElementById('tlToiletType').value;
+    var floor = document.getElementById('tlFloor').value.trim();
+    if (!month || !floor) { showToast('Lengkapi Periode & Lantai', 'error'); return; }
+    var dup = toiletList.some(function(c) { return c.month === month && c.venue === venue && c.floor.toLowerCase() === floor.toLowerCase() && (c.toilet_type || 'Toilet Pria') === ttype; });
+    if (dup) { showToast('Form untuk periode/venue/lantai/jenis toilet itu sudah ada', 'error'); return; }
+    var res = await sb.from('toilet_checklists').insert({ month: month, venue: venue, floor: floor, toilet_type: ttype, created_by: currentUser.id });
+    if (res.error) { showToast('Gagal: ' + res.error.message, 'error'); return; }
+    showToast('Form checklist dibuat!');
+    document.getElementById('toiletFormModal').remove();
+    loadToiletList();
+}
+
+async function deleteToiletChecklist(id) {
+    if (!confirm('Hapus form checklist ini beserta seluruh isian di dalamnya?')) return;
+    var res = await sb.from('toilet_checklists').delete().eq('id', id);
+    if (res.error) { showToast('Gagal: ' + res.error.message, 'error'); return; }
+    showToast('Form dihapus');
+    loadToiletList();
+}
+
+async function openToiletChecklist(id) {
+    var c = null;
+    toiletList.forEach(function(x) { if (x.id === id) c = x; });
+    if (!c) return;
+    toiletCurrent = c;
+    var p = c.month.split('-');
+    toiletDays = new Date(parseInt(p[0], 10), parseInt(p[1], 10), 0).getDate();
+    var old = document.getElementById('toiletGridModal');
+    if (old) old.remove();
+    var modal = document.createElement('div');
+    modal.id = 'toiletGridModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:58;background:#f1f5f9;overflow-y:auto;';
+    modal.innerHTML =
+        '<div style="position:sticky;top:0;background:#f1f5f9;padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #e2e8f0;z-index:5;">' +
+            '<button id="tlGridBack" style="width:36px;height:36px;border-radius:12px;background:#fff;border:none;font-size:16px;cursor:pointer;">←</button>' +
+            '<div style="flex:1;min-width:0;"><div style="font-weight:700;color:#1e293b;font-size:14px;">' + toiletMonthLabel(c.month) + ' — ' + (c.toilet_type || 'Toilet Pria') + '</div><div style="font-size:10px;color:#94a3b8;">' + c.venue + ' • ' + c.floor + ' — <span id="tlProgress"></span></div></div>' +
+            '<button id="tlPdfBtn" style="background:#b91c1c;color:#fff;border:none;border-radius:12px;padding:9px 12px;font-weight:700;font-size:11px;cursor:pointer;">PDF</button>' +
+            '<button id="tlXlsBtn" style="background:#1f3864;color:#fff;border:none;border-radius:12px;padding:9px 12px;font-weight:700;font-size:11px;cursor:pointer;">Excel</button>' +
+        '</div>' +
+        '<div style="max-width:1100px;margin:0 auto;padding:12px 8px 40px;">' +
+            '<div style="overflow-x:auto;"><table id="tlTable" style="width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;min-width:1080px;"></table></div>' +
+            '<p style="font-size:10px;color:#94a3b8;margin-top:8px;text-align:center;">M = Shift Pagi | N = Shift Malam — ketuk kolom shift (Jam/Nama) untuk mengisi jam, nama &amp; checklist. Ketuk kolom Keterangan untuk mengisi perbaikan/penggantian.</p>' +
+        '</div>';
+    document.body.appendChild(modal);
+    document.getElementById('tlGridBack').onclick = function() { modal.remove(); openToiletPage(); };
+    document.getElementById('tlXlsBtn').onclick = downloadToiletExcel;
+    document.getElementById('tlPdfBtn').onclick = printToiletPDF;
+    var res = await sb.from('toilet_check_entries').select('*').eq('checklist_id', id);
+    toiletEntries = res.data || [];
+    renderToiletGrid();
+}
+
+function tlGetEntry(day) {
+    var e = null;
+    toiletEntries.forEach(function(x) { if (x.day === day) e = x; });
+    return e;
+}
+
+function renderToiletGrid() {
+    var t = document.getElementById('tlTable');
+    if (!t) return;
+    var pre = toiletPrefix();
+    var hasU = (pre === 'pria');
+    var tt = toiletCurrent.toilet_type || 'Toilet Pria';
+    var subItems = ['Jam', 'Nama', 'Lighting', 'Exhaust', 'Jetshower'];
+    if (hasU) subItems.push('Urinoir');
+    subItems.push('Wastafel', 'Closet Duduk');
+    var shiftCols = subItems.length;
+    var hd = 'background:#1f3864;color:#fff;font-size:9px;padding:8px 2px;border:1px solid #1f3864;text-align:center;font-weight:700;';
+    var sub = 'background:#2d4a7a;color:#fff;font-size:8px;padding:5px 1px;border:1px solid #1f3864;text-align:center;font-weight:600;';
+    var html = '<thead><tr>' +
+        '<th rowspan="2" style="' + hd + '">Tgl</th>' +
+        '<th colspan="' + shiftCols + '" style="' + hd + '">' + tt + ' — M (Pagi)</th>' +
+        '<th colspan="' + shiftCols + '" style="' + hd + '">' + tt + ' — N (Malam)</th>' +
+        '<th rowspan="2" style="' + hd + '">Keterangan Perbaikan / Penggantian</th>' +
+    '</tr><tr>';
+    subItems.forEach(function(l) { html += '<th style="' + sub + '">' + l + '</th>'; });
+    subItems.forEach(function(l) { html += '<th style="' + sub + '">' + l + '</th>'; });
+    html += '</tr></thead><tbody>';
+    var filled = 0;
+    for (var d = 1; d <= toiletDays; d++) {
+        var e = tlGetEntry(d);
+        if (e && e.m_name) filled++;
+        if (e && e.n_name) filled++;
+        var ck = function(v) { return v ? '<span style="color:#059669;font-weight:800;">✓</span>' : '<span style="color:#cbd5e1;">·</span>'; };
+        var note = (e && e.note) ? e.note : '<span style="color:#cbd5e1;">—</span>';
+        var shiftCells = function(s) {
+            var tm = (e && e[s + '_time']) ? e[s + '_time'] : '<span style="color:#cbd5e1;">·</span>';
+            var nm = (e && e[s + '_name']) ? e[s + '_name'] : '<span style="color:#cbd5e1;">·</span>';
+            var h = 'border:1px solid #e2e8f0;padding:6px 2px;text-align:center;font-size:9.5px;cursor:pointer;';
+            var hn = 'border:1px solid #e2e8f0;padding:6px 4px;text-align:left;font-size:9.5px;font-weight:700;color:#1e293b;cursor:pointer;min-width:60px;';
+            var hc = 'border:1px solid #e2e8f0;padding:6px 2px;text-align:center;font-size:10px;cursor:pointer;';
+            var out = '<td style="' + h + '" onclick="openToiletShiftModal(' + d + ',\'' + s + '\')">' + tm + '</td>';
+            out += '<td style="' + hn + '" onclick="openToiletShiftModal(' + d + ',\'' + s + '\')">' + nm + '</td>';
+            out += '<td style="' + hc + '" onclick="openToiletShiftModal(' + d + ',\'' + s + '\')">' + ck(e && e[s + '_lighting']) + '</td>';
+            out += '<td style="' + hc + '" onclick="openToiletShiftModal(' + d + ',\'' + s + '\')">' + ck(e && e[s + '_exhaust']) + '</td>';
+            out += '<td style="' + hc + '" onclick="openToiletShiftModal(' + d + ',\'' + s + '\')">' + ck(e && e[s + '_jetshower']) + '</td>';
+            if (hasU) out += '<td style="' + hc + '" onclick="openToiletShiftModal(' + d + ',\'' + s + '\')">' + ck(e && e[s + '_urinoir']) + '</td>';
+            out += '<td style="' + hc + '" onclick="openToiletShiftModal(' + d + ',\'' + s + '\')">' + ck(e && e[s + '_wastafel']) + '</td>';
+            out += '<td style="' + hc + '" onclick="openToiletShiftModal(' + d + ',\'' + s + '\')">' + ck(e && e[s + '_closet']) + '</td>';
+            return out;
+        };
+        html += '<tr' + (d % 2 === 0 ? ' style="background:#f8fafc;"' : '') + '>' +
+            '<td style="border:1px solid #e2e8f0;padding:6px 2px;text-align:center;font-size:10px;font-weight:700;color:#334155;">' + d + '</td>' +
+            shiftCells('m') + shiftCells('n') +
+            '<td style="border:1px solid #e2e8f0;padding:6px 6px;font-size:9px;color:#334155;min-width:130px;cursor:pointer;" onclick="openToiletNoteModal(' + d + ')">' + note + '</td>' +
+        '</tr>';
+    }
+    html += '</tbody>';
+    t.innerHTML = html;
+    var pr = document.getElementById('tlProgress');
+    if (pr) pr.textContent = 'Shift terisi: ' + filled + '/' + (toiletDays * 2);
+}
+
+function openToiletShiftModal(day, shift) {
+    var pre = toiletPrefix();
+    var hasU = (pre === 'pria');
+    var tt = toiletCurrent.toilet_type || 'Toilet Pria';
+    var shiftLabel = shift === 'm' ? 'M — Shift Pagi' : 'N — Shift Malam';
+    var e = tlGetEntry(day);
+    var curTime = (e && e[shift + '_time']) ? e[shift + '_time'] : '';
+    var curName = (e && e[shift + '_name']) ? e[shift + '_name'] : currentUser.name;
+    var chk = function(f) { return (e && e[shift + '_' + f]) ? ' checked' : ''; };
+    var old = document.getElementById('tlCellModal');
+    if (old) old.remove();
+    var modal = document.createElement('div');
+    modal.id = 'tlCellModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:62;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:16px;';
+    var chkItem = function(f, label) {
+        return '<label style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:9px 12px;margin-bottom:6px;cursor:pointer;">' +
+            '<input type="checkbox" id="tlChk_' + f + '"' + chk(f) + ' style="width:17px;height:17px;accent-color:#059669;">' +
+            '<span style="font-size:12px;font-weight:600;color:#334155;">' + label + '</span></label>';
+    };
+    modal.innerHTML =
+        '<div style="background:#fff;border-radius:20px;max-width:400px;width:100%;max-height:90vh;overflow-y:auto;padding:20px;">' +
+            '<h3 style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:2px;">Tgl ' + day + ' — Shift ' + shiftLabel + '</h3>' +
+            '<p style="font-size:11px;color:#94a3b8;margin-bottom:12px;">' + tt + ' • ' + toiletCurrent.venue + ' • ' + toiletCurrent.floor + '</p>' +
+            '<label style="display:block;font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:4px;">JAM PENGECEKAN *</label>' +
+            '<input type="time" id="tlShiftTime" value="' + curTime + '" style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:12px;">' +
+            '<label style="display:block;font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:4px;">NAMA PETUGAS *</label>' +
+            '<input type="text" id="tlShiftName" value="' + (curName || '') + '" style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:12px;">' +
+            '<label style="display:block;font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:6px;">CHECKLIST KONDISI (centang jika baik/aman)</label>' +
+            chkItem('lighting', 'Lighting (Penerangan)') +
+            chkItem('exhaust', 'Exhaust Fan') +
+            chkItem('jetshower', 'Jetshower') +
+            (hasU ? chkItem('urinoir', 'Urinoir') : '') +
+            chkItem('wastafel', 'Wastafel') +
+            chkItem('closet', 'Closet Duduk') +
+            '<div style="display:flex;gap:8px;margin-top:14px;">' +
+                '<button onclick="saveToiletShift(' + day + ',\'' + shift + '\',\'kosong\')" style="flex:1;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;font-weight:700;padding:11px;border-radius:12px;cursor:pointer;font-size:12px;">Kosongkan</button>' +
+                '<button onclick="saveToiletShift(' + day + ',\'' + shift + '\')" style="flex:2;background:#d4af37;color:#1e293b;border:none;font-weight:700;padding:11px;border-radius:12px;cursor:pointer;font-size:12px;">Simpan</button>' +
+            '</div>' +
+        '</div>';
+    document.body.appendChild(modal);
+}
+
+function openToiletNoteModal(day) {
+    var e = tlGetEntry(day);
+    var cur = (e && e.note) ? e.note : '';
+    var old = document.getElementById('tlCellModal');
+    if (old) old.remove();
+    var modal = document.createElement('div');
+    modal.id = 'tlCellModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:62;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:16px;';
+    modal.innerHTML =
+        '<div style="background:#fff;border-radius:20px;max-width:380px;width:100%;padding:20px;">' +
+            '<h3 style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:2px;">Keterangan — Tanggal ' + day + '</h3>' +
+            '<p style="font-size:11px;color:#94a3b8;margin-bottom:12px;">Isi bila ada perbaikan / penggantian (kosongkan jika tidak ada)</p>' +
+            '<textarea id="tlNoteInput" rows="3" placeholder="Contoh: Ganti flush toilet..." style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:14px;">' + (cur || '') + '</textarea>' +
+            '<div style="display:flex;gap:8px;">' +
+                '<button onclick="saveToiletNote(' + day + ',\'kosong\')" style="flex:1;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;font-weight:700;padding:11px;border-radius:12px;cursor:pointer;font-size:12px;">Kosongkan</button>' +
+                '<button onclick="saveToiletNote(' + day + ')" style="flex:2;background:#d4af37;color:#1e293b;border:none;font-weight:700;padding:11px;border-radius:12px;cursor:pointer;font-size:12px;">Simpan</button>' +
+            '</div>' +
+        '</div>';
+    document.body.appendChild(modal);
+}
+
+async function saveToiletShift(day, shift, mode) {
+    var val = {};
+    if (mode !== 'kosong') {
+        var time = document.getElementById('tlShiftTime').value;
+        var name = document.getElementById('tlShiftName').value.trim();
+        if (!time || !name) { showToast('Isi Jam & Nama Petugas', 'error'); return; }
+        val[shift + '_time'] = time;
+        val[shift + '_name'] = name;
+        ['lighting', 'exhaust', 'jetshower', 'urinoir', 'wastafel', 'closet'].forEach(function(f) {
+            var el = document.getElementById('tlChk_' + f);
+            val[shift + '_' + f] = (el && el.checked) ? true : null;
+        });
+    }
+    var e = tlGetEntry(day);
+    var res;
+    if (e) {
+        val.updated_by = currentUser.id;
+        val.updated_at = new Date().toISOString();
+        res = await sb.from('toilet_check_entries').update(val).eq('id', e.id);
+    } else {
+        val.checklist_id = toiletCurrent.id;
+        val.day = day;
+        val.updated_by = currentUser.id;
+        res = await sb.from('toilet_check_entries').insert(val);
+    }
+    if (res.error) { showToast('Gagal: ' + res.error.message, 'error'); return; }
+    var m = document.getElementById('tlCellModal');
+    if (m) m.remove();
+    var res2 = await sb.from('toilet_check_entries').select('*').eq('checklist_id', toiletCurrent.id);
+    toiletEntries = res2.data || [];
+    renderToiletGrid();
+    showToast('Tersimpan');
+}
+
+async function saveToiletNote(day, mode) {
+    var val = {};
+    if (mode !== 'kosong') {
+        var inp = document.getElementById('tlNoteInput');
+        val.note = inp ? inp.value.trim() : '';
+        if (!val.note) { showToast('Isi keterangan atau kosongkan', 'error'); return; }
+    } else {
+        val.note = null;
+    }
+    var e = tlGetEntry(day);
+    var res;
+    if (e) {
+        val.updated_by = currentUser.id;
+        res = await sb.from('toilet_check_entries').update(val).eq('id', e.id);
+    } else {
+        val.checklist_id = toiletCurrent.id;
+        val.day = day;
+        val.updated_by = currentUser.id;
+        res = await sb.from('toilet_check_entries').insert(val);
+    }
+    if (res.error) { showToast('Gagal: ' + res.error.message, 'error'); return; }
+    var m = document.getElementById('tlCellModal');
+    if (m) m.remove();
+    var res2 = await sb.from('toilet_check_entries').select('*').eq('checklist_id', toiletCurrent.id);
+    toiletEntries = res2.data || [];
+    renderToiletGrid();
+    showToast('Tersimpan');
+}
+
+/* ===== DOWNLOAD EXCEL v4 (A4 LANDSCAPE, LABEL PENUH, 1 HALAMAN) ===== */
+function downloadToiletExcel() {
+    (async function() {
+        if (!toiletCurrent) return;
+        showToast('Menyiapkan file Excel...');
+        var c = toiletCurrent;
+        var tt = c.toilet_type || 'Toilet Pria';
+        var hasU = (toiletPrefix() === 'pria');
+        var shiftCols = hasU ? 8 : 7;
+        var colCount = 1 + (shiftCols * 2) + 1;
+        var wb = new ExcelJS.Workbook();
+        var ws = wb.addWorksheet('Checklist Toilet');
+        ws.pageSetup = { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 1, horizontalCentered: true };
+
+        ws.mergeCells(1, 1, 1, colCount);
+        var t1 = ws.getCell(1, 1);
+        t1.value = 'FORM CHECKLIST ' + tt.toUpperCase() + ' — MIDPOINT BUILDING';
+        t1.font = { bold: true, size: 13, color: { argb: 'FF1E293B' } };
+        t1.alignment = { horizontal: 'center', vertical: 'middle' };
+        ws.getRow(1).height = 22;
+
+        ws.mergeCells(2, 1, 2, colCount);
+        var t2 = ws.getCell(2, 1);
+        t2.value = 'Area: ' + c.venue + '  |  Lantai: ' + c.floor + '  |  Periode: ' + toiletMonthLabel(c.month);
+        t2.font = { bold: true, size: 10, color: { argb: 'FF334155' } };
+        t2.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        ws.mergeCells(3, 1, 3, colCount);
+        var t3 = ws.getCell(3, 1);
+        t3.value = 'M = Shift Pagi, N = Shift Malam. Centang (V) berarti kondisi baik / sesuai.';
+        t3.font = { italic: true, size: 8, color: { argb: 'FF64748B' } };
+        t3.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        ws.mergeCells(4, 1, 5, 1);
+        ws.getCell(4, 1).value = 'Tgl';
+        ws.mergeCells(4, 2, 4, 1 + shiftCols);
+        ws.getCell(4, 2).value = tt + ' — M (Pagi)';
+        var nStart = 2 + shiftCols;
+        ws.mergeCells(4, nStart, 4, nStart + shiftCols - 1);
+        ws.getCell(4, nStart).value = tt + ' — N (Malam)';
+        var kCol = nStart + shiftCols;
+        ws.mergeCells(4, kCol, 5, kCol);
+        ws.getCell(4, kCol).value = 'Keterangan Perbaikan / Penggantian';
+        var subLabels = ['Jam', 'Nama', 'Lighting', 'Exhaust', 'Jetshower'];
+        if (hasU) subLabels.push('Urinoir');
+        subLabels.push('Wastafel', 'Closet Duduk');
+        for (var i = 0; i < shiftCols; i++) {
+            ws.getCell(5, 2 + i).value = subLabels[i];
+            ws.getCell(5, nStart + i).value = subLabels[i];
+        }
+        [4, 5].forEach(function(r) {
+            var row = ws.getRow(r);
+            for (var ci = 1; ci <= colCount; ci++) {
+                var cell = row.getCell(ci);
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3864' } };
+                cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 7.5 };
+                cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+            }
+            row.height = 20;
+        });
+
+        var ckX = function(v) { return v ? 'V' : ''; };
+        for (var d = 1; d <= toiletDays; d++) {
+            var e = tlGetEntry(d);
+            var row = ws.getRow(5 + d);
+            var vals = [d];
+            vals.push((e && e.m_time) || '', (e && e.m_name) || '', ckX(e && e.m_lighting), ckX(e && e.m_exhaust), ckX(e && e.m_jetshower));
+            if (hasU) vals.push(ckX(e && e.m_urinoir));
+            vals.push(ckX(e && e.m_wastafel), ckX(e && e.m_closet));
+            vals.push((e && e.n_time) || '', (e && e.n_name) || '', ckX(e && e.n_lighting), ckX(e && e.n_exhaust), ckX(e && e.n_jetshower));
+            if (hasU) vals.push(ckX(e && e.n_urinoir));
+            vals.push(ckX(e && e.n_wastafel), ckX(e && e.n_closet));
+            vals.push((e && e.note) || '');
+            row.values = vals;
+            for (var ci = 1; ci <= colCount; ci++) {
+                var cell = row.getCell(ci);
+                cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+                var isName = (ci === 3 || ci === nStart + 1);
+                cell.alignment = { vertical: 'middle', horizontal: isName ? 'left' : 'center', wrapText: ci === kCol };
+                cell.font = { size: 8 };
+                if (d % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+            }
+            row.height = 14;
+        }
+
+        var widths = [4.5, 5, 10, 8, 7.5, 8, 8, 7.5, 8.5];
+        widths = widths.concat([5, 10, 8, 7.5, 8, 8, 7.5, 8.5]);
+        widths.push(20);
+        ws.columns = widths.map(function(w) { return { width: w }; });
+        ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 5 }];
+
+        var rTgl = 5 + toiletDays + 2;
+        var now = new Date();
+        var tglStr = now.getDate() + ' ' + bulanIndo()[now.getMonth()] + ' ' + now.getFullYear();
+        var rightAlign = { horizontal: 'right' };
+        ws.getCell(kCol, colCount).value = tglStr;
+        ws.getCell(kCol, colCount).font = { size: 9, color: { argb: 'FF334155' } };
+        ws.getCell(kCol, colCount).alignment = rightAlign;
+        ws.getCell(rTgl + 1, colCount).value = 'Disetujui oleh,';
+        ws.getCell(rTgl + 1, colCount).font = { size: 9, color: { argb: 'FF334155' } };
+        ws.getCell(rTgl + 1, colCount).alignment = rightAlign;
+        ws.getCell(rTgl + 4, colCount).value = '( .................................... )';
+        ws.getCell(rTgl + 4, colCount).font = { bold: true, size: 10, color: { argb: 'FF1E293B' } };
+        ws.getCell(rTgl + 4, colCount).alignment = rightAlign;
+        ws.getCell(rTgl + 5, colCount).value = c.venue;
+        ws.getCell(rTgl + 5, colCount).font = { size: 9, color: { argb: 'FF64748B' } };
+        ws.getCell(rTgl + 5, colCount).alignment = rightAlign;
+
+        var buf = await wb.xlsx.writeBuffer();
+        var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'Checklist_' + tt.replace(/\s+/g, '_') + '_' + c.venue.replace(/\s+/g, '_') + '_' + c.floor.replace(/\s+/g, '_') + '_' + c.month + '.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        showToast('Excel berhasil di-download');
+    })();
+}
+
+/* ===== DOWNLOAD PDF v4 (1 HALAMAN A4 LANDSCAPE, LABEL PENUH) ===== */
+function printToiletPDF() {
+    if (!toiletCurrent) return;
+    var c = toiletCurrent;
+    var tt = c.toilet_type || 'Toilet Pria';
+    var hasU = (toiletPrefix() === 'pria');
+    var rows = '';
+    var ck = function(v) { return v ? 'V' : ''; };
+    for (var d = 1; d <= toiletDays; d++) {
+        var e = tlGetEntry(d);
+        var cells = '<td class="c b">' + d + '</td>' +
+            '<td class="c">' + ((e && e.m_time) || '') + '</td>' +
+            '<td class="nm">' + ((e && e.m_name) || '') + '</td>' +
+            '<td class="c">' + ck(e && e.m_lighting) + '</td>' +
+            '<td class="c">' + ck(e && e.m_exhaust) + '</td>' +
+            '<td class="c">' + ck(e && e.m_jetshower) + '</td>';
+        if (hasU) cells += '<td class="c">' + ck(e && e.m_urinoir) + '</td>';
+        cells += '<td class="c">' + ck(e && e.m_wastafel) + '</td>';
+        cells += '<td class="c">' + ck(e && e.m_closet) + '</td>';
+        cells += '<td class="c">' + ((e && e.n_time) || '') + '</td>' +
+            '<td class="nm">' + ((e && e.n_name) || '') + '</td>' +
+            '<td class="c">' + ck(e && e.n_lighting) + '</td>' +
+            '<td class="c">' + ck(e && e.n_exhaust) + '</td>' +
+            '<td class="c">' + ck(e && e.n_jetshower) + '</td>';
+        if (hasU) cells += '<td class="c">' + ck(e && e.n_urinoir) + '</td>';
+        cells += '<td class="c">' + ck(e && e.n_wastafel) + '</td>';
+        cells += '<td class="c">' + ck(e && e.n_closet) + '</td>';
+        cells += '<td>' + ((e && e.note) || '') + '</td>';
+        rows += '<tr>' + cells + '</tr>';
+    }
+    var shiftCols = hasU ? 8 : 7;
+    var subHd = '';
+    var subLabels = ['Jam', 'Nama', 'Lighting', 'Exhaust', 'Jetshower'];
+    if (hasU) subLabels.push('Urinoir');
+    subLabels.push('Wastafel', 'Closet Duduk');
+    subLabels.forEach(function(l) { subHd += '<th>' + l + '</th>'; });
+    var cw = '<col style="width:3.5%">';
+    var itemW = 5;
+    var oneShift = '<col style="width:4.5%"><col style="width:7.5%">';
+    for (var ii = 0; ii < shiftCols - 2; ii++) oneShift += '<col style="width:' + itemW + '%">';
+    cw += oneShift + oneShift;
+    cw += '<col style="width:' + (100 - 3.5 - (2 * (4.5 + 7.5 + (shiftCols - 2) * itemW))) + '%">';
+    var now = new Date();
+    var tglStr = now.getDate() + ' ' + bulanIndo()[now.getMonth()] + ' ' + now.getFullYear();
+    var doc = '<html><head><meta charset="utf-8"><title>Checklist Toilet</title><style>' +
+        '@page { size: A4 landscape; margin: 6mm; }' +
+        '* { box-sizing: border-box; }' +
+        'body { font-family: Arial, sans-serif; color: #1e293b; margin: 0; }' +
+        'h1 { text-align: center; font-size: 12pt; margin: 0; }' +
+        'h2 { text-align: center; font-size: 9pt; margin: 2px 0 0; font-weight: bold; }' +
+        '.note { text-align: center; font-size: 6.5pt; color: #64748b; font-style: italic; margin: 2px 0 4px; }' +
+        'table { width: 100%; border-collapse: collapse; table-layout: fixed; }' +
+        'th { background: #1f3864; color: #fff; font-size: 6pt; padding: 2px 0; border: 1px solid #1f3864; overflow: hidden; }' +
+        'td { border: 1px solid #94a3b8; font-size: 6.5pt; padding: 1px 2px; height: 12px; line-height: 1.1; overflow: hidden; white-space: nowrap; }' +
+        'tr:nth-child(even) td { background: #f1f5f9; }' +
+        '.c { text-align: center; } .b { font-weight: bold; } .nm { overflow: hidden; text-overflow: ellipsis; }' +
+        '.ttd { text-align: right; margin-top: 10px; font-size: 9pt; }' +
+        '.nm2 { display: inline-block; margin-top: 34px; font-weight: bold; text-decoration: underline; }' +
+        '.jab { font-size: 8pt; color: #64748b; }' +
+        '</style></head><body>' +
+        '<h1>FORM CHECKLIST ' + tt.toUpperCase() + ' — MIDPOINT BUILDING</h1>' +
+        '<h2>Area: ' + c.venue + ' &nbsp;|&nbsp; Lantai: ' + c.floor + ' &nbsp;|&nbsp; Periode: ' + toiletMonthLabel(c.month) + '</h2>' +
+        '<p class="note">M = Shift Pagi, N = Shift Malam. Centang (V) berarti kondisi baik / sesuai.</p>' +
+        '<table><colgroup>' + cw + '</colgroup><thead><tr>' +
+            '<th rowspan="2">Tgl</th>' +
+            '<th colspan="' + shiftCols + '">' + tt + ' — M (Pagi)</th>' +
+            '<th colspan="' + shiftCols + '">' + tt + ' — N (Malam)</th>' +
+            '<th rowspan="2">Ket. Perbaikan / Penggantian</th>' +
+        '</tr><tr>' + subHd + subHd + '</tr></thead><tbody>' + rows + '</tbody></table>' +
+        '<div class="ttd">' +
+            tglStr + '<br>' +
+            'Disetujui oleh,<br>' +
+            '<span class="nm2">( .................................... )</span><br>' +
+            '<span class="jab">' + c.venue + '</span>' +
+        '</div>' +
+        '</body></html>';
+    var iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;width:0;height:0;border:0;left:-9999px;';
+    document.body.appendChild(iframe);
+    var dw = iframe.contentWindow.document;
+    dw.open();
+    dw.write(doc);
+    dw.close();
+    setTimeout(function() {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        setTimeout(function() { iframe.remove(); }, 2000);
+    }, 400);
+}
+
+/* ===== SERAH TERIMA BARANG — TEKNISI <-> OFFICE ===== */
+var hvCache = [];
+var hvCurrent = null;
+var hvItems = [];
+
+function openHandoverPage() {
+    var old = document.getElementById('hvPageModal');
+    if (old) old.remove();
+    var modal = document.createElement('div');
+    modal.id = 'hvPageModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:55;background:#f1f5f9;overflow-y:auto;';
+    modal.innerHTML =
+        '<div style="position:sticky;top:0;background:#f1f5f9;padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #e2e8f0;z-index:5;">' +
+            '<button id="hvBackBtn" style="width:36px;height:36px;border-radius:12px;background:#fff;border:none;font-size:16px;cursor:pointer;">←</button>' +
+            '<div style="flex:1;"><div style="font-weight:700;color:#1e293b;">Serah Terima Barang</div><div style="font-size:10px;color:#94a3b8;">Dokumen serah terima teknisi — office</div></div>' +
+            (isHead() || currentUser.role === 'admin' ? '<button id="hvAddBtn" style="background:#d4af37;color:#1e293b;border:none;border-radius:12px;padding:9px 14px;font-weight:700;font-size:12px;cursor:pointer;">+ Buat</button>' : '') +
+        '</div>' +
+        '<div style="max-width:760px;margin:0 auto;padding:14px 16px 40px;" id="hvList"></div>';
+    document.body.appendChild(modal);
+    document.getElementById('hvBackBtn').onclick = function() { modal.remove(); };
+    var addBtn = document.getElementById('hvAddBtn');
+    if (addBtn) addBtn.onclick = function() { openHandoverForm(''); };
+    loadHandoverList();
+}
+
+async function loadHandoverList() {
+    var el = document.getElementById('hvList');
+    if (!el) return;
+    el.innerHTML = '<p style="text-align:center;color:#94a3b8;font-size:12px;padding:24px 0;">Memuat...</p>';
+    var res = await sb.from('handover_docs').select('*').order('doc_date', { ascending: false }).order('created_at', { ascending: false });
+    if (res.error) { el.innerHTML = '<p style="text-align:center;color:#dc2626;font-size:12px;">Gagal: ' + res.error.message + '</p>'; return; }
+    hvCache = res.data || [];
+    if (hvCache.length === 0) {
+        el.innerHTML = '<p style="text-align:center;color:#94a3b8;font-size:12px;padding:32px 0;">Belum ada dokumen' + (isHead() ? ' — klik + Buat untuk membuat' : '') + '</p>';
+        return;
+    }
+    el.innerHTML = hvCache.map(function(c) {
+        var tgl = c.doc_date ? c.doc_date.split('-').reverse().join('/') : '-';
+        var del = (isHead() || currentUser.role === 'admin') ? '<button onclick="deleteHandover(\'' + c.id + '\')" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:10px;padding:6px 10px;font-size:10px;font-weight:700;cursor:pointer;">Hapus</button>' : '';
+        return '<div onclick="openHandoverDetail(\'' + c.id + '\')" style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:14px;margin-bottom:10px;cursor:pointer;display:flex;align-items:center;gap:12px;">' +
+            '<div style="width:40px;height:40px;border-radius:12px;background:#1f3864;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="fa-solid fa-right-left"></i></div>' +
+            '<div style="flex:1;min-width:0;"><div style="font-weight:700;color:#1e293b;font-size:12px;">' + (c.doc_number || '-') + '</div>' +
+            '<div style="font-size:11px;color:#64748b;margin-top:2px;">' + (c.purpose || 'Serah terima barang') + '</div>' +
+            '<div style="font-size:10px;color:#94a3b8;margin-top:2px;">' + tgl + ' • ' + (c.venue || '-') + ' • ' + (c.giver_name || '-') + ' → ' + (c.receiver_name || '-') + '</div></div>' +
+            '<div onclick="event.stopPropagation();">' + del + '</div>' +
+        '</div>';
+    }).join('');
+}
+
+async function generateHandoverNumber(dateStr) {
+    var p = (dateStr || todayStr()).split('-');
+    var prefix = 'STR/TEK/' + p[0] + '/' + p[1] + '/';
+    var res = await sb.from('handover_docs').select('doc_number');
+    var max = 0;
+    (res.data || []).forEach(function(d) {
+        var n = d.doc_number || '';
+        if (n.indexOf(prefix) === 0) {
+            var num = parseInt(n.substring(prefix.length), 10);
+            if (num > max) max = num;
+        }
+    });
+    return prefix + String(max + 1).padStart(3, '0');
+}
+
+function addHvRow(v) {
+    v = v || {};
+    var row = document.createElement('div');
+    row.className = 'hvRow';
+    row.style.cssText = 'display:flex;gap:6px;margin-bottom:8px;align-items:flex-start;';
+    row.innerHTML =
+        '<input class="hvItemName" placeholder="Nama barang" value="' + (v.item_name || '') + '" style="flex:2;border:1px solid #e2e8f0;border-radius:10px;padding:8px;font-size:11px;">' +
+        '<input class="hvItemSpec" placeholder="Spesifikasi" value="' + (v.spec || '') + '" style="flex:2;border:1px solid #e2e8f0;border-radius:10px;padding:8px;font-size:11px;">' +
+        '<input class="hvItemQty" type="number" min="1" placeholder="Qty" value="' + (v.qty || 1) + '" style="width:56px;border:1px solid #e2e8f0;border-radius:10px;padding:8px;font-size:11px;">' +
+        '<input class="hvItemUnit" placeholder="Satuan" value="' + (v.unit || 'pcs') + '" style="width:64px;border:1px solid #e2e8f0;border-radius:10px;padding:8px;font-size:11px;">' +
+        '<select class="hvItemCond" style="width:92px;border:1px solid #e2e8f0;border-radius:10px;padding:8px;font-size:11px;background:#fff;">' +
+            ['Baik', 'Baru', 'Rusak', 'Perlu Perbaikan'].map(function(x) { return '<option' + ((v.condition || 'Baik') === x ? ' selected' : '') + '>' + x + '</option>'; }).join('') +
+        '</select>' +
+        '<input class="hvItemRemark" placeholder="Ket." value="' + (v.remark || '') + '" style="flex:1.4;border:1px solid #e2e8f0;border-radius:10px;padding:8px;font-size:11px;">' +
+        '<button onclick="this.parentNode.remove()" style="width:28px;height:34px;flex-shrink:0;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:10px;cursor:pointer;font-weight:700;">✕</button>';
+    document.getElementById('hvItemsRows').appendChild(row);
+}
+
+async function openHandoverForm(docId) {
+    var item = null;
+    if (docId) {
+        hvCache.forEach(function(x) { if (x.id === docId) item = x; });
+        if (!item) { showToast('Data tidak ditemukan', 'error'); return; }
+    }
+    var old = document.getElementById('hvFormModal');
+    if (old) old.remove();
+    var modal = document.createElement('div');
+    modal.id = 'hvFormModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:60;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:14px;';
+    modal.innerHTML =
+        '<div style="background:#fff;border-radius:20px;max-width:640px;width:100%;max-height:92vh;overflow-y:auto;padding:18px;">' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
+                '<h3 style="font-weight:700;font-size:15px;color:#1e293b;">' + (docId ? 'Edit Dokumen' : 'Buat Serah Terima') + '</h3>' +
+                '<button onclick="document.getElementById(\'hvFormModal\').remove()" style="width:30px;height:30px;border-radius:50%;background:#f1f5f9;border:none;cursor:pointer;">✕</button>' +
+            '</div>' +
+            '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
+                '<div style="flex:1;"><label style="display:block;font-size:9px;font-weight:700;color:#94a3b8;margin-bottom:3px;">TANGGAL *</label>' +
+                '<input type="date" id="hvDate" value="' + (item ? item.doc_date : todayStr()) + '" style="width:100%;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;font-size:12px;"></div>' +
+                '<div style="flex:1;"><label style="display:block;font-size:9px;font-weight:700;color:#94a3b8;margin-bottom:3px;">AREA (SIC)</label>' +
+                '<select id="hvVenue" style="width:100%;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;font-size:12px;background:#fff;"><option>SIC Masterpiece</option><option>SIC Dominion Lounge</option></select></div>' +
+            '</div>' +
+            '<label style="display:block;font-size:9px;font-weight:700;color:#94a3b8;margin-bottom:3px;">MAKSUD / JENIS SERAH TERIMA *</label>' +
+            '<input type="text" id="hvPurpose" placeholder="Contoh: Serah terima decor, Pengembalian tools" value="' + (item ? (item.purpose || '') : '') + '" style="width:100%;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;font-size:12px;margin-bottom:10px;">' +
+            '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
+                '<div style="flex:1;"><label style="display:block;font-size:9px;font-weight:700;color:#94a3b8;margin-bottom:3px;">PENANGGUNG JAWAB TEKNISI (PENYERAH)</label>' +
+                '<input type="text" id="hvGiverName" value="' + (item ? (item.giver_name || '') : 'Billy Suhendi') + '" style="width:100%;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;font-size:12px;"></div>' +
+                '<div style="flex:1;"><label style="display:block;font-size:9px;font-weight:700;color:#94a3b8;margin-bottom:3px;">JABATAN PENYERAH</label>' +
+                '<input type="text" id="hvGiverRole" value="' + (item ? (item.giver_role || '') : 'Head Teknisi') + '" style="width:100%;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;font-size:12px;"></div>' +
+            '</div>' +
+            '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
+                '<div style="flex:1;"><label style="display:block;font-size:9px;font-weight:700;color:#94a3b8;margin-bottom:3px;">NAMA PENERIMA (OFFICE) *</label>' +
+                '<input type="text" id="hvRecvName" placeholder="Nama pihak office" value="' + (item ? (item.receiver_name || '') : '') + '" style="width:100%;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;font-size:12px;"></div>' +
+                '<div style="flex:1;"><label style="display:block;font-size:9px;font-weight:700;color:#94a3b8;margin-bottom:3px;">JABATAN / DIVISI PENERIMA</label>' +
+                '<input type="text" id="hvRecvRole" placeholder="Contoh: Office" value="' + (item ? (item.receiver_role || '') : 'Office') + '" style="width:100%;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;font-size:12px;"></div>' +
+            '</div>' +
+            '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:10px;margin-bottom:10px;">' +
+                '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">' +
+                    '<span style="font-size:10px;font-weight:700;color:#334155;">DAFTAR BARANG *</span>' +
+                    '<button onclick="addHvRow()" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:8px;padding:5px 10px;font-size:10px;font-weight:700;cursor:pointer;">+ Baris</button>' +
+                '</div>' +
+                '<div id="hvItemsRows"></div>' +
+            '</div>' +
+            '<label style="display:block;font-size:9px;font-weight:700;color:#94a3b8;margin-bottom:3px;">KETERANGAN UMUM (OPSIONAL)</label>' +
+            '<textarea id="hvNote" rows="2" style="width:100%;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;font-size:12px;margin-bottom:12px;">' + (item ? (item.note || '') : '') + '</textarea>' +
+            '<button onclick="saveHandover(\'' + (docId || '') + '\')" style="width:100%;background:#d4af37;color:#1e293b;font-weight:700;padding:12px;border-radius:12px;border:none;cursor:pointer;">Simpan Dokumen</button>' +
+        '</div>';
+    document.body.appendChild(modal);
+    if (item) document.getElementById('hvVenue').value = item.venue || 'SIC Masterpiece';
+    if (docId) {
+        var iRes = await sb.from('handover_items').select('*').eq('doc_id', docId).order('created_at');
+        (iRes.data || []).forEach(function(v) { addHvRow(v); });
+        if ((iRes.data || []).length === 0) addHvRow();
+    } else {
+        addHvRow();
+    }
+}
+
+async function saveHandover(docId) {
+    var doc_date = document.getElementById('hvDate').value;
+    var venue = document.getElementById('hvVenue').value;
+    var purpose = document.getElementById('hvPurpose').value.trim();
+    var giver_name = document.getElementById('hvGiverName').value.trim();
+    var giver_role = document.getElementById('hvGiverRole').value.trim();
+    var receiver_name = document.getElementById('hvRecvName').value.trim();
+    var receiver_role = document.getElementById('hvRecvRole').value.trim();
+    var note = document.getElementById('hvNote').value.trim();
+    if (!doc_date || !purpose || !receiver_name) { showToast('Lengkapi Tanggal, Maksud, & Nama Penerima', 'error'); return; }
+    var rows = document.querySelectorAll('#hvItemsRows .hvRow');
+    var items = [];
+    rows.forEach(function(r) {
+        var name = r.querySelector('.hvItemName').value.trim();
+        if (!name) return;
+        items.push({
+            item_name: name,
+            spec: r.querySelector('.hvItemSpec').value.trim(),
+            qty: parseFloat(r.querySelector('.hvItemQty').value) || 1,
+            unit: r.querySelector('.hvItemUnit').value.trim() || 'pcs',
+            condition: r.querySelector('.hvItemCond').value,
+            remark: r.querySelector('.hvItemRemark').value.trim()
+        });
+    });
+    if (items.length === 0) { showToast('Isi minimal 1 barang', 'error'); return; }
+    showToast('Menyimpan...');
+    var docIdFinal = docId;
+    if (docId) {
+        var up = await sb.from('handover_docs').update({
+            doc_date: doc_date, venue: venue, purpose: purpose,
+            giver_name: giver_name, giver_role: giver_role,
+            receiver_name: receiver_name, receiver_role: receiver_role, note: note
+        }).eq('id', docId);
+        if (up.error) { showToast('Gagal: ' + up.error.message, 'error'); return; }
+        await sb.from('handover_items').delete().eq('doc_id', docId);
+    } else {
+        var docNumber = await generateHandoverNumber(doc_date);
+        var ins = await sb.from('handover_docs').insert({
+            doc_number: docNumber, doc_date: doc_date, venue: venue, purpose: purpose,
+            giver_name: giver_name, giver_role: giver_role,
+            receiver_name: receiver_name, receiver_role: receiver_role, note: note,
+            created_by: currentUser.id
+        }).select().single();
+        if (ins.error) { showToast('Gagal: ' + ins.error.message, 'error'); return; }
+        docIdFinal = ins.data.id;
+    }
+    items.forEach(function(it) { it.doc_id = docIdFinal; });
+    var insItems = await sb.from('handover_items').insert(items);
+    if (insItems.error) { showToast('Barang gagal: ' + insItems.error.message, 'error'); return; }
+    showToast(docId ? 'Dokumen diperbarui!' : 'Dokumen dibuat!');
+    document.getElementById('hvFormModal').remove();
+    loadHandoverList();
+}
+
+async function deleteHandover(id) {
+    if (!confirm('Hapus dokumen serah terima ini beserta daftar barangnya?')) return;
+    var res = await sb.from('handover_docs').delete().eq('id', id);
+    if (res.error) { showToast('Gagal: ' + res.error.message, 'error'); return; }
+    showToast('Dokumen dihapus');
+    loadHandoverList();
+}
+
+async function openHandoverDetail(id) {
+    var c = null;
+    hvCache.forEach(function(x) { if (x.id === id) c = x; });
+    if (!c) return;
+    hvCurrent = c;
+    var iRes = await sb.from('handover_items').select('*').eq('doc_id', id).order('created_at');
+        if (iRes.error) { showToast('Gagal memuat barang: ' + iRes.error.message, 'error'); }
+    hvItems = iRes.data || [];
+    var old = document.getElementById('hvDetailModal');
+    if (old) old.remove();
+    var modal = document.createElement('div');
+    modal.id = 'hvDetailModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:58;background:#f1f5f9;overflow-y:auto;';
+    modal.innerHTML =
+        '<div style="position:sticky;top:0;background:#f1f5f9;padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #e2e8f0;z-index:5;">' +
+            '<button id="hvDetBack" style="width:36px;height:36px;border-radius:12px;background:#fff;border:none;font-size:16px;cursor:pointer;">←</button>' +
+            '<div style="flex:1;min-width:0;"><div style="font-weight:700;color:#1e293b;font-size:13px;">' + (c.doc_number || '-') + '</div><div style="font-size:10px;color:#94a3b8;">' + (c.purpose || '-') + '</div></div>' +
+            '<button id="hvPdfBtn" style="background:#b91c1c;color:#fff;border:none;border-radius:12px;padding:9px 12px;font-weight:700;font-size:11px;cursor:pointer;">PDF</button>' +
+            '<button id="hvXlsBtn" style="background:#1f3864;color:#fff;border:none;border-radius:12px;padding:9px 12px;font-weight:700;font-size:11px;cursor:pointer;">Excel</button>' +
+            ((isHead() || currentUser.role === 'admin') ? '<button id="hvEditBtn" style="background:#d4af37;color:#1e293b;border:none;border-radius:12px;padding:9px 12px;font-weight:700;font-size:11px;cursor:pointer;">Edit</button>' : '') +
+        '</div>' +
+        '<div style="max-width:860px;margin:0 auto;padding:14px 12px 40px;" id="hvDetailBody"></div>';
+    document.body.appendChild(modal);
+    document.getElementById('hvDetBack').onclick = function() { modal.remove(); openHandoverPage(); };
+    document.getElementById('hvXlsBtn').onclick = downloadHandoverExcel;
+    document.getElementById('hvPdfBtn').onclick = printHandoverPDF;
+    var editBtn = document.getElementById('hvEditBtn');
+    if (editBtn) editBtn.onclick = function() { modal.remove(); openHandoverForm(c.id); };
+    var tgl = c.doc_date ? c.doc_date.split('-').reverse().join('/') : '-';
+    var rows = hvItems.map(function(x, i) {
+        return '<tr style="background:' + (i % 2 === 1 ? '#f8fafc' : '#fff') + ';">' +
+            '<td style="border:1px solid #e2e8f0;padding:8px;text-align:center;font-size:11px;">' + (i + 1) + '</td>' +
+            '<td style="border:1px solid #e2e8f0;padding:8px;font-size:11px;font-weight:600;color:#1e293b;">' + (x.item_name || '-') + '</td>' +
+            '<td style="border:1px solid #e2e8f0;padding:8px;font-size:11px;color:#475569;">' + (x.spec || '-') + '</td>' +
+            '<td style="border:1px solid #e2e8f0;padding:8px;text-align:center;font-size:11px;">' + (x.qty || '-') + ' ' + (x.unit || '') + '</td>' +
+            '<td style="border:1px solid #e2e8f0;padding:8px;text-align:center;font-size:11px;">' + (x.condition || '-') + '</td>' +
+            '<td style="border:1px solid #e2e8f0;padding:8px;font-size:11px;color:#475569;">' + (x.remark || '-') + '</td>' +
+        '</tr>';
+    }).join('');
+    document.getElementById('hvDetailBody').innerHTML =
+        '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:16px;margin-bottom:12px;">' +
+            '<div style="display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:#475569;">' +
+                '<div><span style="color:#94a3b8;">No. Dokumen:</span> <b>' + (c.doc_number || '-') + '</b></div>' +
+                '<div><span style="color:#94a3b8;">Tanggal:</span> <b>' + tgl + '</b></div>' +
+                '<div><span style="color:#94a3b8;">Area:</span> <b>' + (c.venue || '-') + '</b></div>' +
+            '</div>' +
+            '<div style="display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:#475569;margin-top:6px;">' +
+                '<div><span style="color:#94a3b8;">Penyerang:</span> <b>' + (c.giver_name || '-') + '</b> (' + (c.giver_role || '-') + ')</div>' +
+                '<div><span style="color:#94a3b8;">Penerima:</span> <b>' + (c.receiver_name || '-') + '</b> (' + (c.receiver_role || '-') + ')</div>' +
+            '</div>' +
+            (c.note ? '<div style="font-size:11px;color:#475569;margin-top:6px;"><span style="color:#94a3b8;">Keterangan:</span> ' + c.note + '</div>' : '') +
+        '</div>' +
+        '<div style="overflow-x:auto;background:#fff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;">' +
+        '<table style="width:100%;border-collapse:collapse;min-width:560px;">' +
+            '<thead><tr>' +
+                ['No', 'Nama Barang', 'Spesifikasi', 'Qty', 'Kondisi', 'Ket.'].map(function(h) {
+                    return '<th style="background:#1f3864;color:#fff;font-size:10px;padding:9px 6px;border:1px solid #1f3864;text-align:center;">' + h + '</th>';
+                }).join('') +
+            '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+function hvFileName() {
+    var c = hvCurrent;
+    var no = (c.doc_number || 'STR').replace(/\//g, '-');
+    return 'Serah_Terima_Barang_' + no + '_' + (c.doc_date || todayStr());
+}
+
+/* ===== EXCEL SERAH TERIMA (A4 PORTRAIT) ===== */
+function downloadHandoverExcel() {
+    (async function() {
+        if (!hvCurrent) return;
+        showToast('Menyiapkan file Excel...');
+        var c = hvCurrent;
+        var tgl = c.doc_date ? c.doc_date.split('-').reverse().join('/') : '-';
+        var wb = new ExcelJS.Workbook();
+        var ws = wb.addWorksheet('Serah Terima');
+        ws.pageSetup = { orientation: 'portrait', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0, horizontalCentered: true };
+
+        ws.mergeCells('A1:G1');
+        var t1 = ws.getCell('A1');
+        t1.value = 'BERITA ACARA SERAH TERIMA BARANG';
+        t1.font = { bold: true, size: 13, color: { argb: 'FF1E293B' } };
+        t1.alignment = { horizontal: 'center', vertical: 'middle' };
+        ws.getRow(1).height = 24;
+
+        ws.mergeCells('A2:G2');
+        ws.getCell('A2').value = 'MIDPOINT BUILDING';
+        ws.getCell('A2').font = { bold: true, size: 10, color: { argb: 'FF64748B' } };
+        ws.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
+
+        ws.mergeCells('A3:G3');
+        ws.getCell('A3').value = 'No. Dokumen: ' + (c.doc_number || '-') + '  |  Tanggal: ' + tgl + '  |  Area: ' + (c.venue || '-');
+        ws.getCell('A3').font = { size: 9, color: { argb: 'FF334155' } };
+        ws.getCell('A3').alignment = { horizontal: 'center', vertical: 'middle' };
+
+        ws.mergeCells('A4:G4');
+        ws.getCell('A4').value = 'Maksud: ' + (c.purpose || 'Serah terima barang');
+        ws.getCell('A4').font = { bold: true, size: 9, color: { argb: 'FF334155' } };
+        ws.getCell('A4').alignment = { horizontal: 'center', vertical: 'middle' };
+
+        var headerRow = ws.getRow(6);
+        headerRow.values = ['No', 'Nama Barang', 'Spesifikasi', 'Qty', 'Satuan', 'Kondisi', 'Keterangan'];
+        headerRow.eachCell(function(cell) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3864' } };
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
+            cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        });
+        headerRow.height = 20;
+
+        hvItems.forEach(function(x, idx) {
+            var row = ws.getRow(7 + idx);
+            row.values = [idx + 1, x.item_name, x.spec || '-', x.qty || 1, x.unit || 'pcs', x.condition || 'Baik', x.remark || '-'];
+            row.eachCell(function(cell, col) {
+                cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+                cell.alignment = { vertical: 'middle', horizontal: (col === 1 || col === 4 || col === 5 || col === 6) ? 'center' : 'left', wrapText: true };
+                cell.font = { size: 9 };
+                if (idx % 2 === 1) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+            });
+            row.height = 20;
+        });
+
+        ws.columns = [{ width: 4 }, { width: 22 }, { width: 24 }, { width: 6 }, { width: 8 }, { width: 13 }, { width: 18 }];
+
+        if (c.note) {
+            var rNote = 7 + hvItems.length + 1;
+            ws.mergeCells('A' + rNote + ':G' + rNote);
+            ws.getCell('A' + rNote).value = 'Keterangan: ' + c.note;
+            ws.getCell('A' + rNote).font = { italic: true, size: 9, color: { argb: 'FF475569' } };
+            ws.getCell('A' + rNote).alignment = { wrapText: true, vertical: 'middle' };
+            ws.getRow(rNote).height = 26;
+        }
+
+        /* Tanda tangan: tanggal di kanan atas, di atas Yang Menerima */
+        var now = new Date();
+        var tglStr = now.getDate() + ' ' + bulanIndo()[now.getMonth()] + ' ' + now.getFullYear();
+        var rTgl = 7 + hvItems.length + 4;
+        var rLabel = rTgl + 2;
+        var rNama = rLabel + 5;
+
+        ws.mergeCells('F' + rTgl + ':G' + rTgl);
+        ws.getCell('F' + rTgl).value = tglStr;
+        ws.getCell('F' + rTgl).font = { size: 9, color: { argb: 'FF334155' } };
+        ws.getCell('F' + rTgl).alignment = { horizontal: 'right' };
+
+        ws.mergeCells('A' + rLabel + ':C' + rLabel);
+        ws.getCell('A' + rLabel).value = 'Yang Menyerahkan,';
+        ws.getCell('A' + rLabel).font = { size: 9, color: { argb: 'FF334155' } };
+
+        ws.mergeCells('E' + rLabel + ':G' + rLabel);
+        ws.getCell('E' + rLabel).value = 'Yang Menerima,';
+        ws.getCell('E' + rLabel).font = { size: 9, color: { argb: 'FF334155' } };
+
+        ws.mergeCells('A' + rNama + ':C' + rNama);
+        ws.getCell('A' + rNama).value = c.giver_name || 'Billy Suhendi';
+        ws.getCell('A' + rNama).font = { bold: true, size: 10, color: { argb: 'FF1E293B' }, underline: true };
+        ws.mergeCells('E' + rNama + ':G' + rNama);
+        ws.getCell('E' + rNama).value = c.receiver_name || '( .................... )';
+        ws.getCell('E' + rNama).font = { bold: true, size: 10, color: { argb: 'FF1E293B' }, underline: true };
+
+        ws.mergeCells('A' + (rNama + 1) + ':C' + (rNama + 1));
+        ws.getCell('A' + (rNama + 1)).value = c.giver_role || 'Head Teknisi';
+        ws.getCell('A' + (rNama + 1)).font = { size: 9, color: { argb: 'FF64748B' } };
+        ws.mergeCells('E' + (rNama + 1) + ':G' + (rNama + 1));
+        ws.getCell('E' + (rNama + 1)).value = c.receiver_role || 'Office';
+        ws.getCell('E' + (rNama + 1)).font = { size: 9, color: { argb: 'FF64748B' } };
+
+        var buf = await wb.xlsx.writeBuffer();
+        var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = hvFileName() + '.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        showToast('Excel berhasil di-download');
+    })();
+}
+
+/* ===== PDF SERAH TERIMA (A4 PORTRAIT) ===== */
+function printHandoverPDF() {
+    if (!hvCurrent) return;
+    var c = hvCurrent;
+    var tgl = c.doc_date ? c.doc_date.split('-').reverse().join('/') : '-';
+    var rows = hvItems.map(function(x, i) {
+        return '<tr>' +
+            '<td class="c">' + (i + 1) + '</td>' +
+            '<td>' + (x.item_name || '-') + '</td>' +
+            '<td>' + (x.spec || '-') + '</td>' +
+            '<td class="c">' + (x.qty || 1) + '</td>' +
+            '<td class="c">' + (x.unit || 'pcs') + '</td>' +
+            '<td class="c">' + (x.condition || 'Baik') + '</td>' +
+            '<td>' + (x.remark || '-') + '</td>' +
+        '</tr>';
+    }).join('');
+    var now = new Date();
+    var tglStr = now.getDate() + ' ' + bulanIndo()[now.getMonth()] + ' ' + now.getFullYear();
+    var doc = '<html><head><meta charset="utf-8"><title>' + hvFileName() + '</title><style>' +
+        '@page { size: A4 portrait; margin: 14mm; }' +
+        'body { font-family: Arial, sans-serif; color: #1e293b; margin: 0; }' +
+        'h1 { text-align: center; font-size: 14pt; margin: 0; }' +
+        '.sub { text-align: center; font-size: 10pt; font-weight: bold; color: #475569; margin: 2px 0 0; }' +
+        '.info { text-align: center; font-size: 9pt; margin: 8px 0 0; }' +
+        '.maksud { text-align: center; font-size: 9.5pt; font-weight: bold; margin: 6px 0 12px; }' +
+        'table { width: 100%; border-collapse: collapse; }' +
+        'th { background: #4a5568; color: #fff; font-size: 8.5pt; padding: 6px 4px; border: 1px solid #4a5568; }' +
+        'td { border: 1px solid #94a3b8; font-size: 9pt; padding: 5px 6px; }' +
+        'tr:nth-child(even) td { background: #f1f5f9; }' +
+        '.c { text-align: center; }' +
+        '.ket { font-size: 9pt; margin-top: 10px; font-style: italic; color: #475569; }' +
+        '.ttd { width: 100%; margin-top: 4px; font-size: 10pt; }' +
+        '.ttd td { border: none; background: none !important; vertical-align: top; }' +
+        '.nm { display: inline-block; margin-top: 56px; font-weight: bold; text-decoration: underline; }' +
+        '.jab { font-size: 9pt; color: #64748b; }' +
+        '</style></head><body>' +
+        '<h1>BERITA ACARA SERAH TERIMA BARANG</h1>' +
+        '<p class="sub">MIDPOINT BUILDING</p>' +
+        '<p class="info">No. Dokumen: <b>' + (c.doc_number || '-') + '</b> &nbsp;|&nbsp; Tanggal: <b>' + tgl + '</b> &nbsp;|&nbsp; Area: <b>' + (c.venue || '-') + '</b></p>' +
+        '<p class="maksud">' + (c.purpose || 'Serah terima barang') + '</p>' +
+        '<table><thead><tr><th style="width:5%;">No</th><th style="width:22%;">Nama Barang</th><th style="width:24%;">Spesifikasi</th><th style="width:6%;">Qty</th><th style="width:9%;">Satuan</th><th style="width:12%;">Kondisi</th><th>Keterangan</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+        (c.note ? '<p class="ket">Keterangan: ' + c.note + '</p>' : '') +
+        '<p style="text-align:right;font-size:9.5pt;margin:16px 0 2px;">' + tglStr + '</p>' +
+        '<table class="ttd"><tr>' +
+            '<td style="width:50%;">Yang Menyerahkan,<br><span class="nm">' + (c.giver_name || 'Billy Suhendi') + '</span><br><span class="jab">' + (c.giver_role || 'Head Teknisi') + '</span></td>' +
+            '<td style="width:50%;text-align:right;">Yang Menerima,<br><span class="nm">' + (c.receiver_name || '( .................... )') + '</span><br><span class="jab">' + (c.receiver_role || 'Office') + '</span></td>' +
+        '</tr></table>' +
+        '</body></html>';
+    var iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;width:0;height:0;border:0;left:-9999px;';
+    document.body.appendChild(iframe);
+    var dw = iframe.contentWindow.document;
+    dw.open();
+    dw.write(doc);
+    dw.close();
+    setTimeout(function() {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        setTimeout(function() { iframe.remove(); }, 2000);
+    }, 400);
+}
 </script>
 </body>
 </html>
