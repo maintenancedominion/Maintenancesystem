@@ -12983,7 +12983,6 @@ log('PM AKSES v1 aktif - Edit/Hapus hanya untuk Head, lainnya hanya Tambah');
   if (window.__SRE2_AKTIF) { return; }
   window.__SRE2_AKTIF = true;
   console.log('[SRE2] Stock Request Estimasi v2 aktif (input langsung di addStockItemRow)');
-  try { showToast('SR Estimasi v2 aktif'); } catch (e) { }
 
   /* ================= KONFIG GAMBAR ================= */
   var SRE_BRAND = 'MIDPOINT SQUARE Building.';
@@ -13674,6 +13673,2420 @@ log('PM AKSES v1 aktif - Edit/Hapus hanya untuk Head, lainnya hanya Tambah');
 })();
 </script>
 <!-- ============ AKHIR STOCK REQUEST ESTIMASI v2 ============ -->
- 
+ <!-- ================================================================
+  SR FOTO FIX v1  (console: [SRF1])
+  Masalah: kolom "Foto Barang (Opsional)" tidak tampil di form Stock
+  Request, padahal estimasi sudah jalan. Faktanya input foto TIDAK
+  boleh hilang total dari halaman - kalau benar-benar terhapus, form malah
+  tidak bisa dibuka (openStockForm membaca elemen itu). Jadi inputnya
+  masih ada di halaman, hanya NYASAR di luar form / tersembunyi
+  (kemungkinan ikut tergeser saat dulu membereskan blok FOTO BARANG).
+  Blok ini TIDAK mengubah blok lain. Tugasnya hanya memastikan:
+  1) Input foto + kotak preview ADA & TAMPIL di dalam form Stock Request
+     - ketemu nyasar di luar form -> dikembalikan ke tempat semestinya
+     - ada tapi disembunyikan -> ditampilkan lagi
+     - benar-benar tidak ada -> dibuat baru (ID & perilaku sama persis
+       dengan bawaan aplikasi, jadi simpan/upload foto tetap jalan)
+  2) Baris "Total Estimasi Biaya" dipastikan ada di dalam form
+     (kalau elemen #stockTotal nyasar di luar form, total live tidak
+     kelihatan - ID ganda dilucuti agar tidak salah sasaran)
+  3) Cek otomatis: saat load, saat form dibuka, tiap 1.5 detik
+  Cara pasang: tempel PALING BAWAH index.html, tepat sebelum </body>
+  (di bawah blok STOCK REQUEST ESTIMASI v2). TANPA SQL.
+================================================================ -->
+<script>
+(function () {
+  'use strict';
+  if (window.__SRF1_AKTIF) { return; }
+  window.__SRF1_AKTIF = true;
+  console.log('[SRF1] SR Foto Fix v1 aktif');
+
+  /* ================= HELPER ================= */
+  function srfDalam(el, root) { return !!(el && root && root.contains(el)); }
+
+  function srfSemuaId(id) {
+    try { return Array.prototype.slice.call(document.querySelectorAll('[id="' + id + '"]')); }
+    catch (e) { return []; }
+  }
+
+  /* tampilkan lagi elemen yang disembunyikan (kecuali overlay modal itu sendiri) */
+  function srfTampil(el) {
+    if (!el) return;
+    if (el.id === 'stockModal') return;
+    if (el.classList && el.classList.contains('modal-overlay')) return;
+    if (el.style && el.style.display === 'none') { el.style.display = ''; }
+    if (el.classList && el.classList.contains('hidden')) { el.classList.remove('hidden'); }
+  }
+
+  /* lucuti ID elemen ganda / nyasar + sembunyikan, supaya aplikasi
+     tidak salah sasaran saat getElementById */
+  function srfLucuti(el) {
+    if (!el) return;
+    el.removeAttribute('id');
+    el.setAttribute('data-srf-orphan', '1');
+    if (el.style) { el.style.display = 'none'; }
+  }
+
+  /* sembunyikan bungkus sampah yang tersisa (aman: tidak ada tombol/input lagi) */
+  function srfBungkusSampah(el) {
+    if (!el || el === document.body || el.id === 'stockModal') return;
+    if (el.classList && el.classList.contains('modal-overlay')) return;
+    try {
+      if (el.querySelector && el.querySelector('button, input, select, textarea, a')) return;
+      var t = (el.textContent || '').trim();
+      if (t.length > 200) return;
+    } catch (e) { return; }
+    if (el.style) { el.style.display = 'none'; }
+    el.setAttribute('data-srf-orphan', '1');
+  }
+
+  /* kontainer isi modal (section foto disisipkan paling bawah di sini) */
+  function srfHost(modal, body) {
+    var h = null;
+    try { if (srfDalam(body, modal)) { h = body.closest('.p-5') || body.closest('.p-4'); } } catch (e) { }
+    if (!h && modal) { h = modal.querySelector('.modal-content .p-5, .modal-content .p-4'); }
+    if (!h && modal) { h = modal.querySelector('.modal-content'); }
+    return h || modal;
+  }
+
+  function srfLabelFoto() {
+    var l = document.createElement('label');
+    l.className = 'text-[10px] font-600 text-navy-400 uppercase tracking-wider mb-1.5 block';
+    l.textContent = 'Foto Barang (Opsional)';
+    return l;
+  }
+
+  /* pastikan tepat SATU #stockFilePreview, di dalam modal */
+  function srfPreviewFix(modal) {
+    var semua = srfSemuaId('stockFilePreview');
+    var pv = null, i;
+    for (i = 0; i < semua.length; i++) { if (!pv && srfDalam(semua[i], modal)) pv = semua[i]; }
+    for (i = 0; i < semua.length; i++) { if (!pv && !srfDalam(semua[i], modal)) pv = semua[i]; }
+    var dibuat = false;
+    if (!pv) {
+      pv = document.createElement('div');
+      pv.id = 'stockFilePreview';
+      pv.className = 'grid grid-cols-4 sm:grid-cols-6 gap-2 mt-3';
+      dibuat = true;
+    }
+    for (i = 0; i < semua.length; i++) { if (semua[i] !== pv) { srfLucuti(semua[i]); } }
+    srfTampil(pv);
+    if (dibuat) { console.log('[SRF1] Kotak preview foto dibuat baru di dalam form'); }
+    return pv;
+  }
+
+  /* pilih #stockItemsBody yang ada di DALAM modal (jaga-jaga kalau ada ID ganda) */
+  function srfBody(modal) {
+    var semua = srfSemuaId('stockItemsBody');
+    var i;
+    for (i = 0; i < semua.length; i++) { if (!modal || srfDalam(semua[i], modal)) return semua[i]; }
+    return semua[0] || null;
+  }
+
+  /* ================= PERIKSA & PERBAIKI ================= */
+  function srfPeriksa() {
+    var modal = document.getElementById('stockModal');
+    if (!modal) return;
+    var body = srfBody(modal);
+    if (!body) return;
+    var host = srfHost(modal, body);
+    var i, el;
+
+    /* ===== 1. INPUT FOTO ===== */
+    var ins = srfSemuaId('stockFileInput');
+    var inputModal = null;
+    for (i = 0; i < ins.length; i++) { if (!inputModal && srfDalam(ins[i], modal)) inputModal = ins[i]; }
+
+    if (inputModal) {
+      /* input sudah di dalam form: lucuti semua duplikat/nyasar di luar */
+      for (i = 0; i < ins.length; i++) {
+        el = ins[i];
+        if (el !== inputModal) { var wr = el.parentElement; srfLucuti(el); srfBungkusSampah(wr); }
+      }
+      srfTampil(inputModal);
+      var pv0 = srfPreviewFix(modal);
+      if (pv0 && pv0.parentElement !== inputModal.parentElement) {
+        if (inputModal.parentNode) { inputModal.parentNode.insertBefore(pv0, inputModal.nextSibling); }
+        else { host.appendChild(pv0); }
+      }
+      srfTampil(inputModal.parentElement);
+    } else {
+      /* tidak ada di dalam form: pakai yang nyasar (kalau ada), kalau tidak buat baru */
+      var sumber = null;
+      for (i = 0; i < ins.length; i++) { if (!sumber && !srfDalam(ins[i], modal)) sumber = ins[i]; }
+
+      var sec = document.createElement('div');
+      sec.setAttribute('data-srf', 'foto');
+      sec.appendChild(srfLabelFoto());
+
+      if (sumber) {
+        var bungkusLama = sumber.parentElement;
+        if (!sumber.getAttribute('onchange')) { sumber.setAttribute('onchange', 'handleStockFile(this.files)'); }
+        if (!sumber.getAttribute('accept')) { sumber.setAttribute('accept', 'image/*'); }
+        try { if (String(sumber.type).toLowerCase() !== 'file') { sumber.type = 'file'; } } catch (e) { }
+        srfTampil(sumber);
+        sec.appendChild(sumber);
+        srfBungkusSampah(bungkusLama);
+        console.log('[SRF1] Input foto ditemukan nyasar di luar form -> dikembalikan ke dalam form');
+      } else {
+        sumber = document.createElement('input');
+        sumber.type = 'file';
+        sumber.id = 'stockFileInput';
+        sumber.className = 'form-input text-xs p-2';
+        sumber.setAttribute('accept', 'image/*');
+        sumber.setAttribute('multiple', 'multiple');
+        sumber.setAttribute('onchange', 'handleStockFile(this.files)');
+        sec.appendChild(sumber);
+        console.log('[SRF1] Input foto tidak ditemukan -> dibuat baru di dalam form');
+      }
+      sec.appendChild(srfPreviewFix(modal));
+
+      var det = body.parentElement;
+      if (det && det !== host && host.contains(det)) { host.insertBefore(sec, det.nextSibling); }
+      else { host.appendChild(sec); }
+
+      /* lucuti sisa input foto lain (duplikat) */
+      for (i = 0; i < ins.length; i++) { if (ins[i] !== sumber) { srfLucuti(ins[i]); } }
+    }
+
+    /* ===== 2. BARIS TOTAL ESTIMASI ===== */
+    var tots = srfSemuaId('stockTotal');
+    var totIn = null;
+    for (i = 0; i < tots.length; i++) { if (!totIn && srfDalam(tots[i], modal)) totIn = tots[i]; }
+    for (i = 0; i < tots.length; i++) {
+      el = tots[i];
+      if (el !== totIn) { var wr2 = el.parentElement; srfLucuti(el); srfBungkusSampah(wr2); }
+    }
+    if (!totIn) {
+      var row = document.createElement('div');
+      row.className = 'flex items-center justify-end gap-2 mt-3 pt-2 border-t border-navy-100';
+      row.setAttribute('data-srf', 'baris-total');
+      var lt = document.createElement('span');
+      lt.className = 'text-xs font-600 text-navy-400';
+      lt.textContent = 'Total Estimasi Biaya:';
+      var vt = document.createElement('span');
+      vt.id = 'stockTotal';
+      vt.className = 'text-sm font-800 text-navy-800';
+      vt.textContent = 'Rp 0';
+      row.appendChild(lt);
+      row.appendChild(vt);
+      body.parentNode.insertBefore(row, body.nextSibling);
+      console.log('[SRF1] Baris Total Estimasi Biaya dipulihkan di dalam form');
+    }
+  }
+  window.__SRF1_PERIKSA = srfPeriksa;
+
+  /* ================= JADWAL OTOMATIS ================= */
+  (function srfJadwal() {
+    var timer = null;
+    function jadwal() {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function () {
+        try { srfPeriksa(); } catch (e) { console.warn('[SRF1]', e); }
+      }, 250);
+    }
+    function pasangObserver() {
+      var b = document.body;
+      if (b && !window.__SRF1_OBS) {
+        window.__SRF1_OBS = new MutationObserver(jadwal);
+        window.__SRF1_OBS.observe(b, { childList: true, subtree: true });
+      }
+    }
+    function bungkusBukaForm() {
+      var f = window.openStockForm;
+      if (typeof f === 'function' && !f.__srf) {
+        var asli = f;
+        var bungkus = function () {
+          var r = asli.apply(this, arguments);
+          setTimeout(function () { try { srfPeriksa(); } catch (e) { } }, 80);
+          return r;
+        };
+        bungkus.__srf = true;
+        window.openStockForm = bungkus;
+      }
+    }
+    pasangObserver();
+    bungkusBukaForm();
+    setTimeout(function () { try { srfPeriksa(); } catch (e) { } }, 400);
+    setInterval(function () {
+      pasangObserver();
+      bungkusBukaForm();
+      try { srfPeriksa(); } catch (e) { }
+    }, 1500);
+  })();
+})();
+</script>
+<!-- ============ AKHIR SR FOTO FIX v1 ============ -->
+<!-- ================================================================
+  SR SAVE & MENU FIX v2  (console: [SRF2])
+  Memperbaiki 3 hal sekaligus, TANPA SQL, blok lama tidak perlu dihapus:
+
+  1) NOTIF PALSU "Masukkan minimal 1 barang" (padahal barang sudah diisi)
+     Penyebab: fungsi simpan lama membaca kartu barang berdasarkan URUTAN
+     input (input ke-0 harus Nama, ke-1 Spesifikasi, dst). Karena ada
+     beberapa blok lama yang menyuntik input tambahan ke dalam kartu
+     (blok foto era lama, estimasi lama, dll), urutannya bergeser ->
+     Nama Barang tidak lagi jadi input pertama -> kartu dianggap kosong.
+     Solusi: fungsi simpan diganti versi baru yang membaca kartu berdasar
+     LABEL (Nama Barang / Spesifikasi / Qty / Satuan / Catatan / Estimasi
+     Harga Satuan) jadi kebal terhadap urutan input. Urutan foto, nomor
+     form, notif ke Head, log aktivitas: sama persis dengan cara lama.
+     Bonus: kolom "Estimasi Harga Satuan (Rp)" dijamin ADA di setiap
+     kartu (kalau tidak ada, dibuat otomatis) -> masalah estimasi yang
+     kadang muncul kadang tidak beres total.
+
+  2) NOTIF PEMBERITAHUAN DIMATIKAN
+     Tulisan "SR Estimasi v2 aktif" dan "SR Foto Fix aktif" yang muncul
+     tiap kali halaman dibuka otomatis dibuang. Tidak perlu menghapus
+     blok lama.
+
+  3) MENU "STOCK REQUEST" DI SIDEBAR KHUSUS HEAD
+     Pengguna selain Head Teknisi tidak lagi melihat menu Stock Request
+     di sidebar. Head tetap melihat seperti biasa.
+
+  Cara pasang: tempel blok ini PALING BAWAH di index.html, tepat
+  sebelum </body> (di bawah blok SR FOTO FIX v1). TANPA SQL.
+================================================================ -->
+<script>
+(function () {
+  'use strict';
+  if (window.__SRF2_AKTIF) { return; }
+  window.__SRF2_AKTIF = true;
+  console.log('[SRF2] SR Save & Menu Fix v2 aktif (simpan berbasis label, notif aktif dimatikan, menu khusus Head)');
+
+  /* ================= HELPER DASAR ================= */
+  function srf2Norm(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim().toLowerCase(); }
+  function srf2Angka(v) {
+    var n = parseFloat(String(v == null ? '' : v).replace(/[^\d.\-]/g, ''));
+    return isNaN(n) ? 0 : n;
+  }
+  function srf2Rp(n) {
+    n = Math.round(Number(n) || 0);
+    var t = String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return (n < 0 ? '-' : '') + t;
+  }
+  function srf2HargaAngka(el) {
+    if (!el) return 0;
+    var v = el.value == null ? '' : String(el.value);
+    if (!v) return 0;
+    if (String(el.type || '').toLowerCase() === 'number') {
+      var n = parseFloat(v);
+      return isNaN(n) ? 0 : n;
+    }
+    var d = v.replace(/[^\d]/g, '');
+    return d ? parseInt(d, 10) : 0;
+  }
+  function srf2Sb() {
+    try { if (typeof sb !== 'undefined' && sb && typeof sb.from === 'function') return sb; } catch (e) { }
+    return (window.sb && typeof window.sb.from === 'function') ? window.sb : null;
+  }
+  function srf2Head() {
+    var u = null;
+    try { u = (typeof currentUser !== 'undefined') ? currentUser : null; } catch (e) { }
+    if (!u) { try { u = window.currentUser || null; } catch (e2) { } }
+    return !!(u && u.role && String(u.role).toLowerCase() === 'head');
+  }
+  function srf2Body() {
+    var modal = null;
+    try { modal = document.getElementById('stockModal'); } catch (e) { }
+    var semua;
+    try { semua = document.querySelectorAll('#stockItemsBody'); } catch (e2) { return null; }
+    if (!semua || semua.length === 0) return null;
+    if (modal) {
+      for (var i = 0; i < semua.length; i++) { if (modal.contains(semua[i])) return semua[i]; }
+    }
+    return semua[0];
+  }
+
+  /* ============ 1. PEMATI NOTIF "AKTIF" ============ */
+  var SRF2_TOAST_MATI = ['sr estimasi v2 aktif', 'sr foto fix aktif'];
+  var SRF2_TOAST_SELESAI = false;
+  setTimeout(function () { SRF2_TOAST_SELESAI = true; }, 8000);
+
+  function srf2ToastTarget(el) {
+    var target = el, p = el.parentElement, jaga = 0;
+    while (p && p !== document.body && jaga < 8) {
+      var cs = null;
+      try { cs = window.getComputedStyle(p); } catch (e) { }
+      var t = srf2Norm(p.textContent);
+      if (cs && (cs.position === 'fixed' || cs.position === 'absolute') && t.length <= 80) { target = p; }
+      p = p.parentElement; jaga++;
+    }
+    return target;
+  }
+  function srf2BunuhDalam(akar) {
+    if (!akar || akar.nodeType !== 1) return;
+    var daftar = [];
+    try { daftar = akar.querySelectorAll('*'); } catch (e) { }
+    var i, el, t;
+    for (i = 0; i < daftar.length; i++) {
+      el = daftar[i];
+      t = srf2Norm(el.textContent);
+      if (t && t.length < 200) {
+        for (var k = 0; k < SRF2_TOAST_MATI.length; k++) {
+          if (t.indexOf(SRF2_TOAST_MATI[k]) !== -1) {
+            var target = srf2ToastTarget(el);
+            if (target && target.parentNode) { target.parentNode.removeChild(target); }
+            else if (target) { target.style.display = 'none'; }
+            console.log('[SRF2] Notif pembuka dibuang:', srf2Norm(target ? target.textContent : t));
+            break;
+          }
+        }
+      }
+    }
+  }
+  function srf2BunuhToast() { srf2BunuhDalam(document.body); }
+
+  /* blokir juga kalau ada yang memanggil lagi di kemudian hari */
+  try {
+    var stAsli = window.showToast;
+    if (typeof stAsli === 'function' && !stAsli.__srf2) {
+      var stBaru = function (msg, tipe) {
+        try {
+          var s = srf2Norm(msg);
+          for (var i = 0; i < SRF2_TOAST_MATI.length; i++) {
+            if (s.indexOf(SRF2_TOAST_MATI[i]) !== -1) { console.log('[SRF2] Notif diblokir:', msg); return; }
+          }
+        } catch (e) { }
+        return stAsli.apply(this, arguments);
+      };
+      stBaru.__srf2 = true;
+      window.showToast = stBaru;
+    }
+  } catch (eW) { }
+
+  /* ============ 2. BACA KARTU BERDASAR LABEL ============ */
+  function srf2KontrolLabel(label) {
+    var host = label.parentElement;
+    var c = null;
+    if (host) { c = host.querySelector('input, select'); }
+    if (!c) {
+      var nx = label.nextElementSibling;
+      if (nx && /^(INPUT|SELECT)$/.test(nx.tagName)) c = nx;
+    }
+    return c;
+  }
+  function srf2CariKontrol(card) {
+    var c = { nama: null, spec: null, qty: null, satuan: null, catatan: null, harga: null };
+    var labels;
+    try { labels = card.querySelectorAll('label'); } catch (e) { return c; }
+    labels.forEach(function (lb) {
+      var t = srf2Norm(lb.textContent);
+      var el = srf2KontrolLabel(lb);
+      if (!el) return;
+      var typeEl = String(el.type || '').toLowerCase();
+      if (t === 'nama barang' && !c.nama) c.nama = el;
+      else if (t === 'spesifikasi' && !c.spec) c.spec = el;
+      else if (t === 'qty' && !c.qty) c.qty = el;
+      else if (t === 'satuan' && !c.satuan) c.satuan = el;
+      else if (t === 'catatan' && !c.catatan) c.catatan = el;
+      else if (t.indexOf('estimasi') !== -1 && t.indexOf('harga') !== -1 && !c.harga &&
+        el.tagName === 'INPUT' && typeEl !== 'hidden') c.harga = el;
+    });
+    /* fallback posisi untuk kartu tanpa label: urutan wajar
+       (teks1 = nama, teks2 = spec, number1 = qty, select1 = satuan, teks3 = catatan) */
+    var vis = [], texts = [], nums = [], sels = [];
+    card.querySelectorAll('input, select').forEach(function (el) {
+      var ty = String(el.type || '').toLowerCase();
+      if (ty === 'hidden' || ty === 'file') return;
+      vis.push(el);
+      if (el.tagName === 'SELECT') sels.push(el);
+      else if (ty === 'number') { if (!el.hasAttribute('data-sre') && !el.hasAttribute('data-se-harga')) nums.push(el); }
+      else if (ty === 'text') texts.push(el);
+    });
+    if (!c.nama && texts[0]) c.nama = texts[0];
+    if (!c.spec && texts[1]) c.spec = texts[1];
+    if (!c.qty && nums[0]) c.qty = nums[0];
+    if (!c.satuan && sels[0]) c.satuan = sels[0];
+    if (!c.catatan && texts[2]) c.catatan = texts[2];
+    if (!c.harga) {
+      var h = card.querySelector('input[data-sre="harga"]');
+      if (!h) {
+        var se = card.querySelector('input[data-se-harga]');
+        if (se && String(se.type || '').toLowerCase() !== 'hidden') h = se;
+      }
+      c.harga = h || null;
+    }
+    return c;
+  }
+  function srf2BacaField(card) {
+    var c = srf2CariKontrol(card);
+    function teks(el) { return el && el.value != null ? String(el.value).trim() : ''; }
+    return {
+      nama: teks(c.nama), spec: teks(c.spec), qty: teks(c.qty),
+      satuan: teks(c.satuan), catatan: teks(c.catatan),
+      harga: srf2HargaAngka(c.harga), _c: c
+    };
+  }
+
+  /* ============ 3. RAPIKAN KARTU + JAMIN KOLON ESTIMASI ============ */
+  function srf2PastiHarga(card) {
+    var h = card.querySelector('input[data-sre="harga"]');
+    if (h) return h;
+    var c = srf2CariKontrol(card);
+    if (c.harga) {
+      /* input estimasi sudah ada (dibuat blok lain) -> cuma diberi penanda
+         supaya tidak dianggap kosong & tidak disuntik ganda oleh blok lama */
+      c.harga.setAttribute('data-sre', 'harga');
+      c.harga.setAttribute('data-se-harga', '1');
+      return c.harga;
+    }
+    var se = card.querySelector('input[data-se-harga]');
+    if (se && String(se.type || '').toLowerCase() !== 'hidden') { se.setAttribute('data-sre', 'harga'); return se; }
+    var wrap = document.createElement('div');
+    wrap.setAttribute('data-srf2', 'harga');
+    wrap.innerHTML =
+      '<label class="text-[10px] text-navy-400 block mb-1">Estimasi Harga Satuan (Rp)</label>' +
+      '<input type="number" min="0" step="any" inputmode="numeric" data-sre="harga" data-se-harga="1" class="form-input text-sm py-2 text-right" placeholder="Contoh: 150000">' +
+      '<div style="text-align:right;font-size:11px;color:#6B7280;">Jumlah: <b data-sre="jumlah" style="color:#111827;">Rp 0</b></div>';
+    card.appendChild(wrap);
+    console.log('[SRF2] Kolom Estimasi Harga Satuan ditambahkan otomatis ke kartu barang');
+    return wrap.querySelector('input');
+  }
+  function srf2Rapikan(card) {
+    if (card.getAttribute('data-srf2-rapi') === '1') return false;
+    var vis = [];
+    card.querySelectorAll('input, select').forEach(function (el) {
+      var ty = String(el.type || '').toLowerCase();
+      /* type=hidden dilewati; type=file IKUT dihitung karena cara baca
+         fungsi simpan lama juga menghitung input file (itu penyebab
+         "Masukkan minimal 1 barang" yang palsu) */
+      if (ty === 'hidden') return;
+      vis.push(el);
+    });
+    if (vis.length < 5) return false;
+    function tipe(el) {
+      if (el.tagName === 'SELECT') return 'select';
+      var t = String(el.type || '').toLowerCase();
+      return t === 'number' ? 'number' : (t === 'text' ? 'text' : t);
+    }
+    function labelDari(el) {
+      var host = el.parentElement;
+      var lb = null, jaga = 0;
+      while (host && host !== card && jaga < 4) {
+        lb = host.querySelector('label');
+        if (lb) break;
+        host = host.parentElement; jaga++;
+      }
+      return lb ? srf2Norm(lb.textContent) : '';
+    }
+    var polaOke = tipe(vis[0]) === 'text' && tipe(vis[1]) === 'text' &&
+      (tipe(vis[2]) === 'number' || tipe(vis[2]) === 'text') &&
+      tipe(vis[3]) === 'select' && tipe(vis[4]) === 'text';
+    var namaOke = false;
+    if (polaOke) {
+      var l0 = labelDari(vis[0]);
+      var ph0 = srf2Norm(vis[0].getAttribute('placeholder'));
+      namaOke = l0.indexOf('nama') !== -1 || ph0.indexOf('nama') !== -1 || ph0.indexOf('kabel') !== -1;
+    }
+    if (polaOke && namaOke) return false; /* sudah benar, jangan diutak-atik */
+
+    var c = srf2CariKontrol(card);
+    if (!c.nama || !c.spec || !c.qty || !c.satuan || !c.catatan) return false;
+    function blok(el) {
+      var b = el;
+      while (b && b.parentElement && b.parentElement !== card) b = b.parentElement;
+      return (b && b.parentElement === card) ? b : null;
+    }
+    var seq = [blok(c.nama), blok(c.spec), blok(c.qty), blok(c.satuan), blok(c.catatan)];
+    for (var i = 0; i < seq.length; i++) { if (!seq[i]) return false; }
+
+    var anak = [];
+    for (var ch = card.firstElementChild; ch; ch = ch.nextElementSibling) anak.push(ch);
+    var header = null;
+    for (var a = 0; a < anak.length; a++) {
+      var elA = anak[a];
+      var t = srf2Norm(elA.textContent);
+      if (t.indexOf('barang ke-') !== -1 && t.length < 80) { header = elA; break; }
+      var btnH = null;
+      try { btnH = elA.querySelector('button[onclick*="remove()"]'); } catch (eB) { }
+      if (btnH && t.length < 80) { header = elA; break; }
+    }
+    /* kalau header tidak dikenali, JANGAN pakai anak pertama - bisa jadi
+       blok liar (mis. input file) yang justru harus dipindah ke belakang */
+
+    var dipakai = [];
+    function unik(b) { if (b && dipakai.indexOf(b) === -1) dipakai.push(b); }
+    unik(header);
+    seq.forEach(unik);
+    var hargaBlok = c.harga ? blok(c.harga) : null;
+    var catatanBlok = blok(c.catatan);
+    if (hargaBlok && hargaBlok !== catatanBlok && dipakai.indexOf(hargaBlok) === -1 && dipakai.length && hargaBlok.parentElement === card) {
+      /* sisipkan blok harga tepat setelah blok catatan */
+      var pos = dipakai.indexOf(catatanBlok);
+      dipakai.splice(pos + 1, 0, hargaBlok);
+    }
+    anak.forEach(unik); /* sisa blok lain tetap dibawa di belakang */
+    for (var d = 0; d < dipakai.length; d++) { card.appendChild(dipakai[d]); }
+    card.setAttribute('data-srf2-rapi', '1');
+    console.log('[SRF2] Urutan isian kartu barang dirapikan (Nama, Spesifikasi, Qty, Satuan, Catatan, Estimasi)');
+    return true;
+  }
+  function srf2SapuKartu() {
+    var modal = null;
+    try { modal = document.getElementById('stockModal'); } catch (e) { }
+    var body = srf2Body();
+    if (!body) return;
+    srf2LucutiGanda(modal);
+    var cards;
+    try { cards = body.querySelectorAll('div.bg-navy-50'); } catch (e2) { return; }
+    cards.forEach(function (card) {
+      try { srf2PastiHarga(card); } catch (e3) { }
+      try { srf2Rapikan(card); } catch (e4) { }
+    });
+    srf2HitungUlang();
+  }
+
+  /* ============ 4. HITUNG JUMLAH & TOTAL (hidup) ============ */
+  function srf2HitungUlang() {
+    var body = srf2Body();
+    var total = 0;
+    if (body) {
+      var cards;
+      try { cards = body.querySelectorAll('div.bg-navy-50'); } catch (e) { cards = []; }
+      cards.forEach(function (card) {
+        var f = srf2BacaField(card);
+        var jml = srf2Angka(f.qty) * (f.harga > 0 ? f.harga : 0);
+        total += jml;
+        var el = card.querySelector('[data-sre="jumlah"]');
+        if (el) el.textContent = 'Rp ' + srf2Rp(jml);
+      });
+    }
+    var tot = null;
+    try { tot = document.getElementById('stockTotal'); } catch (e2) { }
+    if (tot) {
+      tot.textContent = 'Rp ' + srf2Rp(total);
+      var lbl = tot.previousElementSibling;
+      if (lbl && lbl.style && lbl.style.display === 'none') lbl.style.display = '';
+    }
+    return total;
+  }
+  document.addEventListener('input', function (e) {
+    try { if (e.target && e.target.closest && e.target.closest('#stockItemsBody')) srf2HitungUlang(); } catch (e2) { }
+  });
+  document.addEventListener('change', function (e) {
+    try { if (e.target && e.target.closest && e.target.closest('#stockItemsBody')) srf2HitungUlang(); } catch (e2) { }
+  });
+
+  /* ============ 5. KUMPULKAN ITEM (berbasis label) ============ */
+  function srf2KumpulkanItems() {
+    var body = srf2Body();
+    var out = [];
+    if (!body) return out;
+    var cards;
+    try { cards = body.querySelectorAll('div.bg-navy-50'); } catch (e) { return out; }
+    cards.forEach(function (card, idx) {
+      var f = srf2BacaField(card);
+      var nama = (f.nama || '').trim();
+      if (!nama) return;
+      out.push({
+        no: idx + 1, nama: nama, spec: f.spec || '', qty: f.qty || '',
+        satuan: f.satuan || '', catatan: f.catatan || '',
+        harga: f.harga > 0 ? f.harga : null
+      });
+    });
+    return out;
+  }
+
+  /* ============ 6. FUNGSI SIMPAN BARU (kebal urutan input) ============ */
+  var SRF2_SAVE_PREV = (typeof window.saveStockRequest === 'function') ? window.saveStockRequest : null;
+  window.saveStockRequest = async function () {
+    var btn = null;
+    try { btn = document.getElementById('saveStockBtn'); } catch (e0) { }
+    if (btn && btn.disabled) return;
+    function kunci(k) { if (btn) { btn.disabled = k; btn.textContent = k ? 'Menyimpan...' : 'Simpan'; } }
+
+    try { srf2SapuKartu(); } catch (eR) { }
+
+    /* mode edit (kalau ada): serahkan ke fungsi simpan sebelumnya */
+    var editId = '';
+    try { var ed = document.getElementById('stockEditId'); editId = ed && ed.value ? String(ed.value) : ''; } catch (e1) { }
+    if (editId && typeof SRF2_SAVE_PREV === 'function') { return SRF2_SAVE_PREV.apply(this, arguments); }
+
+    kunci(true);
+    try {
+      function nilai(id) { var el = document.getElementById(id); return el && el.value != null ? String(el.value).trim() : ''; }
+      var date = nilai('stockDate');
+      var requester = nilai('stockRequester');
+      var priority = nilai('stockPriority');
+      var location = nilai('stockLocation');
+
+      if (!requester) { showToast('Nama pemohon wajib diisi', 'error'); kunci(false); return; }
+      if (!priority || !location) { showToast('Lengkapi data wajib', 'error'); kunci(false); return; }
+
+      var items = srf2KumpulkanItems();
+      if (!items.length) { showToast('Masukkan minimal 1 barang', 'error'); kunci(false); return; }
+
+      var sbObj = srf2Sb();
+      if (!sbObj) { showToast('Koneksi database belum siap', 'error'); kunci(false); return; }
+
+      /* 1. Upload foto (cara lama: compress lalu ke bucket ticket-images) */
+      var imageUrls = [];
+      var files = [];
+      try { if (typeof stockFiles !== 'undefined' && stockFiles && stockFiles.length) files = stockFiles; } catch (eF) { }
+      for (var i = 0; i < files.length; i++) {
+        var compressed = await compressAlatImage(files[i], 800, 0.5);
+        var fname = 'stock_request/' + Date.now() + '_' + i + '.jpg';
+        var up = await sbObj.storage.from('ticket-images').upload(fname, compressed, { contentType: 'image/jpeg', upsert: true });
+        if (up.error) throw up.error;
+        imageUrls.push(sbObj.storage.from('ticket-images').getPublicUrl(fname).data.publicUrl);
+      }
+
+      /* 2. Nomor form otomatis (sama seperti cara lama) */
+      var prefix = 'ALL';
+      if (location === 'Dominion Lounge') prefix = 'DL';
+      else if (location === 'Masterpiece') prefix = 'MP';
+      var dateStr = String(date).replace(/-/g, '');
+      var uniqueId = Math.random().toString(36).substr(2, 4).toUpperCase();
+      var formNumber = prefix + '/' + dateStr + '/' + uniqueId;
+
+      var createdBy = null;
+      try { createdBy = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.id : null; } catch (eC) { }
+
+      var dasar = {
+        request_date: date, requester_name: requester, priority: priority,
+        location_needed: location, items: items,
+        image_url: imageUrls[0] || null, image_urls: imageUrls,
+        form_number: formNumber, status: 'Pending', is_approved: false,
+        created_by: createdBy
+      };
+      /* kolom tambahan dikirim kalau diisi; kalau kolomnya tidak ada di
+         database, otomatis diulang tanpa kolom tambahan */
+      var kat = nilai('stockCategory'), lantai = nilai('stockFloor');
+      var ruang = nilai('stockRoom'), tujuan = nilai('stockPurpose');
+      var opsional = { };
+      if (kat) opsional.category = kat;
+      if (lantai) opsional.floor = lantai;
+      if (ruang) opsional.room = ruang;
+      if (tujuan) opsional.purpose = tujuan;
+      var payload = Object.keys(opsional).length ? Object.assign({ }, dasar, opsional) : dasar;
+
+      var res = await sbObj.from('stock_requests').insert(payload);
+      if (res.error && Object.keys(opsional).length &&
+        /column|PGRST204|Could not find/i.test(String(res.error.message || ''))) {
+        res = await sbObj.from('stock_requests').insert(dasar);
+      }
+      if (res.error) throw res.error;
+
+      showToast('Stock Request berhasil diajukan, menunggu approval Head');
+
+      /* 3. Notif ke semua Head (sama seperti cara lama) */
+      try {
+        var headRes = await sbObj.from('users').select('id').eq('role', 'head').eq('active', true);
+        if (headRes.data && headRes.data.length > 0) {
+          var headIds = headRes.data.map(function (u) { return u.id; });
+          await sendNotifToUsers(headIds, 'Pengajuan Stock Request Baru', requester + ' mengajukan permintaan barang untuk ' + location, 'ticket', null);
+        }
+      } catch (eN) { console.warn('[SRF2] Notif head:', eN); }
+
+      try { await logActivity('Create', 'Stock Request', 'Mengajukan permintaan barang untuk ' + location); } catch (eL) { }
+
+      closeModal('stockModal');
+      try { loadStockRequests(); } catch (eQ) { }
+    } catch (err) {
+      console.error('[SRF2] Save stock error:', err);
+      try { showToast('Gagal: ' + (err && err.message ? err.message : err), 'error'); } catch (eS) { }
+    } finally {
+      kunci(false);
+    }
+  };
+
+  /* ============ 7. LUCUTI ID GANDA (nyasar di luar modal) ============ */
+  var SRF2_IDS = ['stockItemsBody', 'stockDate', 'stockRequester', 'stockPriority', 'stockLocation',
+    'stockEditId', 'stockCategory', 'stockFloor', 'stockRoom', 'stockPurpose',
+    'stockFileInput', 'stockFilePreview', 'stockTotal', 'saveStockBtn'];
+  function srf2LucutiGanda(modal) {
+    for (var k = 0; k < SRF2_IDS.length; k++) {
+      var id = SRF2_IDS[k];
+      var semua;
+      try { semua = document.querySelectorAll('[id="' + id + '"]'); } catch (e) { continue; }
+      if (!semua || semua.length < 2) continue;
+      var jaga = null, i;
+      for (i = 0; i < semua.length; i++) { if (modal && modal.contains(semua[i])) { jaga = semua[i]; break; } }
+      if (!jaga) continue; /* tidak jelas yang asli yang mana -> biarkan */
+      for (i = 0; i < semua.length; i++) {
+        var el = semua[i];
+        if (el === jaga) continue;
+        el.removeAttribute('id');
+        el.setAttribute('data-srf2-orphan', '1');
+        if (el.style) el.style.display = 'none';
+        console.log('[SRF2] ID ganda di luar form dilucuti:', id);
+      }
+    }
+  }
+
+  /* ============ 8. MENU SIDEBAR KHUSUS HEAD ============ */
+  function srf2ScanMenu() {
+    var rows = [];
+    var semua;
+    try { semua = document.querySelectorAll('a, button, li, div, span'); } catch (e) { return rows; }
+    for (var i = 0; i < semua.length; i++) {
+      var el = semua[i];
+      var t = srf2Norm(el.textContent);
+      if (t !== 'stock request') continue;
+      if (/^H[1-6]$/.test(el.tagName)) continue; /* judul halaman jangan diganggu */
+      try { if (el.closest('#stockModal, #stockDetailModal')) continue; } catch (e2) { }
+      var klik = null;
+      if (el.getAttribute && el.getAttribute('onclick')) klik = el;
+      else if (el.closest) { try { klik = el.closest('a, button, [onclick]'); } catch (e3) { } }
+      if (!klik) continue;
+      var li = null;
+      try { li = el.closest('li'); } catch (e4) { }
+      var row = (li && srf2Norm(li.textContent) === 'stock request') ? li : klik;
+      if (row === document.body) continue;
+      if (rows.indexOf(row) === -1) rows.push(row);
+    }
+    return rows;
+  }
+  function srf2SapuMenu(paksa) {
+    try {
+      if (paksa || !window.__SRF2_MENU_CACHE) window.__SRF2_MENU_CACHE = srf2ScanMenu();
+      var rows = window.__SRF2_MENU_CACHE || [];
+      var valid = rows.filter(function (r) { return r && r.isConnected; });
+      window.__SRF2_MENU_CACHE = valid;
+      var head = srf2Head();
+      valid.forEach(function (row) {
+        if (head) {
+          if (row.getAttribute('data-srf2-menu') === '1') {
+            row.removeAttribute('data-srf2-menu');
+            row.style.display = '';
+          }
+        } else {
+          if (row.style.display !== 'none') {
+            row.setAttribute('data-srf2-menu', '1');
+            row.style.display = 'none';
+            console.log('[SRF2] Menu Stock Request disembunyikan (khusus Head Teknisi)');
+          }
+        }
+      });
+    } catch (e) { }
+  }
+
+  /* ============ 9. JADWAL OTOMATIS ============ */
+  (function srf2Jadwal() {
+    var timer = null;
+    function debounce(fn, ms) {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(fn, ms);
+    }
+    function sapu() {
+      try { srf2SapuKartu(); } catch (e) { }
+      try { srf2SapuMenu(false); } catch (e2) { }
+    }
+    function observerJalan() {
+      window.__SRF2_MENU_CACHE = null;
+      debounce(function () {
+        try { if (!SRF2_TOAST_SELESAI) srf2BunuhToast(); } catch (e) { }
+        try { sapu(); } catch (e2) { }
+      }, 250);
+    }
+    function pasangObserver() {
+      var b = document.body;
+      if (b && !window.__SRF2_OBS) {
+        window.__SRF2_OBS = new MutationObserver(observerJalan);
+        window.__SRF2_OBS.observe(b, { childList: true, subtree: true });
+      }
+    }
+    function bungkusBukaForm() {
+      var f = window.openStockForm;
+      if (typeof f === 'function' && !f.__srf2) {
+        var asli = f;
+        var bungkus = function () {
+          var r = asli.apply(this, arguments);
+          setTimeout(function () { try { sapu(); } catch (e) { } }, 100);
+          return r;
+        };
+        bungkus.__srf2 = true;
+        window.openStockForm = bungkus;
+      }
+    }
+    pasangObserver();
+    bungkusBukaForm();
+    [0, 150, 500, 1500, 3000].forEach(function (ms) {
+      setTimeout(function () { try { srf2BunuhToast(); } catch (e) { } }, ms);
+    });
+    setTimeout(function () { try { sapu(); } catch (e) { } }, 400);
+    setInterval(function () {
+      pasangObserver();
+      bungkusBukaForm();
+      try { sapu(); } catch (e2) { }
+    }, 1500);
+  })();
+
+  /* kait diagnosa (dipakai juga oleh pengujian) */
+  window.__SRF2_SAPU = function () {
+    try { srf2SapuKartu(); } catch (e) { }
+    try { srf2SapuMenu(true); } catch (e2) { }
+  };
+})();
+</script>
+<!-- ============ AKHIR SR SAVE & MENU FIX v2 ============ -->
+<!-- ================================================================
+  STOCK REQUEST GAMBAR v9  (console: [SR9])
+  Gambar download dibuat LANGSUNG VIA CANVAS - TANPA html2canvas,
+  jadi tulisan dijamin TIDAK NEMPEL / TIDAK TUMPANG TINDIH di HP apa
+  pun, dan foto tidak lagi besar-kecil sesuka hati.
+
+  Perubahan sesuai permintaan:
+  1. Foto SERAGAM semua kotak 106x106 (potongan tengah, tidak gepeng)
+  2. Foto 4 KE SAMPING x maksimal 4 KE BAWAH (maks 16 foto)
+  3. Label nama barang tetap ada di bawah tiap foto
+  4. Kolom ESTIMASI Harga Satuan + Estimasi Jumlah + baris
+     TOTAL ESTIMASI BIAYA tetap ada (permintaan owner)
+  5. Foto gagal dimuat = kotak putus-putus seragam (bukan kosong)
+  6. Tampilan warna & format sama dengan versi yang sekarang
+     (header navy, pill prioritas, chip status, footer)
+
+  Cara pasang: tempel blok ini PALING BAWAH index.html,
+  tepat sebelum </body> (di bawah semua blok lain).
+  Blok-blok lama tidak perlu dihapus. TANPA SQL.
+================================================================ -->
+<script>
+(function () {
+  'use strict';
+  if (window.__SR9_AKTIF) { return; }
+  window.__SR9_AKTIF = true;
+  console.log('[SR9] Stock Request image v9 aktif (canvas, foto seragam 4x4 + estimasi)');
+
+  /* ====== KONFIG ====== */
+  var SR9_BRAND = 'MIDPOINT SQUARE Building.';
+  var SR9_JUDUL = 'FORM PERMOHONAN BARANG';
+  var SR9_FOOT  = 'Dibuat dari aplikasi Maintenance';
+
+  /* Tata letak (satuan logis; kanvas digambar 2x agar tajam) */
+  var LEBAR = 500;                 /* sama dengan template lama */
+  var PAD = 14;
+  var CW = LEBAR - PAD * 2;        /* 472 */
+  var KOL = [20, 110, 110, 40, 70, 70, 52]; /* No|Nama|Spes|Qty|HargaSat|Jumlah|Catatan = 472 */
+  var TILE = 106, GAPF = 8;        /* foto seragam 106x106 */
+  var OFS = (CW - (4 * TILE + 3 * GAPF)) / 2;
+
+  /* ====== HELPER DATA ====== */
+  function sr9Rapi(v) {
+    var s = String(v == null ? '' : v);
+    s = s.replace(/domini(?:on|o)[\s.,;:_\-]*lounge/ig, 'Dominion Lounge');
+    return s.trim();
+  }
+  function sr9Tgl(v) {
+    if (!v) return '-';
+    var d = new Date(String(v).length <= 10 ? String(v) + 'T00:00:00' : v);
+    if (isNaN(d.getTime())) return String(v);
+    var B = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    return d.getDate() + ' ' + B[d.getMonth()] + ' ' + d.getFullYear();
+  }
+  function sr9TglFoot() {
+    var d = new Date();
+    var p = function (n) { return (n < 10 ? '0' : '') + n; };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
+  function sr9Angka(v) {
+    var n = parseFloat(String(v == null ? '' : v).replace(/[^\d.\-]/g, ''));
+    return isNaN(n) ? 0 : n;
+  }
+  function sr9Harga(v) {
+    if (v == null) return 0;
+    if (typeof v === 'number') return v > 0 ? v : 0;
+    var d = String(v).replace(/[^\d]/g, '');
+    return d ? parseInt(d, 10) : 0;
+  }
+  function sr9Rp(n) {
+    n = Math.round(Number(n) || 0);
+    var t = String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return (n < 0 ? '-' : '') + t;
+  }
+  function sr9UrlFoto(p) {
+    if (!p) return '';
+    if (typeof p === 'string') return p;
+    if (typeof p === 'object') {
+      var k = ['url', 'publicUrl', 'public_url', 'photo_url', 'photoUrl', 'src', 'image', 'imageUrl', 'image_url', 'path'];
+      for (var i = 0; i < k.length; i++) {
+        var v = p[k[i]];
+        if (typeof v === 'string' && v) return v;
+      }
+      for (var key in p) {
+        var v2 = p[key];
+        if (typeof v2 === 'string' && (v2.indexOf('http') === 0 || v2.indexOf('data:image') === 0)) return v2;
+      }
+    }
+    return '';
+  }
+  /* Kumpulkan foto (maks 16 = 4 x 4) + label nama barang */
+  function sr9KumpulkanFoto(s) {
+    var out = [];
+    var items = Array.isArray(s.items) ? s.items : [];
+    var adaFotoPerItem = false;
+    items.forEach(function (it) {
+      if (Array.isArray(it && it.photos) && it.photos.length) adaFotoPerItem = true;
+    });
+    if (adaFotoPerItem) {
+      items.forEach(function (it, i) {
+        var fotos = Array.isArray(it && it.photos) ? it.photos : [];
+        var nama = String(it && it.nama ? it.nama : ('Barang ' + (i + 1)));
+        if (nama.length > 28) nama = nama.slice(0, 27) + '...';
+        fotos.forEach(function (p, j) {
+          var u = sr9UrlFoto(p);
+          if (!u) return;
+          var lbl = (i + 1) + '. ' + nama + (fotos.length > 1 ? ' (' + (j + 1) + '/' + fotos.length + ')' : '');
+          out.push({ url: u, label: lbl });
+        });
+      });
+    } else if (Array.isArray(s.image_urls)) {
+      s.image_urls.filter(function (u) { return !!u; }).map(String).forEach(function (u, n) {
+        out.push({ url: u, label: 'Foto ' + (n + 1) });
+      });
+    } else if (s.image_url) {
+      out.push({ url: String(s.image_url), label: 'Foto 1' });
+    }
+    return out.slice(0, 16); /* maks 16 foto: 4 ke samping x 4 ke bawah */
+  }
+  function sr9Hitung(items) {
+    var total = 0, ada = false;
+    (Array.isArray(items) ? items : []).forEach(function (it) {
+      var h = sr9Harga(it && it.harga);
+      var q = sr9Angka(it && it.qty);
+      if (h > 0) { ada = true; total += h * q; }
+    });
+    return { total: total, ada: ada };
+  }
+  function sr9Sb() {
+    try { if (typeof sb !== 'undefined' && sb && typeof sb.from === 'function') return sb; } catch (e) { }
+    return (window.sb && typeof window.sb.from === 'function') ? window.sb : null;
+  }
+
+  /* ====== MUAT 1 FOTO (crossorigin, tenggat 10 detik) ====== */
+  function sr9MuatFoto(url) {
+    return new Promise(function (resolve) {
+      var img = new Image();
+      var selesai = false;
+      function done(ok) { if (!selesai) { selesai = true; resolve(ok ? img : null); } }
+      img.crossOrigin = 'anonymous';
+      img.onload = function () { done(true); };
+      img.onerror = function () { done(false); };
+      setTimeout(function () { done(false); }, 10000);
+      img.src = url;
+    });
+  }
+
+  /* ====== HELPER GAMBAR ====== */
+  function sr9Font(sz, w) { return (w || 400) + ' ' + sz + 'px sans-serif'; }
+  function sr9RR(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+  function sr9Tulis(ctx, teks, x, y, o) {
+    o = o || {};
+    ctx.font = sr9Font(o.sz || 10, o.w || 400);
+    ctx.fillStyle = o.warna || '#111827';
+    ctx.textAlign = o.align || 'left';
+    ctx.textBaseline = o.base || 'middle';
+    ctx.fillText(String(teks == null ? '' : teks), x, y);
+  }
+  /* tulis & kecilkan otomatis kalau kepanjangan (untuk angka Rp) */
+  function sr9TulisPas(ctx, teks, x, y, maxW, o) {
+    o = o || {};
+    var sz = o.sz || 9.5;
+    ctx.font = sr9Font(sz, o.w || 400);
+    var t = String(teks == null ? '' : teks);
+    while (sz > 7.5 && ctx.measureText(t).width > maxW) {
+      sz -= 0.5;
+      ctx.font = sr9Font(sz, o.w || 400);
+    }
+    ctx.fillStyle = o.warna || '#111827';
+    ctx.textAlign = o.align || 'right';
+    ctx.textBaseline = o.base || 'middle';
+    ctx.fillText(t, x, y);
+  }
+  /* bungkus teks jadi beberapa baris, potong dengan ... bila lewat maxLines */
+  function sr9Wrap(ctx, teks, maxW, maxLines) {
+    var s = String(teks == null ? '' : teks).trim();
+    if (!s) return [];
+    var lines = [], cur = '';
+    var kata = s.split(/\s+/);
+    function potongKata(w) {
+      var out = [], c = '';
+      for (var i = 0; i < w.length; i++) {
+        var t = c + w[i];
+        if (ctx.measureText(t).width > maxW && c) { out.push(c); c = w[i]; }
+        else c = t;
+      }
+      if (c) out.push(c);
+      return out;
+    }
+    for (var i = 0; i < kata.length; i++) {
+      var bagian = [kata[i]];
+      if (ctx.measureText(kata[i]).width > maxW) bagian = potongKata(kata[i]);
+      for (var b = 0; b < bagian.length; b++) {
+        var uji = cur ? cur + ' ' + bagian[b] : bagian[b];
+        if (cur && ctx.measureText(uji).width > maxW) { lines.push(cur); cur = bagian[b]; }
+        else cur = uji;
+      }
+    }
+    if (cur) lines.push(cur);
+    if (lines.length > maxLines) {
+      lines = lines.slice(0, maxLines);
+      var akhir = lines[maxLines - 1];
+      while (akhir.length > 1 && ctx.measureText(akhir + '...').width > maxW) akhir = akhir.slice(0, -1);
+      lines[maxLines - 1] = akhir + '...';
+    }
+    return lines;
+  }
+  function sr9WarnaPrio(p) {
+    var v = String(p || '');
+    if (/urgent/i.test(v)) return { bg: '#FEE2E2', fg: '#DC2626' };
+    if (/sedang/i.test(v)) return { bg: '#FEF3C7', fg: '#B45309' };
+    if (/rendah/i.test(v)) return { bg: '#DBEAFE', fg: '#1D4ED8' };
+    return { bg: '#E5E7EB', fg: '#374151' };
+  }
+
+  /* ====== GAMBAR 1 FOTO SERAGAM (potong bagian tengah) ====== */
+  function sr9GambarFoto(ctx, img, x, y) {
+    ctx.save();
+    sr9RR(ctx, x, y, TILE, TILE, 4);
+    ctx.fillStyle = '#F3F4F6';
+    ctx.fill();
+    ctx.clip();
+    var ok = false;
+    if (img) {
+      var iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+      if (iw > 0 && ih > 0) {
+        var sc = Math.max(TILE / iw, TILE / ih);   /* cover: penuhi kotak, potong tengah */
+        var sw = TILE / sc, sh = TILE / sc;
+        var sx = (iw - sw) / 2, sy = (ih - sh) / 2;
+        try { ctx.drawImage(img, sx, sy, sw, sh, x, y, TILE, TILE); ok = true; } catch (e) { ok = false; }
+      }
+    }
+    if (!ok) {
+      ctx.strokeStyle = '#D1D5DB';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(x + 4.5, y + 4.5, TILE - 9, TILE - 9);
+      ctx.setLineDash([]);
+      sr9Tulis(ctx, 'Foto gagal dimuat', x + TILE / 2, y + TILE / 2, { sz: 7, warna: '#9CA3AF', align: 'center' });
+    }
+    ctx.restore();
+    ctx.strokeStyle = '#E5E7EB';
+    ctx.lineWidth = 1;
+    sr9RR(ctx, x + 0.5, y + 0.5, TILE - 1, TILE - 1, 4);
+    ctx.stroke();
+  }
+
+  /* ====== HITUNG TATA LETAK (tinggi tiap bagian) ====== */
+  function sr9Tata(s, fotoList, ctx) {
+    var L = { fotoRows: 0, tujuanLines: [], barisH: [], kepalaH: 0 };
+    var items = Array.isArray(s.items) ? s.items : [];
+    var y = PAD;
+
+    /* header navy */
+    L.headerY = y;
+    y += 52 + 10;
+
+    /* 3 baris info + status */
+    L.infoY = y;
+    y += 16 * 3;
+    y += 4;
+    y += 20 + 4; /* baris status */
+
+    /* tujuan */
+    if (s.purpose) {
+      ctx.font = sr9Font(10.5, 400);
+      L.tujuanLines = sr9Wrap(ctx, s.purpose, CW - 60, 2);
+      y += 6 + L.tujuanLines.length * 13 + 6;
+    }
+
+    /* tinggi kepala tabel (judul kolom estimasi butuh 3 baris) */
+    var th = ['No', 'Nama Barang', 'Spesifikasi', 'Qty', 'Estimasi Harga Satuan', 'Estimasi Jumlah', 'Catatan'];
+    var maxLn = 1, i;
+    for (i = 0; i < 7; i++) {
+      ctx.font = sr9Font(10, 700);
+      var ln = sr9Wrap(ctx, th[i], KOL[i] - 6, 3).length;
+      if (ln > maxLn) maxLn = ln;
+    }
+    L.kepalaH = maxLn * 11 + 10;
+
+    /* tabel barang */
+    L.tabelY = y;
+    y += L.kepalaH;
+    for (i = 0; i < items.length; i++) {
+      var it = items[i];
+      ctx.font = sr9Font(10, 400);
+      var ln2 = 1;
+      ln2 = Math.max(ln2, sr9Wrap(ctx, it.nama, KOL[1] - 6, 2).length);
+      ln2 = Math.max(ln2, sr9Wrap(ctx, it.spec, KOL[2] - 6, 2).length);
+      ln2 = Math.max(ln2, sr9Wrap(ctx, it.catatan, KOL[6] - 6, 2).length);
+      var rh = Math.max(22, 8 + ln2 * 12);
+      L.barisH.push(rh);
+      y += rh;
+    }
+    if (!items.length) { L.barisH.push(24); y += 24; }
+    L.adaEst = sr9Hitung(items).ada;
+    L.total = sr9Hitung(items).total;
+    if (L.adaEst) { y += 22; }
+
+    /* foto */
+    if (fotoList.length) {
+      y += 12 + 12 + 6;
+      L.fotoY = y;
+      L.fotoRows = Math.min(4, Math.ceil(fotoList.length / 4)); /* maks 4 ke bawah */
+      y += L.fotoRows * (TILE + 4 + 20 + 8);
+    }
+
+    /* footer */
+    y += 10 + 10 + 8;
+    L.totalH = y;
+    return L;
+  }
+
+  /* ====== PEWARNA LENGKAP ====== */
+  function sr9Gambar(ctx, s, fotoList, imgs, L) {
+    var items = Array.isArray(s.items) ? s.items : [];
+    var kx = [PAD], i;
+    for (i = 0; i < KOL.length; i++) kx.push(kx[i] + KOL[i]);
+    var y;
+
+    /* --- Header navy --- */
+    y = L.headerY;
+    sr9RR(ctx, PAD, y, CW, 52, 8);
+    ctx.fillStyle = '#1F2937';
+    ctx.fill();
+    sr9Tulis(ctx, SR9_BRAND.toUpperCase(), PAD + 14, y + 16, { sz: 8, w: 700, warna: '#F5B941' });
+    sr9Tulis(ctx, SR9_JUDUL, PAD + 14, y + 33, { sz: 15, w: 700, warna: '#FFFFFF' });
+    sr9Tulis(ctx, 'No. Form', PAD + CW - 14, y + 15, { sz: 7, warna: '#9CA3AF', align: 'right' });
+    sr9Tulis(ctx, s.form_number || '-', PAD + CW - 14, y + 30, { sz: 12, w: 700, warna: '#FFFFFF', align: 'right' });
+
+    /* --- Info --- */
+    y = L.infoY;
+    var lantai = [s.floor, s.room].filter(function (x) { return x; }).map(sr9Rapi).join(' / ');
+    function infoBaris(l1, v1, l2, v2) {
+      sr9Tulis(ctx, l1, PAD, y + 8, { sz: 8.5, warna: '#9CA3AF' });
+      sr9Tulis(ctx, v1, PAD + 58, y + 8, { sz: 11, w: 600, warna: '#111827' });
+      if (l2 !== undefined) {
+        sr9Tulis(ctx, l2, PAD + 236, y + 8, { sz: 8.5, warna: '#9CA3AF' });
+        if (v2 !== undefined) sr9Tulis(ctx, v2, PAD + 236 + 62, y + 8, { sz: 11, w: 600, warna: '#111827' });
+      }
+      y += 16;
+    }
+    infoBaris('Tanggal', sr9Tgl(s.request_date), 'Pemohon', s.requester_name || '-');
+    infoBaris('Kebutuhan', sr9Rapi(s.location_needed) || '-', 'Lantai / Area', lantai || '-');
+    infoBaris('Kategori', s.category || '-', 'Prioritas', null);
+    /* kolom kanan baris kategori = pill prioritas */
+    var pr = sr9WarnaPrio(s.priority);
+    ctx.font = sr9Font(10, 700);
+    var pw = ctx.measureText(String(s.priority || '-')).width + 20;
+    sr9RR(ctx, PAD + 236 + 62, y - 16 + 1, pw, 15, 7.5);
+    ctx.fillStyle = pr.bg; ctx.fill();
+    sr9Tulis(ctx, s.priority || '-', PAD + 236 + 62 + pw / 2, y - 16 + 8.5, { sz: 9.5, w: 700, warna: pr.fg, align: 'center' });
+
+    /* baris status */
+    var ap = !!s.is_approved;
+    var cTeks = ap ? 'SUDAH DISETUJUI HEAD' : 'MENUNGGU APPROVAL HEAD';
+    var cBg = ap ? '#D1FAE5' : '#FEF3C7', cFg = ap ? '#047857' : '#B45309';
+    sr9Tulis(ctx, 'Status', PAD, y + 10, { sz: 8.5, warna: '#9CA3AF' });
+    ctx.font = sr9Font(10, 700);
+    var cw2 = ctx.measureText(cTeks).width + 24;
+    sr9RR(ctx, PAD + 58, y + 1, cw2, 18, 9);
+    ctx.fillStyle = cBg; ctx.fill();
+    sr9Tulis(ctx, cTeks, PAD + 58 + cw2 / 2, y + 10, { sz: 10, w: 700, warna: cFg, align: 'center' });
+    y += 20 + 4;
+
+    /* tujuan */
+    if (s.purpose && L.tujuanLines.length) {
+      sr9Tulis(ctx, 'Tujuan', PAD, y + 7, { sz: 8.5, warna: '#9CA3AF' });
+      for (var t = 0; t < L.tujuanLines.length; t++) {
+        sr9Tulis(ctx, L.tujuanLines[t], PAD + 58, y + 7 + t * 13, { sz: 10.5, warna: '#111827' });
+      }
+      y += 6 + L.tujuanLines.length * 13 + 6;
+    }
+
+    /* --- Tabel barang --- */
+    var th = ['No', 'Nama Barang', 'Spesifikasi', 'Qty', 'Estimasi Harga Satuan', 'Estimasi Jumlah', 'Catatan'];
+    var thA = ['center', 'left', 'left', 'center', 'center', 'center', 'left'];
+    /* kepala */
+    ctx.fillStyle = '#1F2937';
+    ctx.fillRect(PAD, L.tabelY, CW, L.kepalaH);
+    var thY = L.tabelY + (L.kepalaH - 11 * 3) / 2 + 6;
+    for (i = 0; i < 7; i++) {
+      ctx.font = sr9Font(10, 700);
+      var lines = sr9Wrap(ctx, th[i], KOL[i] - 6, 3);
+      var tx = thA[i] === 'center' ? kx[i] + KOL[i] / 2 : kx[i] + 3;
+      for (var li = 0; li < lines.length; li++) {
+        sr9Tulis(ctx, lines[li], tx, thY + li * 11 + 5, { sz: 10, w: 700, warna: '#FFFFFF', align: thA[i] });
+      }
+    }
+    /* isi */
+    y = L.tabelY + L.kepalaH;
+    var est = sr9Hitung(items);
+    function barisItem(no, it) {
+      var rh = L.barisH[no];
+      var cy = y + rh / 2;
+      var harga = sr9Harga(it && it.harga);
+      var jml = harga > 0 ? harga * sr9Angka(it && it.qty) : 0;
+      ctx.font = sr9Font(10, 400);
+      var namaL = sr9Wrap(ctx, it.nama, KOL[1] - 6, 2);
+      var specL = sr9Wrap(ctx, it.spec, KOL[2] - 6, 2);
+      var catL = sr9Wrap(ctx, it.catatan || '-', KOL[6] - 6, 2);
+      var ln = Math.max(1, namaL.length, specL.length, catL.length);
+      var firstY = y + (rh - ln * 12) / 2 + 6;
+      sr9Tulis(ctx, String(no + 1), kx[0] + KOL[0] / 2, cy, { sz: 10, warna: '#111827', align: 'center' });
+      for (var a = 0; a < namaL.length; a++) {
+        sr9Tulis(ctx, namaL[a], kx[1] + 3, firstY + a * 12, { sz: 10, warna: '#111827' });
+      }
+      for (var b = 0; b < specL.length; b++) {
+        sr9Tulis(ctx, specL[b], kx[2] + 3, firstY + b * 12, { sz: 10, warna: '#374151' });
+      }
+      var qtyTeks = String(it.qty != null ? it.qty : '-') + (it.satuan ? ' ' + it.satuan : '');
+      sr9Tulis(ctx, qtyTeks, kx[3] + KOL[3] / 2, cy, { sz: 10, warna: '#111827', align: 'center' });
+      sr9TulisPas(ctx, harga > 0 ? 'Rp ' + sr9Rp(harga) : '-', kx[4] + KOL[4] - 3, cy, KOL[4] - 6, { sz: 9.5, warna: '#111827', align: 'right' });
+      sr9TulisPas(ctx, jml > 0 ? 'Rp ' + sr9Rp(jml) : '-', kx[5] + KOL[5] - 3, cy, KOL[5] - 6, { sz: 9.5, w: 600, warna: '#111827', align: 'right' });
+      for (var c = 0; c < catL.length; c++) {
+        sr9Tulis(ctx, catL[c], kx[6] + 3, firstY + c * 12, { sz: 10, warna: '#374151' });
+      }
+      y += rh;
+    }
+    if (items.length) {
+      items.forEach(function (it, i2) { barisItem(i2, it || {}); });
+    } else {
+      sr9Tulis(ctx, 'Tidak ada barang', PAD + CW / 2, y + 12, { sz: 10, warna: '#9CA3AF', align: 'center' });
+      y += 24;
+    }
+    /* baris TOTAL */
+    if (est.ada) {
+      ctx.fillStyle = '#F9FAFB';
+      ctx.fillRect(PAD, y, CW, 22);
+      sr9Tulis(ctx, 'TOTAL ESTIMASI BIAYA', kx[5] - 8, y + 11, { sz: 10, w: 700, warna: '#111827', align: 'right' });
+      sr9TulisPas(ctx, 'Rp ' + sr9Rp(est.total), kx[6] + KOL[6] - 3, y + 11, KOL[6] - 6, { sz: 10, w: 700, warna: '#111827', align: 'right' });
+      y += 22;
+    }
+    /* garis tabel */
+    ctx.strokeStyle = '#E5E7EB';
+    ctx.lineWidth = 1;
+    var tBottom = y;
+    for (i = 0; i <= 7; i++) {
+      ctx.beginPath();
+      ctx.moveTo(kx[i] + 0.5, L.tabelY + 0.5);
+      ctx.lineTo(kx[i] + 0.5, tBottom + 0.5);
+      ctx.stroke();
+    }
+    var ry = L.tabelY + L.kepalaH;
+    ctx.beginPath();
+    ctx.moveTo(PAD + 0.5, L.tabelY + L.kepalaH + 0.5);
+    ctx.lineTo(PAD + CW - 0.5, L.tabelY + L.kepalaH + 0.5);
+    ctx.stroke();
+    for (i = 0; i < L.barisH.length; i++) {
+      ry += L.barisH[i];
+      ctx.beginPath();
+      ctx.moveTo(PAD + 0.5, ry + 0.5);
+      ctx.lineTo(PAD + CW - 0.5, ry + 0.5);
+      ctx.stroke();
+    }
+
+    /* --- FOTO BARANG: 4 ke samping x maks 4 ke bawah, semua seragam --- */
+    if (fotoList.length) {
+      y += 12;
+      sr9Tulis(ctx, 'FOTO BARANG', PAD, y + 6, { sz: 10, w: 700, warna: '#374151' });
+      y += 12 + 6;
+      for (var r = 0; r < L.fotoRows; r++) {
+        for (var c = 0; c < 4; c++) {
+          var idx = r * 4 + c;
+          var fx = PAD + OFS + c * (TILE + GAPF);
+          if (idx < fotoList.length) {
+            sr9GambarFoto(ctx, imgs[idx], fx, y);
+            ctx.font = sr9Font(7.5, 600);
+            var capL = sr9Wrap(ctx, fotoList[idx].label, TILE + GAPF, 2);
+            for (var lj = 0; lj < capL.length; lj++) {
+              sr9Tulis(ctx, capL[lj], fx + TILE / 2, y + TILE + 9 + lj * 10, { sz: 7.5, w: 600, warna: '#374151', align: 'center' });
+            }
+          }
+        }
+        y += TILE + 4 + 20 + 8;
+      }
+    }
+
+    /* --- Footer --- */
+    y += 10;
+    sr9Tulis(ctx, SR9_FOOT + ' - ' + SR9_BRAND + ' - ' + sr9TglFoot(), PAD + CW / 2, y + 5, { sz: 8, warna: '#9CA3AF', align: 'center' });
+  }
+
+  /* ====== BANGUN KANVAS JADI ====== */
+  function sr9GambarCanvas(s, fotoList, imgs) {
+    var ukur = document.createElement('canvas').getContext('2d');
+    var L = sr9Tata(s, fotoList, ukur);
+    var cv = document.createElement('canvas');
+    cv.width = LEBAR * 2;
+    cv.height = Math.ceil(L.totalH) * 2;
+    var ctx = cv.getContext('2d');
+    ctx.scale(2, 2);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, LEBAR, L.totalH);
+    sr9Gambar(ctx, s, fotoList, imgs, L);
+    return cv;
+  }
+
+  /* ====== FUNGSI UTAMA (menimpa downloadStockImage lama) ====== */
+  window.downloadStockImage = async function (id) {
+    try {
+      showToast('Membuat gambar...');
+      var sbObj = sr9Sb();
+      if (!sbObj) { showToast('Koneksi database belum siap', 'error'); return; }
+      var res = await sbObj.from('stock_requests').select('*').eq('id', id).single();
+      if (!res.data) { showToast('Data tidak ditemukan', 'error'); return; }
+      var s = res.data;
+
+      var fotoList = sr9KumpulkanFoto(s);
+      var imgs = [];
+      if (fotoList.length) {
+        showToast('Memuat foto (' + fotoList.length + ')...');
+        imgs = await Promise.all(fotoList.map(function (f) { return sr9MuatFoto(f.url); }));
+      }
+      var ok = 0;
+      imgs.forEach(function (im) { if (im) ok++; });
+      console.log('[SR9] Foto ditemukan:', fotoList.length, '| berhasil dimuat:', ok);
+
+      var cv = sr9GambarCanvas(s, fotoList, imgs);
+
+      var link = document.createElement('a');
+      link.download = 'Form_' + String(s.form_number || id).replace(/[\/\\?#%*|:"<>]/g, '-') + '.png';
+      link.href = cv.toDataURL('image/png');
+      link.click();
+      showToast('Gambar berhasil diunduh');
+    } catch (err) {
+      console.error('[SR9] Gagal:', err);
+      showToast('Gagal membuat gambar: ' + (err && err.message ? err.message : err), 'error');
+    }
+  };
+
+  /* kait diagnosa / pengujian */
+  window.__SR9 = {
+    gambarCanvas: sr9GambarCanvas,
+    kumpulkanFoto: sr9KumpulkanFoto,
+    hitung: sr9Hitung,
+    formatRp: sr9Rp
+  };
+})();
+</script>
+<!-- ============ AKHIR STOCK REQUEST GAMBAR v9 ============ -->
+<!-- ================================================================
+  SR FIX PACK v10  (SR10)  —  4 PERBAIKAN TEMUAN:
+  1. GAMBAR DOWNLOAD: nominal TOTAL ESTIMASI BIAYA pindah ke kolom
+     "ESTIMASI JUMLAH" (sebelumnya nyasar di kolom CATATAN).
+  2. GAMBAR DOWNLOAD: header "MIDPOINT SQUARE Building." -> titik
+     dihilangkan (footer ikut tanpa titik).
+  3. FORM BARU: nomor "Barang ke-" SELALU mulai dari 1 lagi setelah
+     simpan (counter disinkronkan + label kartu dirapikan otomatis,
+     meski fungsi buka form lama error sekalipun).
+  4. KEBUTUHAN UNTUK: opsi baru "Midpoint Square Building" (tanpa
+     titik) + nomor form untuk lokasi itu otomatis berawalan MS/.
+
+  Cara pasang: tempel blok ini PALING BAWAH index.html, tepat
+  sebelum </body> (di bawah semua blok lain, termasuk blok v9).
+  Blok lama tidak perlu dihapus. TANPA SQL.
+================================================================ -->
+<script>
+(function () {
+  'use strict';
+  if (window.__SR10_AKTIF) { return; }
+  window.__SR10_AKTIF = true;
+  console.log('[SR10] Stock Request Fix Pack v10 aktif (gambar: TOTAL pindah kolom + tanpa titik | form: nomor mulai 1 | lokasi baru MS)');
+
+  /* ====== KONFIG ====== */
+  var SR10_LOKASI = 'Midpoint Square Building'; /* opsi baru di Kebutuhan Untuk */
+  var SR10_PREFIX = 'MS';                       /* awalan no. form utk lokasi baru */
+
+  /* ================================================================
+     A. OPSI "MIDPOINT SQUARE BUILDING" DI DROPDOWN KEBUTUHAN UNTUK
+     ================================================================ */
+  function sr10PasangOpsi() {
+    var semua;
+    try { semua = document.querySelectorAll('select[id="stockLocation"]'); } catch (e) { return; }
+    for (var s = 0; s < semua.length; s++) {
+      var sel = semua[s];
+      var ada = false, i;
+      for (i = 0; i < sel.options.length; i++) {
+        if (String(sel.options[i].value) === SR10_LOKASI) { ada = true; break; }
+      }
+      if (!ada) {
+        try {
+          var o = document.createElement('option');
+          o.value = SR10_LOKASI;
+          o.textContent = SR10_LOKASI;
+          sel.appendChild(o);
+          console.log('[SR10] Opsi lokasi ditambahkan:', SR10_LOKASI);
+        } catch (e2) { }
+      }
+    }
+  }
+
+  /* ================================================================
+     B. NOMOR "BARANG KE-" SELALU MULAI DARI 1 DI FORM BARU
+     ================================================================ */
+  function sr10JumlahKartu() {
+    try {
+      var body = document.getElementById('stockItemsBody');
+      if (!body) return 0;
+      return body.querySelectorAll('div.bg-navy-50').length;
+    } catch (e) { return 0; }
+  }
+  /* tulis nilai counter ke semua tempat yang mungkin dipakai kode lama */
+  function sr10Sinkron(n) {
+    try { stockItemCounter = n; } catch (e) { }
+    try { window.stockItemCounter = n; } catch (e2) { }
+  }
+  /* rapikan label "Barang ke-N" sesuai urutan kartu di layar (1,2,3,...) */
+  function sr10RapikanNomor() {
+    var body = null;
+    try { body = document.getElementById('stockItemsBody'); } catch (e) { return; }
+    if (!body) return;
+    var kartu;
+    try { kartu = body.querySelectorAll('div.bg-navy-50'); } catch (e2) { return; }
+    for (var k = 0; k < kartu.length; k++) {
+      var span = null;
+      try { span = kartu[k].querySelector('span'); } catch (e3) { }
+      if (!span) continue;
+      var t = String(span.textContent || '').replace(/\s+/g, ' ').trim();
+      if (/^Barang ke-\d+$/i.test(t)) {
+        var benar = 'Barang ke-' + (k + 1);
+        if (t !== benar) {
+          span.textContent = benar;
+          console.log('[SR10] Nomor kartu dirapikan:', t, '->', benar);
+        }
+      }
+    }
+  }
+  function sr10SinkronSemua() {
+    var n = sr10JumlahKartu();
+    if (n > 0) sr10Sinkron(n);
+    sr10RapikanNomor();
+  }
+  /* observer: setiap kartu ditambah/dihapus, nomor langsung dirapikan */
+  (function sr10PasangObserver() {
+    var target = null, obs = null, timer = null;
+    function jadwal() {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function () {
+        try { sr10SinkronSemua(); } catch (e) { }
+      }, 120);
+    }
+    function coba() {
+      var b = document.getElementById('stockItemsBody');
+      if (b && b !== target) {
+        if (obs) { try { obs.disconnect(); } catch (e) { } }
+        target = b;
+        obs = new MutationObserver(jadwal);
+        obs.observe(b, { childList: true, subtree: false });
+        jadwal();
+      }
+      setTimeout(coba, 1500);
+    }
+    coba();
+  })();
+
+  /* ================================================================
+     C. BUNGKUS openStockForm: kalau cara lama error di tengah jalan
+        (sebelum sempat mereset), perbaiki sendiri sampai beres.
+        Berlaku juga untuk kasus counter lama tidak ikut ke-reset.
+     ================================================================ */
+  (function sr10BungkusBuka() {
+    var sudah = false;
+    function pasang() {
+      var f = window.openStockForm;
+      if (typeof f !== 'function' || f.__sr10) { return; }
+      var asli = f;
+      var bungkus = function () {
+        var err = null;
+        try { asli.apply(this, arguments); } catch (e) { err = e; console.warn('[SR10] openStockForm lama error, diperbaiki otomatis:', e); }
+        if (err) {
+          /* ---- perbaikan darurat: reset form sendiri ---- */
+          var el;
+          try { el = document.getElementById('stockEditId'); if (el) el.value = ''; } catch (e1) { }
+          try {
+            el = document.getElementById('stockDate');
+            if (el) el.value = (typeof todayStr === 'function') ? todayStr() : new Date().toISOString().slice(0, 10);
+          } catch (e2) { }
+          try {
+            el = document.getElementById('stockRequester');
+            if (el && typeof currentUser !== 'undefined' && currentUser && currentUser.name) el.value = currentUser.name;
+          } catch (e3) { }
+          try { el = document.getElementById('stockPriority'); if (el) el.value = 'Sedang'; } catch (e4) { }
+          try { el = document.getElementById('stockLocation'); if (el) el.value = 'Dominion Lounge'; } catch (e5) { }
+          try { el = document.getElementById('stockItemsBody'); if (el) el.innerHTML = ''; } catch (e6) { }
+          sr10Sinkron(0);
+          try { if (typeof addStockItemRow === 'function') addStockItemRow(); } catch (e7) { }
+          try { el = document.getElementById('stockFilePreview'); if (el) el.innerHTML = ''; } catch (e8) { }
+          try { el = document.getElementById('stockFileInput'); if (el) el.value = ''; } catch (e9) { }
+          try { stockFiles = []; } catch (e10) { }
+          try { window.stockFiles = []; } catch (e11) { }
+          try {
+            if (typeof openModal === 'function') openModal('stockModal');
+            else {
+              var m = document.getElementById('stockModal');
+              if (m) { m.classList.remove('hidden'); m.style.display = 'flex'; }
+            }
+          } catch (e12) { }
+        }
+        /* ---- selalu: pastikan nomor mulai dari 1 & opsi lokasi ada ---- */
+        try { sr10SinkronSemua(); } catch (eS) { }
+        try { sr10PasangOpsi(); } catch (eO) { }
+      };
+      bungkus.__sr10 = true;
+      window.openStockForm = bungkus;
+      sudah = true;
+      console.log('[SR10] openStockForm dibungkus (nomor form selalu mulai dari 1)');
+    }
+    pasang();
+    var coba = 0;
+    var iv = setInterval(function () {
+      pasang();
+      try { sr10PasangOpsi(); } catch (e) { }
+      var modal = document.getElementById('stockModal');
+      var terbuka = !!(modal && modal.offsetParent !== null);
+      if (terbuka) { try { sr10SinkronSemua(); } catch (e2) { } }
+      if ((sudah && ++coba > 40)) { clearInterval(iv); }
+    }, 1500);
+  })();
+
+  /* ================================================================
+     D. NOMOR FORM LOKASI BARU -> AWALAN MS/
+     (cara lama menulis ALL/ untuk lokasi selain Dominion/Masterpiece;
+      diselipkan saat data mau disimpan, tanpa menyentuh fungsi simpan)
+     ================================================================ */
+  function sr10Sb() {
+    try { if (typeof sb !== 'undefined' && sb && typeof sb.from === 'function') return sb; } catch (e) { }
+    return (window.sb && typeof window.sb.from === 'function') ? window.sb : null;
+  }
+  (function sr10Intersepsi() {
+    var coba = 0;
+    function pasang() {
+      var sbObj = sr10Sb();
+      if (!sbObj) {
+        if (++coba <= 40) { setTimeout(pasang, 500); }
+        else { console.warn('[SR10] sb tidak ditemukan - nomor form lokasi baru memakai ALL/'); }
+        return;
+      }
+      if (sbObj.__sr10Wrapped) { return; }
+      sbObj.__sr10Wrapped = true;
+      var asliFrom = sbObj.from.bind(sbObj);
+      sbObj.from = function (t) {
+        var q = asliFrom(t);
+        try {
+          if (String(t) === 'stock_requests' && q && typeof q.insert === 'function' && !q.insert.__sr10) {
+            var asliInsert = q.insert.bind(q);
+            var bungkusInsert = function (payload) {
+              try {
+                if (payload && payload.location_needed === SR10_LOKASI &&
+                  typeof payload.form_number === 'string' &&
+                  payload.form_number.indexOf('ALL/') === 0) {
+                  payload.form_number = SR10_PREFIX + payload.form_number.slice(3);
+                  console.log('[SR10] No. form lokasi baru ->', payload.form_number);
+                }
+              } catch (e) { }
+              return asliInsert(payload);
+            };
+            bungkusInsert.__sr10 = true;
+            q.insert = bungkusInsert;
+          }
+        } catch (e) { console.warn('[SR10] wrap from:', e); }
+        return q;
+      };
+      console.log('[SR10] Intersepsi no. form aktif (lokasi baru pakai ' + SR10_PREFIX + '/)');
+    }
+    pasang();
+  })();
+
+  /* ================================================================
+     E. GAMBAR DOWNLOAD v10 (dasar: v9 yang sudah disetujui)
+        - nominal TOTAL pindah ke kolom ESTIMASI JUMLAH
+        - brand tanpa titik
+     ================================================================ */
+  var SR10_BRAND = 'MIDPOINT SQUARE Building';  /* TANPA titik (temuan no.2) */
+  var SR10_JUDUL = 'FORM PERMOHONAN BARANG';
+  var SR10_FOOT = 'Dibuat dari aplikasi Maintenance';
+
+  var LEBAR = 500;
+  var PAD = 14;
+  var CW = LEBAR - PAD * 2;        /* 472 */
+  var KOL = [20, 110, 110, 40, 70, 70, 52]; /* No|Nama|Spes|Qty|HargaSat|Jumlah|Catatan = 472 */
+  var TILE = 106, GAPF = 8;
+  var OFS = (CW - (4 * TILE + 3 * GAPF)) / 2;
+
+  function sr10Rapi(v) {
+    var s = String(v == null ? '' : v);
+    s = s.replace(/domini(?:on|o)[\s.,;:_\-]*lounge/ig, 'Dominion Lounge');
+    return s.trim();
+  }
+  function sr10Tgl(v) {
+    if (!v) return '-';
+    var d = new Date(String(v).length <= 10 ? String(v) + 'T00:00:00' : v);
+    if (isNaN(d.getTime())) return String(v);
+    var B = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    return d.getDate() + ' ' + B[d.getMonth()] + ' ' + d.getFullYear();
+  }
+  function sr10TglFoot() {
+    var d = new Date();
+    var p = function (n) { return (n < 10 ? '0' : '') + n; };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
+  function sr10Angka(v) {
+    var n = parseFloat(String(v == null ? '' : v).replace(/[^\d.\-]/g, ''));
+    return isNaN(n) ? 0 : n;
+  }
+  function sr10Harga(v) {
+    if (v == null) return 0;
+    if (typeof v === 'number') return v > 0 ? v : 0;
+    var d = String(v).replace(/[^\d]/g, '');
+    return d ? parseInt(d, 10) : 0;
+  }
+  function sr10Rp(n) {
+    n = Math.round(Number(n) || 0);
+    var t = String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return (n < 0 ? '-' : '') + t;
+  }
+  function sr10UrlFoto(p) {
+    if (!p) return '';
+    if (typeof p === 'string') return p;
+    if (typeof p === 'object') {
+      var k = ['url', 'publicUrl', 'public_url', 'photo_url', 'photoUrl', 'src', 'image', 'imageUrl', 'image_url', 'path'];
+      for (var i = 0; i < k.length; i++) {
+        var v = p[k[i]];
+        if (typeof v === 'string' && v) return v;
+      }
+      for (var key in p) {
+        var v2 = p[key];
+        if (typeof v2 === 'string' && (v2.indexOf('http') === 0 || v2.indexOf('data:image') === 0)) return v2;
+      }
+    }
+    return '';
+  }
+  function sr10KumpulkanFoto(s) {
+    var out = [];
+    var items = Array.isArray(s.items) ? s.items : [];
+    var adaFotoPerItem = false;
+    items.forEach(function (it) {
+      if (Array.isArray(it && it.photos) && it.photos.length) adaFotoPerItem = true;
+    });
+    if (adaFotoPerItem) {
+      items.forEach(function (it, i) {
+        var fotos = Array.isArray(it && it.photos) ? it.photos : [];
+        var nama = String(it && it.nama ? it.nama : ('Barang ' + (i + 1)));
+        if (nama.length > 28) nama = nama.slice(0, 27) + '...';
+        fotos.forEach(function (p, j) {
+          var u = sr10UrlFoto(p);
+          if (!u) return;
+          var lbl = (i + 1) + '. ' + nama + (fotos.length > 1 ? ' (' + (j + 1) + '/' + fotos.length + ')' : '');
+          out.push({ url: u, label: lbl });
+        });
+      });
+    } else if (Array.isArray(s.image_urls)) {
+      s.image_urls.filter(function (u) { return !!u; }).map(String).forEach(function (u, n) {
+        out.push({ url: u, label: 'Foto ' + (n + 1) });
+      });
+    } else if (s.image_url) {
+      out.push({ url: String(s.image_url), label: 'Foto 1' });
+    }
+    return out.slice(0, 16);
+  }
+  function sr10Hitung(items) {
+    var total = 0, ada = false;
+    (Array.isArray(items) ? items : []).forEach(function (it) {
+      var h = sr10Harga(it && it.harga);
+      var q = sr10Angka(it && it.qty);
+      if (h > 0) { ada = true; total += h * q; }
+    });
+    return { total: total, ada: ada };
+  }
+
+  function sr10MuatFoto(url) {
+    return new Promise(function (resolve) {
+      var img = new Image();
+      var selesai = false;
+      function done(ok) { if (!selesai) { selesai = true; resolve(ok ? img : null); } }
+      img.crossOrigin = 'anonymous';
+      img.onload = function () { done(true); };
+      img.onerror = function () { done(false); };
+      setTimeout(function () { done(false); }, 10000);
+      img.src = url;
+    });
+  }
+
+  function sr10Font(sz, w) { return (w || 400) + ' ' + sz + 'px sans-serif'; }
+  function sr10RR(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+  function sr10Tulis(ctx, teks, x, y, o) {
+    o = o || {};
+    ctx.font = sr10Font(o.sz || 10, o.w || 400);
+    ctx.fillStyle = o.warna || '#111827';
+    ctx.textAlign = o.align || 'left';
+    ctx.textBaseline = o.base || 'middle';
+    ctx.fillText(String(teks == null ? '' : teks), x, y);
+  }
+  function sr10TulisPas(ctx, teks, x, y, maxW, o) {
+    o = o || {};
+    var sz = o.sz || 9.5;
+    ctx.font = sr10Font(sz, o.w || 400);
+    var t = String(teks == null ? '' : teks);
+    while (sz > 7.5 && ctx.measureText(t).width > maxW) {
+      sz -= 0.5;
+      ctx.font = sr10Font(sz, o.w || 400);
+    }
+    ctx.fillStyle = o.warna || '#111827';
+    ctx.textAlign = o.align || 'right';
+    ctx.textBaseline = o.base || 'middle';
+    ctx.fillText(t, x, y);
+  }
+  function sr10Wrap(ctx, teks, maxW, maxLines) {
+    var s = String(teks == null ? '' : teks).trim();
+    if (!s) return [];
+    var lines = [], cur = '';
+    var kata = s.split(/\s+/);
+    function potongKata(w) {
+      var out = [], c = '';
+      for (var i = 0; i < w.length; i++) {
+        var t = c + w[i];
+        if (ctx.measureText(t).width > maxW && c) { out.push(c); c = w[i]; }
+        else c = t;
+      }
+      if (c) out.push(c);
+      return out;
+    }
+    for (var i = 0; i < kata.length; i++) {
+      var bagian = [kata[i]];
+      if (ctx.measureText(kata[i]).width > maxW) bagian = potongKata(kata[i]);
+      for (var b = 0; b < bagian.length; b++) {
+        var uji = cur ? cur + ' ' + bagian[b] : bagian[b];
+        if (cur && ctx.measureText(uji).width > maxW) { lines.push(cur); cur = bagian[b]; }
+        else cur = uji;
+      }
+    }
+    if (cur) lines.push(cur);
+    if (lines.length > maxLines) {
+      lines = lines.slice(0, maxLines);
+      var akhir = lines[maxLines - 1];
+      while (akhir.length > 1 && ctx.measureText(akhir + '...').width > maxW) akhir = akhir.slice(0, -1);
+      lines[maxLines - 1] = akhir + '...';
+    }
+    return lines;
+  }
+  function sr10WarnaPrio(p) {
+    var v = String(p || '');
+    if (/urgent/i.test(v)) return { bg: '#FEE2E2', fg: '#DC2626' };
+    if (/sedang/i.test(v)) return { bg: '#FEF3C7', fg: '#B45309' };
+    if (/rendah/i.test(v)) return { bg: '#DBEAFE', fg: '#1D4ED8' };
+    return { bg: '#E5E7EB', fg: '#374151' };
+  }
+  function sr10GambarFoto(ctx, img, x, y) {
+    ctx.save();
+    sr10RR(ctx, x, y, TILE, TILE, 4);
+    ctx.fillStyle = '#F3F4F6';
+    ctx.fill();
+    ctx.clip();
+    var ok = false;
+    if (img) {
+      var iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+      if (iw > 0 && ih > 0) {
+        var sc = Math.max(TILE / iw, TILE / ih);
+        var sw = TILE / sc, sh = TILE / sc;
+        var sx = (iw - sw) / 2, sy = (ih - sh) / 2;
+        try { ctx.drawImage(img, sx, sy, sw, sh, x, y, TILE, TILE); ok = true; } catch (e) { ok = false; }
+      }
+    }
+    if (!ok) {
+      ctx.strokeStyle = '#D1D5DB';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(x + 4.5, y + 4.5, TILE - 9, TILE - 9);
+      ctx.setLineDash([]);
+      sr10Tulis(ctx, 'Foto gagal dimuat', x + TILE / 2, y + TILE / 2, { sz: 7, warna: '#9CA3AF', align: 'center' });
+    }
+    ctx.restore();
+    ctx.strokeStyle = '#E5E7EB';
+    ctx.lineWidth = 1;
+    sr10RR(ctx, x + 0.5, y + 0.5, TILE - 1, TILE - 1, 4);
+    ctx.stroke();
+  }
+
+  function sr10Tata(s, fotoList, ctx) {
+    var L = { fotoRows: 0, tujuanLines: [], barisH: [], kepalaH: 0 };
+    var items = Array.isArray(s.items) ? s.items : [];
+    var y = PAD;
+
+    L.headerY = y;
+    y += 52 + 10;
+
+    L.infoY = y;
+    y += 16 * 3;
+    y += 4;
+    y += 20 + 4;
+
+    if (s.purpose) {
+      ctx.font = sr10Font(10.5, 400);
+      L.tujuanLines = sr10Wrap(ctx, s.purpose, CW - 60, 2);
+      y += 6 + L.tujuanLines.length * 13 + 6;
+    }
+
+    var th = ['No', 'Nama Barang', 'Spesifikasi', 'Qty', 'Estimasi Harga Satuan', 'Estimasi Jumlah', 'Catatan'];
+    var maxLn = 1, i;
+    for (i = 0; i < 7; i++) {
+      ctx.font = sr10Font(10, 700);
+      var ln = sr10Wrap(ctx, th[i], KOL[i] - 6, 3).length;
+      if (ln > maxLn) maxLn = ln;
+    }
+    L.kepalaH = maxLn * 11 + 10;
+
+    L.tabelY = y;
+    y += L.kepalaH;
+    for (i = 0; i < items.length; i++) {
+      var it = items[i];
+      ctx.font = sr10Font(10, 400);
+      var ln2 = 1;
+      ln2 = Math.max(ln2, sr10Wrap(ctx, it.nama, KOL[1] - 6, 2).length);
+      ln2 = Math.max(ln2, sr10Wrap(ctx, it.spec, KOL[2] - 6, 2).length);
+      ln2 = Math.max(ln2, sr10Wrap(ctx, it.catatan, KOL[6] - 6, 2).length);
+      var rh = Math.max(22, 8 + ln2 * 12);
+      L.barisH.push(rh);
+      y += rh;
+    }
+    if (!items.length) { L.barisH.push(24); y += 24; }
+    L.adaEst = sr10Hitung(items).ada;
+    L.total = sr10Hitung(items).total;
+    if (L.adaEst) { y += 22; }
+
+    if (fotoList.length) {
+      y += 12 + 12 + 6;
+      L.fotoY = y;
+      L.fotoRows = Math.min(4, Math.ceil(fotoList.length / 4));
+      y += L.fotoRows * (TILE + 4 + 20 + 8);
+    }
+
+    y += 10 + 10 + 8;
+    L.totalH = y;
+    return L;
+  }
+
+  function sr10Gambar(ctx, s, fotoList, imgs, L) {
+    var items = Array.isArray(s.items) ? s.items : [];
+    var kx = [PAD], i;
+    for (i = 0; i < KOL.length; i++) kx.push(kx[i] + KOL[i]);
+    var y;
+
+    /* --- Header navy --- */
+    y = L.headerY;
+    sr10RR(ctx, PAD, y, CW, 52, 8);
+    ctx.fillStyle = '#1F2937';
+    ctx.fill();
+    sr10Tulis(ctx, SR10_BRAND.toUpperCase(), PAD + 14, y + 16, { sz: 8, w: 700, warna: '#F5B941' });
+    sr10Tulis(ctx, SR10_JUDUL, PAD + 14, y + 33, { sz: 15, w: 700, warna: '#FFFFFF' });
+    sr10Tulis(ctx, 'No. Form', PAD + CW - 14, y + 15, { sz: 7, warna: '#9CA3AF', align: 'right' });
+    sr10Tulis(ctx, s.form_number || '-', PAD + CW - 14, y + 30, { sz: 12, w: 700, warna: '#FFFFFF', align: 'right' });
+
+    /* --- Info --- */
+    y = L.infoY;
+    var lantai = [s.floor, s.room].filter(function (x) { return x; }).map(sr10Rapi).join(' / ');
+    function infoBaris(l1, v1, l2, v2) {
+      sr10Tulis(ctx, l1, PAD, y + 8, { sz: 8.5, warna: '#9CA3AF' });
+      sr10Tulis(ctx, v1, PAD + 58, y + 8, { sz: 11, w: 600, warna: '#111827' });
+      if (l2 !== undefined) {
+        sr10Tulis(ctx, l2, PAD + 236, y + 8, { sz: 8.5, warna: '#9CA3AF' });
+        if (v2 !== undefined) sr10Tulis(ctx, v2, PAD + 236 + 62, y + 8, { sz: 11, w: 600, warna: '#111827' });
+      }
+      y += 16;
+    }
+    infoBaris('Tanggal', sr10Tgl(s.request_date), 'Pemohon', s.requester_name || '-');
+    infoBaris('Kebutuhan', sr10Rapi(s.location_needed) || '-', 'Lantai / Area', lantai || '-');
+    infoBaris('Kategori', s.category || '-', 'Prioritas', null);
+    var pr = sr10WarnaPrio(s.priority);
+    ctx.font = sr10Font(10, 700);
+    var pw = ctx.measureText(String(s.priority || '-')).width + 20;
+    sr10RR(ctx, PAD + 236 + 62, y - 16 + 1, pw, 15, 7.5);
+    ctx.fillStyle = pr.bg; ctx.fill();
+    sr10Tulis(ctx, s.priority || '-', PAD + 236 + 62 + pw / 2, y - 16 + 8.5, { sz: 9.5, w: 700, warna: pr.fg, align: 'center' });
+
+    var ap = !!s.is_approved;
+    var cTeks = ap ? 'SUDAH DISETUJUI HEAD' : 'MENUNGGU APPROVAL HEAD';
+    var cBg = ap ? '#D1FAE5' : '#FEF3C7', cFg = ap ? '#047857' : '#B45309';
+    sr10Tulis(ctx, 'Status', PAD, y + 10, { sz: 8.5, warna: '#9CA3AF' });
+    ctx.font = sr10Font(10, 700);
+    var cw2 = ctx.measureText(cTeks).width + 24;
+    sr10RR(ctx, PAD + 58, y + 1, cw2, 18, 9);
+    ctx.fillStyle = cBg; ctx.fill();
+    sr10Tulis(ctx, cTeks, PAD + 58 + cw2 / 2, y + 10, { sz: 10, w: 700, warna: cFg, align: 'center' });
+    y += 20 + 4;
+
+    if (s.purpose && L.tujuanLines.length) {
+      sr10Tulis(ctx, 'Tujuan', PAD, y + 7, { sz: 8.5, warna: '#9CA3AF' });
+      for (var t = 0; t < L.tujuanLines.length; t++) {
+        sr10Tulis(ctx, L.tujuanLines[t], PAD + 58, y + 7 + t * 13, { sz: 10.5, warna: '#111827' });
+      }
+      y += 6 + L.tujuanLines.length * 13 + 6;
+    }
+
+    /* --- Tabel barang --- */
+    var th = ['No', 'Nama Barang', 'Spesifikasi', 'Qty', 'Estimasi Harga Satuan', 'Estimasi Jumlah', 'Catatan'];
+    var thA = ['center', 'left', 'left', 'center', 'center', 'center', 'left'];
+    ctx.fillStyle = '#1F2937';
+    ctx.fillRect(PAD, L.tabelY, CW, L.kepalaH);
+    var thY = L.tabelY + (L.kepalaH - 11 * 3) / 2 + 6;
+    for (i = 0; i < 7; i++) {
+      ctx.font = sr10Font(10, 700);
+      var lines = sr10Wrap(ctx, th[i], KOL[i] - 6, 3);
+      var tx = thA[i] === 'center' ? kx[i] + KOL[i] / 2 : kx[i] + 3;
+      for (var li = 0; li < lines.length; li++) {
+        sr10Tulis(ctx, lines[li], tx, thY + li * 11 + 5, { sz: 10, w: 700, warna: '#FFFFFF', align: thA[i] });
+      }
+    }
+    y = L.tabelY + L.kepalaH;
+    var est = sr10Hitung(items);
+    function barisItem(no, it) {
+      var rh = L.barisH[no];
+      var cy = y + rh / 2;
+      var harga = sr10Harga(it && it.harga);
+      var jml = harga > 0 ? harga * sr10Angka(it && it.qty) : 0;
+      ctx.font = sr10Font(10, 400);
+      var namaL = sr10Wrap(ctx, it.nama, KOL[1] - 6, 2);
+      var specL = sr10Wrap(ctx, it.spec, KOL[2] - 6, 2);
+      var catL = sr10Wrap(ctx, it.catatan || '-', KOL[6] - 6, 2);
+      var ln = Math.max(1, namaL.length, specL.length, catL.length);
+      var firstY = y + (rh - ln * 12) / 2 + 6;
+      sr10Tulis(ctx, String(no + 1), kx[0] + KOL[0] / 2, cy, { sz: 10, warna: '#111827', align: 'center' });
+      for (var a = 0; a < namaL.length; a++) {
+        sr10Tulis(ctx, namaL[a], kx[1] + 3, firstY + a * 12, { sz: 10, warna: '#111827' });
+      }
+      for (var b = 0; b < specL.length; b++) {
+        sr10Tulis(ctx, specL[b], kx[2] + 3, firstY + b * 12, { sz: 10, warna: '#374151' });
+      }
+      var qtyTeks = String(it.qty != null ? it.qty : '-') + (it.satuan ? ' ' + it.satuan : '');
+      sr10Tulis(ctx, qtyTeks, kx[3] + KOL[3] / 2, cy, { sz: 10, warna: '#111827', align: 'center' });
+      sr10TulisPas(ctx, harga > 0 ? 'Rp ' + sr10Rp(harga) : '-', kx[4] + KOL[4] - 3, cy, KOL[4] - 6, { sz: 9.5, warna: '#111827', align: 'right' });
+      sr10TulisPas(ctx, jml > 0 ? 'Rp ' + sr10Rp(jml) : '-', kx[5] + KOL[5] - 3, cy, KOL[5] - 6, { sz: 9.5, w: 600, warna: '#111827', align: 'right' });
+      for (var c = 0; c < catL.length; c++) {
+        sr10Tulis(ctx, catL[c], kx[6] + 3, firstY + c * 12, { sz: 10, warna: '#374151' });
+      }
+      y += rh;
+    }
+    if (items.length) {
+      items.forEach(function (it, i2) { barisItem(i2, it || {}); });
+    } else {
+      sr10Tulis(ctx, 'Tidak ada barang', PAD + CW / 2, y + 12, { sz: 10, warna: '#9CA3AF', align: 'center' });
+      y += 24;
+    }
+    /* baris TOTAL — nominal di bawah kolom ESTIMASI JUMLAH (temuan no.1) */
+    if (est.ada) {
+      ctx.fillStyle = '#F9FAFB';
+      ctx.fillRect(PAD, y, CW, 22);
+      sr10Tulis(ctx, 'TOTAL ESTIMASI BIAYA', kx[5] - 8, y + 11, { sz: 10, w: 700, warna: '#111827', align: 'right' });
+      sr10TulisPas(ctx, 'Rp ' + sr10Rp(est.total), kx[5] + KOL[5] - 3, y + 11, KOL[5] - 6, { sz: 10, w: 700, warna: '#111827', align: 'right' });
+      y += 22;
+    }
+    ctx.strokeStyle = '#E5E7EB';
+    ctx.lineWidth = 1;
+    var tBottom = y;
+    for (i = 0; i <= 7; i++) {
+      ctx.beginPath();
+      ctx.moveTo(kx[i] + 0.5, L.tabelY + 0.5);
+      ctx.lineTo(kx[i] + 0.5, tBottom + 0.5);
+      ctx.stroke();
+    }
+    var ry = L.tabelY + L.kepalaH;
+    ctx.beginPath();
+    ctx.moveTo(PAD + 0.5, L.tabelY + L.kepalaH + 0.5);
+    ctx.lineTo(PAD + CW - 0.5, L.tabelY + L.kepalaH + 0.5);
+    ctx.stroke();
+    for (i = 0; i < L.barisH.length; i++) {
+      ry += L.barisH[i];
+      ctx.beginPath();
+      ctx.moveTo(PAD + 0.5, ry + 0.5);
+      ctx.lineTo(PAD + CW - 0.5, ry + 0.5);
+      ctx.stroke();
+    }
+
+    /* --- FOTO BARANG: 4 ke samping x maks 4 ke bawah, semua seragam --- */
+    if (fotoList.length) {
+      y += 12;
+      sr10Tulis(ctx, 'FOTO BARANG', PAD, y + 6, { sz: 10, w: 700, warna: '#374151' });
+      y += 12 + 6;
+      for (var r = 0; r < L.fotoRows; r++) {
+        for (var c = 0; c < 4; c++) {
+          var idx = r * 4 + c;
+          var fx = PAD + OFS + c * (TILE + GAPF);
+          if (idx < fotoList.length) {
+            sr10GambarFoto(ctx, imgs[idx], fx, y);
+            ctx.font = sr10Font(7.5, 600);
+            var capL = sr10Wrap(ctx, fotoList[idx].label, TILE + GAPF, 2);
+            for (var lj = 0; lj < capL.length; lj++) {
+              sr10Tulis(ctx, capL[lj], fx + TILE / 2, y + TILE + 9 + lj * 10, { sz: 7.5, w: 600, warna: '#374151', align: 'center' });
+            }
+          }
+        }
+        y += TILE + 4 + 20 + 8;
+      }
+    }
+
+    /* --- Footer --- */
+    y += 10;
+    sr10Tulis(ctx, SR10_FOOT + ' - ' + SR10_BRAND + ' - ' + sr10TglFoot(), PAD + CW / 2, y + 5, { sz: 8, warna: '#9CA3AF', align: 'center' });
+  }
+
+  function sr10GambarCanvas(s, fotoList, imgs) {
+    var ukur = document.createElement('canvas').getContext('2d');
+    var L = sr10Tata(s, fotoList, ukur);
+    var cv = document.createElement('canvas');
+    cv.width = LEBAR * 2;
+    cv.height = Math.ceil(L.totalH) * 2;
+    var ctx = cv.getContext('2d');
+    ctx.scale(2, 2);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, LEBAR, L.totalH);
+    sr10Gambar(ctx, s, fotoList, imgs, L);
+    return cv;
+  }
+
+  /* ====== FUNGSI UTAMA (menimpa downloadStockImage sebelumnya) ====== */
+  window.downloadStockImage = async function (id) {
+    try {
+      showToast('Membuat gambar...');
+      var sbObj = sr10Sb();
+      if (!sbObj) { showToast('Koneksi database belum siap', 'error'); return; }
+      var res = await sbObj.from('stock_requests').select('*').eq('id', id).single();
+      if (!res.data) { showToast('Data tidak ditemukan', 'error'); return; }
+      var s = res.data;
+
+      var fotoList = sr10KumpulkanFoto(s);
+      var imgs = [];
+      if (fotoList.length) {
+        showToast('Memuat foto (' + fotoList.length + ')...');
+        imgs = await Promise.all(fotoList.map(function (f) { return sr10MuatFoto(f.url); }));
+      }
+      var ok = 0;
+      imgs.forEach(function (im) { if (im) ok++; });
+      console.log('[SR10] Foto ditemukan:', fotoList.length, '| berhasil dimuat:', ok);
+
+      var cv = sr10GambarCanvas(s, fotoList, imgs);
+
+      var link = document.createElement('a');
+      link.download = 'Form_' + String(s.form_number || id).replace(/[\/\\?#%*|:"<>]/g, '-') + '.png';
+      link.href = cv.toDataURL('image/png');
+      link.click();
+      showToast('Gambar berhasil diunduh');
+    } catch (err) {
+      console.error('[SR10] Gagal:', err);
+      showToast('Gagal membuat gambar: ' + (err && err.message ? err.message : err), 'error');
+    }
+  };
+
+  /* kait diagnosa / pengujian */
+  window.__SR10 = {
+    gambarCanvas: sr10GambarCanvas,
+    kumpulkanFoto: sr10KumpulkanFoto,
+    hitung: sr10Hitung,
+    formatRp: sr10Rp,
+    rapikanNomor: sr10RapikanNomor,
+    sinkronSemua: sr10SinkronSemua,
+    pasangOpsi: sr10PasangOpsi
+  };
+})();
+</script>
+<!-- ============ AKHIR SR FIX PACK v10 ============ -->
+<!-- =====================================================================
+  PM PANEL MENU v2 (PM5) - PERBAIKAN: panel LAPORAN PDF belum muncul
+  di dalam menu Preventive Maintenance (di bawah tombol "+ Tambah")
+  ---------------------------------------------------------------------
+  Masalah pada blok sebelumnya (PM4): deteksi halaman PM gagal pada
+  struktur aplikasi aslinya, jadi panel tidak pernah dipindah ke dalam
+  halaman - hasilnya tombol PDF hilang total (melayang sudah dihapus,
+  yang di dalam menu tidak muncul).
+  Cara kerja blok ini (PM5):
+  (1) Anchor diambil dari tombol "+ Tambah" / "Excel Peralatan" yang
+      SEDANG TERLIHAT (bukan dari judul halaman / id halaman) - jadi
+      selalu ketemu di halaman Preventive Maintenance.
+  (2) Dipasang PENANDA HALUS "Preventive Maintenance" (1px, tak
+      terlihat) di dalam halaman PM itu -> blok PM LAPORAN v1 jadi
+      MENGENALI halamannya sendiri dan memasang panel LAPORAN PDF
+      otomatis di bawah tombol "+ Tambah" (dan memasang ulang sendiri
+      kalau terhapus / halaman di-render ulang).
+  (3) Panel yang masih melayang langsung dipindahkan ke halaman PM
+      (bukan dibuat ulang - tombol Download Rekap & Riwayat tetap
+      berfungsi 100%), dipaksa tampil (position static, display block).
+  (4) Tombol bulat PDF melayang tetap DIHAPUS selamanya (dicek tiap
+      detik, kalau dibuat ulang pun dihapus lagi).
+  (5) Aman dobel tempel; blok PM3 / PM4 lama boleh dihapus boleh
+      dibiarkan. Tidak perlu SQL. Log console: [PM5]
+  Cara pasang: tempel PALING BAWAH sebelum </body> (di bawah blok
+  "PM LAPORAN v1"). Blok "PM LAPORAN v1" WAJIB tetap ada.
+===================================================================== -->
+<script>
+(function(){
+'use strict';
+if(window.__PM5_AKTIF__) return;
+window.__PM5_AKTIF__=true;
+var TAG='[PM5]';
+function log(){ try{ console.log.apply(console,[TAG].concat([].slice.call(arguments))); }catch(e){} }
+
+function bersih(s){ return String(s==null?'':s).replace(/\s+/g,' ').trim(); }
+
+/* ---------- util terlihat ---------- */
+function terlihat(el){
+  try{
+    var r=el.getBoundingClientRect?el.getBoundingClientRect():null;
+    if(!r || r.width<8 || r.height<8) return false;
+    if(r.right<0 || r.bottom<0 || r.top>(window.innerHeight||800)) return false;
+    if(typeof getComputedStyle==='function'){
+      var cs=getComputedStyle(el);
+      if(cs && (cs.display==='none' || cs.visibility==='hidden')) return false;
+    }
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ---------- penanda klik menu Preventive Maintenance ---------- */
+var pmKlikAt=0;
+if(!window.__PM5_WATCH__){
+  window.__PM5_WATCH__=true;
+  document.addEventListener('click',function(ev){
+    try{
+      var n=ev.target, kedalaman=0, elTeks=null;
+      while(n && n!==document && kedalaman<6){
+        if(n.nodeType===1){
+          var t=bersih(n.textContent);
+          if(t){ elTeks=n; break; }
+        }
+        n=n.parentNode; kedalaman++;
+      }
+      if(!elTeks) return;
+      var tx=bersih(elTeks.textContent);
+      if(!tx || tx.length>60) return;
+      if(/preventive|preventif/i.test(tx)){ pmKlikAt=Date.now(); return; }
+      if(elTeks.closest && elTeks.closest('nav,aside,[class*="sidebar"],[id*="sidebar"],[class*="menu"],[id*="menu"]')) pmKlikAt=0;
+    }catch(e){}
+  },true);
+}
+
+/* ---------- cari tombol anchor: "+ Tambah" / "Excel Peralatan" ---------- */
+var RE_TAMBAH=/^(\+\s*)?tambah$/i;
+var RE_EXCEL=/^excel\s*peralatan$/i;
+function cariBtnAnchor(){
+  try{
+    var semua=document.querySelectorAll('button,a,input,[role="button"]');
+    var cadangan=null;
+    for(var i=0;i<semua.length;i++){
+      var b=semua[i];
+      if(b.disabled) continue;
+      var t=(b.tagName==='INPUT')?bersih(b.value||''):bersih(b.textContent);
+      if(!t || t.length>24) continue;
+      if(b.children && b.children.length>4) continue;
+      var okT=RE_TAMBAH.test(t), okE=RE_EXCEL.test(t);
+      if(!okT && !okE) continue;
+      if(!terlihat(b)) continue;
+      if(okT) return b;
+      if(!cadangan) cadangan=b;
+    }
+    return cadangan;
+  }catch(e){ return null; }
+}
+
+/* ---------- verifikasi halaman PM ---------- */
+var RE_PM_ID=/prevent|preventif|(^|[^a-z])pm([^a-z]|$)|peralatan/i;
+var RE_KOTOR=/stock\s*request|laporan\s*harian|data\s*vendor|serah\s*terima|pengajuan\s*progress/i;
+function sahih(sec){
+  try{
+    if(!sec || sec===document.body || sec===document.documentElement) return false;
+    var id=bersih((sec.id||'')+' '+(sec.className||''));
+    if(RE_PM_ID.test(id)) return true;
+    var t=bersih(sec.textContent);
+    if(t.length>20000) t=t.slice(0,20000);
+    if(RE_KOTOR.test(t)) return false;
+    if(/preventive|preventif/i.test(t)) return true;
+    if(/peralatan/i.test(t) && /riwayat|catat\s*hasil/i.test(t)) return true;
+    if(Date.now()-pmKlikAt<90000) return true;
+    return false;
+  }catch(e){ return false; }
+}
+
+/* ---------- cari wadah halaman dari tombol (deteksi awal) ---------- */
+function rawSec(btn){
+  try{
+    var cur=btn, batas=16;
+    while(cur && cur!==document.body && batas-->0){
+      cur=cur.parentElement;
+      if(!cur) break;
+      var w=0;
+      try{ w=cur.getBoundingClientRect().width; }catch(e){}
+      if(w>=Math.max(320,(window.innerWidth||360)*0.7) && sahih(cur)) return cur;
+    }
+    var c=btn.closest?btn.closest('[id^="page-"],[class*="page-content"],section'):null;
+    if(c && sahih(c)) return c;
+  }catch(e){}
+  return null;
+}
+
+/* ---------- penanda halus agar PM1 mengenali halaman PM ---------- */
+function pastikanPenanda(sec){
+  try{
+    if(sec.querySelector('span[data-pm5]')) return;
+    var s=document.createElement('span');
+    s.setAttribute('data-pm5','1');
+    s.textContent='Preventive Maintenance';
+    s.style.cssText='position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:0!important;border:0!important;overflow:hidden!important;opacity:0!important;pointer-events:none!important;line-height:0!important;';
+    sec.appendChild(s);
+    log('Penanda halaman Preventive dipasang (agar PM1 mengenali halaman)');
+  }catch(e){}
+}
+
+/* ---------- replika deteksi halaman milik PM1 (agar selalu sepakat) ---------- */
+var ID_PM1=['page-preventive','page-preventive-maintenance','page-preventif','page-pm','pagePreventive','preventivePage'];
+function naik72(el){
+  var cur=el, batas=14;
+  while(cur && cur!==document.body && batas-->0){
+    var w=0;
+    try{ w=cur.getBoundingClientRect().width; }catch(e){}
+    if(w>=(window.innerWidth||360)*0.72) return cur;
+    cur=cur.parentElement;
+  }
+  return el;
+}
+function layakReplica(el){
+  try{
+    if(!el) return false;
+    var r=el.getBoundingClientRect?el.getBoundingClientRect():null;
+    if(r && (r.width<50 || r.height<40)) return false;
+    var t=el.textContent||'';
+    if(!/preventive/i.test(t)) return false;
+    if(/stock\s*request|laporan\s*harian/i.test(t)) return false;
+    return true;
+  }catch(e){ return false; }
+}
+function cariSectionReplica(){
+  try{
+    for(var i=0;i<ID_PM1.length;i++){
+      var e=document.getElementById(ID_PM1[i]);
+      if(e && layakReplica(e)) return e;
+    }
+    var list=document.querySelectorAll('[id*="preventive" i],[id*="preventif" i],[class*="preventive" i]');
+    for(var j=0;j<list.length;j++){
+      var hal=naik72(list[j]);
+      if(hal && layakReplica(hal)) return hal;
+    }
+    var els=document.querySelectorAll('h1,h2,h3,h4,b,span,div,p,a');
+    for(var k=0;k<els.length;k++){
+      var el=els[k];
+      if(el.children && el.children.length) continue;
+      var t=bersih(el.textContent);
+      if(t.length>44 || !/preventive\s*maintenance/i.test(t)) continue;
+      if(el.closest && el.closest('nav,header,footer,button')) continue;
+      var hal2=naik72(el);
+      if(hal2 && layakReplica(hal2)) return hal2;
+    }
+  }catch(e){}
+  return null;
+}
+
+/* ---------- posisi sisip: anak langsung sec, tepat setelah zona tombol ---------- */
+function directChild(sec,btn){
+  var cur=btn, batas=20;
+  while(cur && cur.parentNode && batas-->0){
+    if(cur.parentNode===sec) return cur;
+    cur=cur.parentNode;
+  }
+  return null;
+}
+
+/* ---------- bersihkan sisa tombol X dari blok PM3 (di mode inline tak dipakai) ---------- */
+function bersihkanPM3(panel){
+  try{
+    var x=panel.querySelector('[data-pm3tutup]');
+    if(x && x.parentNode) x.parentNode.removeChild(x);
+    var c0=panel.children[0], c1=panel.children[1];
+    if(c0) c0.style.paddingRight='';
+    if(c1) c1.style.paddingRight='';
+  }catch(e){}
+}
+
+var CSS_INLINE='margin:14px 12px 22px;padding:14px;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:16px;box-shadow:0 6px 18px rgba(15,23,42,.10);font-family:inherit;max-width:560px;position:static;display:block;width:auto;left:auto;right:auto;top:auto;bottom:auto;z-index:auto;max-height:none;overflow:visible;';
+var PERNAH_LOG=false;
+
+function pindah(panel,sec,btn){
+  try{
+    bersihkanPM3(panel);
+    var d=directChild(sec,btn);
+    if(d && d!==panel && d.parentNode===sec){
+      sec.insertBefore(panel,d.nextSibling);
+    }else if(panel.parentNode!==sec){
+      sec.appendChild(panel);
+    }
+    panel.style.cssText=CSS_INLINE;
+    panel.removeAttribute('data-pm4');
+    if(!PERNAH_LOG){ PERNAH_LOG=true; log('Panel LAPORAN PDF sekarang di dalam menu Preventive Maintenance (di bawah tombol Tambah)'); }
+    return true;
+  }catch(e){ log('pindah gagal',e&&e.message); return false; }
+}
+
+/* ---------- hapus tombol bulat PDF melayang ---------- */
+function fabKill(){
+  try{
+    var f=document.getElementById('pm1FAB');
+    if(f && f.parentNode) f.parentNode.removeChild(f);
+  }catch(e){}
+}
+
+/* ---------- buang duplikat panel (jaga-jaga) ---------- */
+function dedupe(panel){
+  try{
+    var semua=document.querySelectorAll('#pm1Panel');
+    for(var i=0;i<semua.length;i++){
+      var p=semua[i];
+      if(p!==panel && p.parentNode) p.parentNode.removeChild(p);
+    }
+  }catch(e){}
+}
+
+/* ---------- siklus utama (tiap 1 detik) ---------- */
+function siklus(){
+  try{
+    if(!document.body) return;
+    fabKill();
+    var btn=cariBtnAnchor();
+    if(!btn) return;
+    var raw=rawSec(btn);
+    if(!raw || !sahih(raw)) return;
+    pastikanPenanda(raw);
+    var sec=cariSectionReplica() || raw;
+    var panel=document.getElementById('pm1Panel');
+    if(!panel) return; /* PM1 akan membuat panel otomatis (penanda sudah dipasang) */
+    dedupe(panel);
+    if(!sec.contains(panel)){
+      pindah(panel,sec,btn);
+      return;
+    }
+    /* panel sudah di halaman PM: pastikan tampil & posisinya pas */
+    if(panel.style.display!=='block') panel.style.display='block';
+    if(panel.style.position!=='static') panel.style.position='static';
+    if(panel.style.zIndex && panel.style.zIndex!=='auto') panel.style.zIndex='auto';
+    bersihkanPM3(panel);
+    if(panel.parentNode===sec){
+      var d=directChild(sec,btn);
+      if(d && d!==panel && d.parentNode===sec && d.nextSibling!==panel){
+        sec.insertBefore(panel,d.nextSibling);
+      }
+    }
+  }catch(e){}
+}
+
+function mulai(){
+  siklus();
+  setInterval(siklus,1000);
+}
+if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded',mulai); }
+else mulai();
+log('PM PANEL MENU v2 aktif - panel LAPORAN PDF dipasang di dalam menu Preventive Maintenance');
+})();
+</script>
 </body>
 </html>
