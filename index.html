@@ -17526,5 +17526,768 @@ log('PM TAMBAH BEBAS v1 aktif - semua user bisa menambah peralatan (Edit/Hapus t
 })();
 </script>
 <!-- ============ AKHIR PM TAMBAH BEBAS v1 (PM8) ============ -->
+<!-- =====================================================================
+  PM SCROLL TENANG v1 (PM9) - Halaman PM tidak lagi "naik sendiri"
+  (Midpoint Building)
+  ---------------------------------------------------------------------
+  Masalah: di menu Preventive Maintenance, saat di-scroll ke bawah,
+  halaman tiba-tiba "naik sendiri" ke atas. Penyebab: setelah memakai
+  menu tanggal (input type=date) di panel LAPORAN PDF maupun di filter
+  Riwayat, input tanggal itu TETAP DALAM KEADAAN FOKUS. Chrome di HP
+  otomatis "menarik" halaman kembali ke input yang sedang fokus setiap
+  kali user menggulir -> halaman melompat naik ke menu tanggal lagi.
+
+  Solusi (3 lapis, overlay murni, TANPA SQL, blok lama tetap):
+  (1) Lepas fokus otomatis:
+      - setelah tanggal dipilih (event change) -> fokus input dilepas,
+        jadi Chrome tidak punya alasan menarik halaman;
+      - begitu gerakan scroll dimulai (jari bergeser >= 10px) dan ada
+        input tanggal PM yang fokus -> fokus langsung dilepas SEBELUM
+        Chrome sempat menarik halaman. Tap biasa (tanpa gerakan) tidak
+        diblas - jadi pemilih tanggal tetap bisa dibuka lagi seperti
+        biasa.
+  (2) Penjaga lompatan: posisi scroll dipantau tiap frame. Bila terjadi
+      lompatan besar (>45% tinggi layar dalam 1 frame) TANPA jari di
+      layar, sementara input tanggal PM sedang fokus dan berpindah dari
+      luar layar menjadi terlihat (tanda khas Chrome menarik halaman ke
+      input fokus), posisi scroll DIKEMBALIKAN dan fokus dilepas.
+      Ada pembatas (maks 5x per 2 detik) supaya tidak pernah
+      tarik-menarik dengan sistem.
+  (3) overflow-anchor:none pada halaman PM -> penyesuaian "scroll
+      anchoring" Chrome tidak ikut menggeser posisi bila ada blok yang
+      menulis ulang DOM di halaman PM.
+
+  Sopan ke blok lain:
+  - Hanya bekerja di halaman Preventive Maintenance (deteksi lewat
+    panel LAPORAN PDF / tombol Excel Peralatan). Menu lain (Stock
+    Request, Data Vendor, dll) TIDAK disentuh.
+  - PM2/PM7/PM8 (akses & tombol) tidak diutak-atik sama sekali.
+  - Nilai tanggal TIDAK pernah diubah - hanya fokus yang dilepas.
+  Cara pasang: tempel PALING BAWAH sebelum </body> (di bawah blok PM8).
+  Blok lama boleh dibiarkan. Tidak perlu SQL. Log console: [PM9]
+===================================================================== -->
+<script>
+(function(){
+'use strict';
+if(window.__PM9_AKTIF__) return;
+window.__PM9_AKTIF__=true;
+var TAG='[PM9]';
+function log(){ try{ console.log.apply(console,[TAG].concat([].slice.call(arguments))); }catch(e){} }
+
+/* ================= deteksi halaman PM ================= */
+var HP9=null, HP9_VERIF=0;
+function lebarOk(el){
+  try{
+    var r=el.getBoundingClientRect();
+    if(r.width>0 && r.width<window.innerWidth*0.6) return false;
+  }catch(e){}
+  return true;
+}
+function layakHalaman(el){
+  if(!el || el===document.body || el===document.documentElement) return false;
+  return lebarOk(el);
+}
+function naikTerdekat(el){
+  try{
+    var x=el.closest ? el.closest('[id^="page-"],[class*="page-content"],section') : null;
+    if(x && layakHalaman(x)) return x;
+  }catch(e){}
+  var cur=el, batas=12;
+  while(cur && cur!==document.body && batas-->0){
+    if(layakHalaman(cur)) return cur;
+    cur=cur.parentElement;
+  }
+  return null;
+}
+function cariHalamanPm(paksa){
+  var kini=Date.now();
+  if(!paksa && HP9 && HP9.isConnected && kini-HP9_VERIF<1200) return HP9;
+  var hasil=null;
+  /* jalur 1: panel LAPORAN PDF -> induknya adalah halaman PM (invarian PM5/PM6) */
+  try{
+    var p=document.getElementById('pm1Panel');
+    if(p && p.isConnected && p.parentElement && p.parentElement!==document.body && layakHalaman(p.parentElement)){
+      hasil=p.parentElement;
+    }
+  }catch(e1){}
+  /* jalur 2: tombol "Excel Peralatan" -> naik ke wadah halaman */
+  if(!hasil){
+    try{
+      var kandidat=document.querySelectorAll('button,a,input,[role="button"]');
+      for(var i=0;i<kandidat.length;i++){
+        var t=(kandidat[i].value||kandidat[i].textContent||'').replace(/\s+/g,' ').trim();
+        if(t && t.length<=24 && /^excel\s*peralatan$/i.test(t)){
+          hasil=naikTerdekat(kandidat[i]);
+          if(hasil) break;
+        }
+      }
+    }catch(e2){}
+  }
+  /* jalur 3: penanda tombol Tambah milik PM7 */
+  if(!hasil){
+    try{
+      var m=document.querySelector('[data-pm7s="1"],[data-pm7b="1"]');
+      if(m) hasil=naikTerdekat(m);
+    }catch(e3){}
+  }
+  if(hasil){
+    try{ hasil.setAttribute('data-pm9hal','1'); }catch(e4){}
+  }
+  HP9=hasil; HP9_VERIF=kini;
+  return hasil;
+}
+function dalamPm(el){
+  var h=cariHalamanPm(false);
+  try{ return !!(h && h.contains(el)); }catch(e){ return false; }
+}
+function halamanTerlihat(){
+  var h=cariHalamanPm(false);
+  if(!h) return false;
+  try{
+    var cs=getComputedStyle(h);
+    if(cs.display==='none'||cs.visibility==='hidden') return false;
+    if(h.offsetParent===null && cs.position!=='fixed') return false;
+    var r=h.getBoundingClientRect();
+    return r.width>0 && r.height>0;
+  }catch(e){ return false; }
+}
+function tglPmFokus(){
+  try{
+    var ae=document.activeElement;
+    if(!ae || ae.tagName!=='INPUT') return null;
+    if(String(ae.type||'').toLowerCase()!=='date') return null;
+    return dalamPm(ae)?ae:null;
+  }catch(e){ return null; }
+}
+
+/* ================= (3) overflow-anchor mati di halaman PM ================= */
+try{
+  var st=document.createElement('style');
+  st.id='pm9Style';
+  st.textContent='[data-pm9hal],[data-pm9hal] *{overflow-anchor:none!important}';
+  document.head.appendChild(st);
+}catch(eS){}
+
+/* ================= (1a) setelah tanggal dipilih -> lepas fokus ================= */
+document.addEventListener('change',function(e){
+  try{
+    var t=e.target;
+    if(!t || t.nodeType!==1 || t.tagName!=='INPUT') return;
+    if(String(t.type||'').toLowerCase()!=='date') return;
+    if(!dalamPm(t)) return;
+    setTimeout(function(){
+      try{ if(document.activeElement===t) t.blur(); }catch(e2){}
+    },120);
+    log('Tanggal dipilih -> fokus dilepas (anti lompat):', t.id||'(tanpa id)');
+  }catch(err){}
+},true);
+
+/* ================= (1b) gerakan scroll dimulai -> lepas fokus ================= */
+var mY=null, sudahBlurG=false;
+document.addEventListener('touchstart',function(e){
+  try{
+    sentuhAktif++;
+    mY=(e.touches && e.touches[0]) ? e.touches[0].clientY : null;
+    sudahBlurG=false;
+  }catch(e2){}
+},{capture:true,passive:true});
+function sentuhSelesai(){
+  try{ sentuhAktif=Math.max(0,sentuhAktif-1); mY=null; }catch(e){}
+}
+document.addEventListener('touchend',sentuhSelesai,{capture:true,passive:true});
+document.addEventListener('touchcancel',sentuhSelesai,{capture:true,passive:true});
+document.addEventListener('touchmove',function(e){
+  try{
+    if(sudahBlurG) return;
+    if(mY==null || !e.touches || !e.touches[0]) return;
+    if(Math.abs(e.touches[0].clientY-mY)<10) return;
+    sudahBlurG=true;                    /* 1x per gerakan, cukup */
+    var ae=document.activeElement;
+    if(ae && ae.tagName==='INPUT' && String(ae.type||'').toLowerCase()==='date' && dalamPm(ae)){
+      ae.blur();
+      log('Gerakan scroll terdeteksi -> fokus tanggal dilepas');
+    }
+  }catch(err){}
+},{capture:true,passive:true});
+
+/* ================= (2) penjaga lompatan scroll ================= */
+var sentuhAktif=0;
+var DAFTAR=[];
+function bangunDaftar(){
+  var out=[];
+  out.push({
+    get:function(){ return window.pageYOffset||document.documentElement.scrollTop||0; },
+    set:function(y){ try{ window.scrollTo(0,y); }catch(e){} }
+  });
+  try{
+    var h=cariHalamanPm(true);
+    var cur=h, n=0;
+    while(cur && cur!==document.body && n<6 && out.length<4){
+      var cs=getComputedStyle(cur);
+      if((cs.overflowY==='auto'||cs.overflowY==='scroll') && cur.scrollHeight>cur.clientHeight+40){
+        (function(el){
+          out.push({
+            get:function(){ return el.scrollTop; },
+            set:function(y){ el.scrollTop=y; }
+          });
+        })(cur);
+      }
+      cur=cur.parentElement; n++;
+    }
+  }catch(e){}
+  DAFTAR=out;
+}
+var posTerakhir={}, pulihJendela=0, pulihCount=0;
+function onScreen(inp){
+  try{
+    var vh=window.innerHeight||600;
+    var r=inp.getBoundingClientRect();
+    return r.top<vh*0.9 && r.bottom>vh*0.1;
+  }catch(e){ return false; }
+}
+function siklusJaga(){
+  try{
+    var ok=halamanTerlihat();
+    var inp=ok?tglPmFokus():null;
+    var vh=window.innerHeight||600;
+    for(var i=0;i<DAFTAR.length;i++){
+      var s=DAFTAR[i], y=s.get();
+      var prev=posTerakhir[i];
+      var tampak=inp?onScreen(inp):false;
+      if(prev && inp && !sentuhAktif && tampak && !prev.tampak){
+        var delta=Math.abs(y-prev.y);
+        if(delta>vh*0.45){
+          var kini=Date.now();
+          if(kini-pulihJendela>2000){ pulihJendela=kini; pulihCount=0; }
+          if(pulihCount<5){
+            s.set(prev.y);
+            try{ inp.blur(); }catch(e2){}
+            pulihCount++;
+            log('Lompatan ke input tanggal dicegah - posisi scroll dikembalikan');
+            posTerakhir[i]={y:prev.y,tampak:false};
+            continue;
+          }
+        }
+      }
+      posTerakhir[i]={y:y,tampak:tampak};
+    }
+  }catch(err){}
+  window.requestAnimationFrame(siklusJaga);
+}
+
+/* ================= boot ================= */
+function boot(){
+  try{ cariHalamanPm(true); bangunDaftar(); }catch(e){ log('boot err', e&&e.message); }
+  window.requestAnimationFrame(siklusJaga);
+}
+if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded',boot); }
+else boot();
+setInterval(function(){
+  try{ cariHalamanPm(true); bangunDaftar(); }catch(e){}
+},1200);
+
+log('PM SCROLL TENANG v1 aktif - halaman PM tidak lagi naik sendiri saat di-scroll');
+})();
+</script>
+<!-- ============ AKHIR PM SCROLL TENANG v1 (PM9) ============ -->
+<!-- =====================================================================
+  PM TAB TENANG & MILIK SENDIRI v1 (PM10) - (Midpoint Building)
+  ---------------------------------------------------------------------
+  DUA perbaikan sekaligus:
+
+  BAGIAN A - Tab Peralatan/Riwayat tidak lagi "balik ke menu PDF":
+  Penyebab: setelah tab diklik, aplikasi menampilkan filter Riwayat
+  sebentar, lalu ada proses (render ulang data / penarikan Chrome ke
+  input tanggal yang masih fokus) yang menarik tampilan kembali ke atas
+  - dan karena panel LAPORAN PDF ada di paling atas, yang terlihat
+  "berubah menjadi menu pdf itu lagi".
+  Solusi:
+  (A1) Saat tab Peralatan/Riwayat diklik -> fokus input tanggal di
+       halaman PM langsung dilepas (Chrome jadi tidak menarik halaman);
+  (A2) PM10 memastikan tampilungan mendarat di isi tab yang diklik:
+       diperiksa ulang pada 600ms / 1000ms / 1700ms setelah klik - bila
+       isi tab (filter Riwayat / daftar Peralatan) tidak terlihat,
+       posisi scroll dikembalikan ke sana. Sentuhan jari user Membatalkan
+       penyesuaian (PM10 tidak pernah melawan user).
+
+  BAGIAN B - Teknisi bisa Edit/Hapus PERALATAN MILIKNYA SENDIRI:
+  Aturan: teknisi (mis. Mawan) yang MENAMBAHKAN peralatan boleh
+  Edit/Hapus peralatan itu, tapi TETAP tidak bisa Edit/Hapus peralatan
+  buatan Head atau teknisi lain.
+  Cara kerja (tanpa SQL, murni di sisi tampilan):
+  (B1) Saat teknisi menyimpan peralatan baru lewat form Tambah, kartu
+       baru yang muncul di daftar dideteksi otomatis (perbandingan
+       daftar sebelum/sesudah simpan) dan dicatat di penyimpanan lokal
+       HP (localStorage) bersama nama user - jadi hanya perangkat itu,
+       hanya user itu;
+  (B2) Tombol Edit/Hapus pada kartu milik sendiri ditampilkan kembali
+       (melawan penyembunyian PM2 HANYA untuk kartu milik sendiri),
+       kartu lain tetap tersembunyi;
+  (B3) Saat tombol Edit/Hapus milik sendiri diklik, peran user dibaca
+       'head' HANYA selama klik berjalan (seperti cara PM8 membuka
+       jendela untuk Tambah), lalu peran asli langsung dipulihkan -
+       jadi guard aplikasi & PM2 lolos untuk kartu milik sendiri saja.
+  Catatan: peralatan yang dibuat SEBELUM blok ini dipasang tetap hanya
+  bisa dikelola Head (penciptanya tidak tercatat). Head tidak terpengaruh.
+
+  Sopan ke blok lain: PM2/PM7/PM8/PM9 tidak diutak-atik; PM8 jendela
+  Tambah/Simpan tetap jalan; PM9 anti-lompat tetap aktif.
+  Cara pasang: tempel PALING BAWAH sebelum </body> (di bawah blok PM9).
+  Blok lama boleh dibiarkan. Tidak perlu SQL. Log console: [PM10]
+===================================================================== -->
+<script>
+(function(){
+'use strict';
+if(window.__PM10_AKTIF__) return;
+window.__PM10_AKTIF__=true;
+var TAG='[PM10]';
+function log(){ try{ console.log.apply(console,[TAG].concat([].slice.call(arguments))); }catch(e){} }
+function teks(s){ return String(s==null?'':s).replace(/\s+/g,' ').trim(); }
+function terlihat(x){
+  try{
+    var cs=getComputedStyle(x);
+    if(!cs || cs.display==='none' || cs.visibility==='hidden') return false;
+    return x.offsetParent!==null || (x.getBoundingClientRect && x.getBoundingClientRect().width>0);
+  }catch(e){ return false; }
+}
+function kelihatan(x){
+  /* tampil di dokumen (boleh di luar layar) - untuk mencari target scroll */
+  try{
+    var cs=getComputedStyle(x);
+    if(!cs || cs.display==='none' || cs.visibility==='hidden') return false;
+    return x.offsetParent!==null;
+  }catch(e){ return false; }
+}
+
+/* ================= deteksi halaman PM (ringan) ================= */
+var HP10=null;
+function cariHalamanPm(paksa){
+  if(!paksa && HP10 && HP10.isConnected) return HP10;
+  var hasil=null;
+  try{
+    var p=document.getElementById('pm1Panel');
+    if(p && p.isConnected && p.parentElement && p.parentElement!==document.body) hasil=p.parentElement;
+  }catch(e1){}
+  if(!hasil){
+    try{
+      var k=document.querySelectorAll('button,a,input,[role="button"]');
+      for(var i=0;i<k.length;i++){
+        var t=teks(k[i].value||k[i].textContent||'');
+        if(t && t.length<=24 && /^excel\s*peralatan$/i.test(t)){
+          var x=k[i].closest ? k[i].closest('[id^="page-"],[class*="page-content"],section') : null;
+          if(x && x!==document.body){ hasil=x; break; }
+        }
+      }
+    }catch(e2){}
+  }
+  HP10=hasil;
+  return hasil;
+}
+function dalamPm(el){
+  var h=cariHalamanPm(false);
+  try{ return !!(h && h.contains(el)); }catch(e){ return false; }
+}
+
+/* ================= user & peran ================= */
+function dapatkanUser(){
+  try{ if(typeof currentUser!=='undefined' && currentUser && typeof currentUser==='object') return currentUser; }catch(e){}
+  try{ if(window.currentUser && typeof window.currentUser==='object') return window.currentUser; }catch(e2){}
+  return null;
+}
+function peranAsli(u){
+  try{ if(u && typeof u.__pm10asli!=='undefined' && u.__pm10asli!==null) return String(u.__pm10asli).toLowerCase(); }catch(e){}
+  try{ if(u && typeof u.__pm8asli!=='undefined' && u.__pm8asli!==null) return String(u.__pm8asli).toLowerCase(); }catch(e2){}
+  try{ return String(u && u.role || '').toLowerCase(); }catch(e3){ return ''; }
+}
+function namaUser(u){
+  u=u||dapatkanUser();
+  try{ return teks(u && (u.nama||u.name||u.email||u.username||u.id)||'')||'?'; }catch(e){ return '?'; }
+}
+function bukanHead(u){
+  u=u||dapatkanUser();
+  return !!(u && peranAsli(u)!=='head');
+}
+
+/* ================= jendela peran (utk klik milik sendiri) ================= */
+var JENDELA10=0, USER10=null, BATAS10=0;
+function jendelaMulai(u){
+  try{
+    if(typeof u.__pm10asli==='undefined' || u.__pm10asli===null){
+      var asli=(typeof u.__pm8asli!=='undefined' && u.__pm8asli!==null)?u.__pm8asli:u.role;
+      try{ Object.defineProperty(u,'__pm10asli',{value:asli,configurable:true,writable:true,enumerable:false}); }
+      catch(e){ u.__pm10asli=asli; }
+    }
+    u.role='head';
+    JENDELA10++; USER10=u; BATAS10=Date.now()+1500;
+  }catch(e){}
+}
+function jendelaSelesai(){
+  JENDELA10=Math.max(0,JENDELA10-1);
+  try{
+    if(JENDELA10===0 && USER10){
+      if(typeof USER10.__pm10asli!=='undefined'){ USER10.role=USER10.__pm10asli; delete USER10.__pm10asli; }
+      USER10=null;
+    }
+  }catch(e){}
+}
+setInterval(function(){
+  try{
+    if(JENDELA10>0 && BATAS10 && Date.now()>BATAS10+500){
+      JENDELA10=0;
+      if(USER10 && typeof USER10.__pm10asli!=='undefined'){ USER10.role=USER10.__pm10asli; delete USER10.__pm10asli; }
+      USER10=null;
+    }
+  }catch(e){}
+},1000);
+
+/* =====================================================================
+   BAGIAN A - TAB TENANG
+   ===================================================================== */
+function kontrolDari(t){
+  try{ return t.closest ? t.closest('button,a,[role="button"],[role="tab"]') : null; }catch(e){ return null; }
+}
+function tabGroupDari(el){
+  try{
+    if(!el || !dalamPm(el)) return null;
+    var t=teks(el.textContent).toLowerCase();
+    if(t!=='peralatan' && t!=='riwayat') return null;
+    var ibu=el.parentElement;
+    if(!ibu) return null;
+    var l=ibu.querySelectorAll('button,a,[role="button"],[role="tab"]');
+    var adaP=false, adaR=false;
+    for(var i=0;i<l.length;i++){
+      var x=teks(l[i].textContent).toLowerCase();
+      if(x==='peralatan') adaP=true;
+      if(x==='riwayat') adaR=true;
+    }
+    return (adaP&&adaR)?t:null;
+  }catch(e){ return null; }
+}
+function blasTanggalPm(){
+  try{
+    var ae=document.activeElement;
+    if(ae && ae.tagName==='INPUT' && String(ae.type||'').toLowerCase()==='date' && dalamPm(ae)){
+      ae.blur();
+      log('Tab diklik -> fokus tanggal dilepas (anti tarikan Chrome)');
+    }
+  }catch(e){}
+}
+function landmarkY(tab){
+  try{
+    var h=cariHalamanPm(false);
+    if(!h) return null;
+    var terbaik=null;
+    if(tab==='riwayat'){
+      /* kotak filter Riwayat: input tanggal di luar panel LAPORAN PDF */
+      var ins=h.querySelectorAll('input[type="date"]');
+      for(var i=0;i<ins.length;i++){
+        if(ins[i].id==='pm1Dari'||ins[i].id==='pm1Sampai') continue;
+        if(ins[i].closest && ins[i].closest('#pm1Panel')) continue;
+        if(!kelihatan(ins[i])) continue;
+        var r=ins[i].getBoundingClientRect();
+        var y1=r.top+window.pageYOffset;
+        if(terbaik===null || y1<terbaik) terbaik=y1;
+      }
+      /* label khas filter Riwayat */
+      var els=h.querySelectorAll('button,div,span,b,h3,h4,label');
+      for(var j=0;j<els.length;j++){
+        if(els[j].children.length>3) continue;
+        var t=teks(els[j].textContent).toLowerCase();
+        if(!t || t.length>30) continue;
+        if(!/^(terapkan\s*filter|filter\s*riwayat|excel\s*riwayat|riwayat\s*pengecekan)/.test(t)) continue;
+        if(!kelihatan(els[j])) continue;
+        var r2=els[j].getBoundingClientRect();
+        var y2=r2.top+window.pageYOffset;
+        if(terbaik===null || y2<terbaik) terbaik=y2;
+      }
+    }else{
+      var ks=h.querySelectorAll('button,a,input,[role="button"]');
+      for(var k=0;k<ks.length;k++){
+        var t2=teks(ks[k].value||ks[k].textContent||'');
+        if(t2 && t2.length<=24 && /^excel\s*peralatan$/i.test(t2) && kelihatan(ks[k])){
+          var r3=ks[k].getBoundingClientRect();
+          var y3=r3.top+window.pageYOffset;
+          if(terbaik===null || y3<terbaik) terbaik=y3;
+        }
+      }
+    }
+    if(terbaik===null) return null;
+    var y=terbaik-76;
+    var maks=Math.max(0,(document.documentElement.scrollHeight||0)-window.innerHeight);
+    return Math.max(0,Math.min(y,maks));
+  }catch(e){ return null; }
+}
+function penataTab(tab){
+  try{
+    if(!cariHalamanPm(false)) return;
+    var vh=window.innerHeight||600;
+    var r=terbaikRect(tab);
+    if(r!==null){
+      /* nyaman = landmark terlihat di 65% atas layar;
+         stabil = bila PM10 SUDAH pernah mengoreksi, landmark harus tetap
+         dekat posisi targetnya (~76px dari atas) - melawan pergeseran
+         tata letak yang terjadi SETELAH koreksi (render ulang data) */
+      var nyaman = (r>=-10 && r<=vh*0.65);
+      var stabil = (koreksiAktif===null || koreksiAktif.tab!==tab || Math.abs(r-76)<=120);
+      if(nyaman && stabil) return;
+    }
+    var y=landmarkY(tab);
+    if(y===null) return;
+    koreksiAktif={tab:tab,y:y};
+    window.scrollTo(0,y);
+    log('Tab '+tab+' -> tampilan dikembalikan ke isi tab (y='+Math.round(y)+')');
+  }catch(e){}
+}
+function terbaikRect(tab){
+  try{
+    var h=cariHalamanPm(false);
+    if(!h) return null;
+    if(tab==='riwayat'){
+      var ins=h.querySelectorAll('input[type="date"]');
+      for(var i=0;i<ins.length;i++){
+        if(ins[i].id==='pm1Dari'||ins[i].id==='pm1Sampai') continue;
+        if(ins[i].closest && ins[i].closest('#pm1Panel')) continue;
+        if(!terlihat(ins[i])) continue;
+        return ins[i].getBoundingClientRect().top;
+      }
+    }else{
+      var ks=h.querySelectorAll('button,a,input,[role="button"]');
+      for(var j=0;j<ks.length;j++){
+        var t=teks(ks[j].value||ks[j].textContent||'');
+        if(t && t.length<=24 && /^excel\s*peralatan$/i.test(t) && terlihat(ks[j]))
+          return ks[j].getBoundingClientRect().top;
+      }
+    }
+    return null;
+  }catch(e){ return null; }
+}
+var tabSentuhBatal=false, koreksiAktif=null; /* koreksiAktif={tab,y} saat PM10 sudah pernah mengoreksi */
+document.addEventListener('touchstart',function(){ tabSentuhBatal=true; koreksiAktif=null; },{capture:true,passive:true});
+window.addEventListener('click',function(e){
+  try{
+    var el=kontrolDari(e.target);
+    if(!el) return;
+    var tab=tabGroupDari(el);
+    if(!tab) return;
+    blasTanggalPm();
+    tabSentuhBatal=false;
+    koreksiAktif=null;
+    [600,1000,1700].forEach(function(ms){
+      setTimeout(function(){
+        try{ if(!tabSentuhBatal) penataTab(tab); }catch(e2){}
+      },ms);
+    });
+    setTimeout(function(){ koreksiAktif=null; },2400);
+    log('Tab diklik: '+tab+' - tampilan akan dijaga tetap di isi tab');
+  }catch(err){}
+},true);
+
+/* =====================================================================
+   BAGIAN B - MILIK SENDIRI
+   ===================================================================== */
+var RE_KODE=/\b[A-Z]{2,6}-\d{1,4}\b/;
+var RE_EDIT_HAPUS_TEKS=/^(edit|ubah|hapus|delete|del|remove)\b/i;
+var RE_SIMPAN=/^(simpan|save|submit)\b/i;
+var RE_IKON_EH=/(fa-(trash|trash-can|trash-alt|pen|pencil|edit|square-pen|file-pen|eraser))/i;
+var KUNCI_LS='pm10Milik';
+
+function bacaMilik(){
+  try{
+    var raw=localStorage.getItem(KUNCI_LS);
+    var arr=raw?JSON.parse(raw):[];
+    if(!Array.isArray(arr)) arr=[];
+    if(arr.length>200) arr=arr.slice(arr.length-200);
+    return arr;
+  }catch(e){ return []; }
+}
+function tulisMilik(arr){
+  try{ localStorage.setItem(KUNCI_LS, JSON.stringify(arr.slice(-200))); }catch(e){}
+}
+function kunciDariTeks(t){
+  var s=teks(t);
+  var m=s.match(RE_KODE);
+  if(m) return 'K:'+m[0].toUpperCase();
+  s=s.replace(/(catat hasil|riwayat|edit|hapus|tambah|excel peralatan|excel riwayat)/ig,' ');
+  s=teks(s).toLowerCase();
+  return s?('T:'+s.slice(0,70)):'';
+}
+function kartuDari(el){
+  /* kartu = leluhur ber-kode tunggal (paling pasti); kalau tidak ada kode,
+     leluhur terkecil dengan teks >=60 huruf (bukan baris tombol) */
+  var cur=el, fallback=null, batas=10;
+  while(cur && cur!==document.body && batas-->0){
+    try{
+      var t=teks(cur.textContent||'');
+      if(RE_KODE.test(t)){
+        var semua=t.match(new RegExp(RE_KODE.source,'g'))||[];
+        if(semua.length===1) return cur;   /* kartu dgn 1 kode */
+        break;                              /* kelewat jauh (banyak kartu) */
+      }
+      if(!fallback && t.length>=60) fallback=cur;
+    }catch(e){}
+    cur=cur.parentElement;
+  }
+  return fallback;
+}
+function kunciKartu(kartu){
+  try{ return kunciDariTeks(kartu.textContent||''); }catch(e){ return ''; }
+}
+function tombolAksiEh(root){
+  /* semua kandidat tombol Edit/Hapus di halaman PM */
+  var out=[], h=cariHalamanPm(false);
+  if(!h && !root) return out;
+  var wadah=(root&&root.querySelectorAll)?root:h;
+  try{
+    var l=wadah.querySelectorAll('button,a,[role="button"],input');
+    for(var i=0;i<l.length;i++){
+      var b=l[i];
+      try{
+        if(b.closest && b.closest('#pm1Panel')) continue;
+        var t=teks(b.value||b.textContent||'');
+        var ikon=!t && RE_IKON_EH.test(b.innerHTML||'');
+        var milikTanda=b.getAttribute && b.getAttribute('data-pm2h')==='1';
+        if(milikTanda || RE_EDIT_HAPUS_TEKS.test(t) || ikon) out.push(b);
+      }catch(e2){}
+    }
+  }catch(e3){}
+  return out;
+}
+function milikKah(tombol){
+  var kartu=kartuDari(tombol);
+  if(!kartu) return false;
+  var k=kunciKartu(kartu);
+  if(!k) return false;
+  var arr=bacaMilik(), saya=namaUser();
+  for(var i=0;i<arr.length;i++){
+    if(arr[i] && arr[i].k===k && teks(arr[i].u)===saya) return true;
+  }
+  return false;
+}
+function tampilKembali(b){
+  try{
+    var prev=b.getAttribute('data-pm2-prev');
+    b.style.display=(prev && prev!=='none')?prev:'';
+    b.setAttribute('data-pm2h','1');       /* PM2 akan melewatkan tombol ini */
+    b.setAttribute('data-pm10r','1');
+  }catch(e){}
+}
+function sembunyiLagi(b){
+  try{
+    b.style.display='none';
+    b.setAttribute('data-pm2h','1');
+    b.removeAttribute('data-pm10r');
+  }catch(e){}
+}
+function rapikanTombol(){
+  try{
+    if(!bukanHead()){
+      /* head: PM2 memulihkan semua sendiri; bersihkan penanda PM10 */
+      var all=tombolAksiEh(null);
+      for(var i=0;i<all.length;i++){
+        if(all[i].getAttribute && all[i].getAttribute('data-pm10r')==='1')
+          all[i].removeAttribute('data-pm10r');
+      }
+      return;
+    }
+    var l=tombolAksiEh(null);
+    for(var j=0;j<l.length;j++){
+      var b=l[j];
+      var pm10r=b.getAttribute && b.getAttribute('data-pm10r')==='1';
+      if(milikKah(b)){
+        var cs=getComputedStyle(b);
+        if(cs.display==='none' || !pm10r) tampilKembali(b);
+      }else if(pm10r){
+        sembunyiLagi(b);
+      }
+    }
+  }catch(e){}
+}
+
+/* --- pencatatan peralatan baru (diff daftar sebelum/sesudah simpan) --- */
+var pendingAwal=null, pendingSampai=0;
+function snapshotKunci(){
+  var h=cariHalamanPm(false);
+  if(!h) return [];
+  var out=[], l=tombolAksiEh(null), ada={};
+  for(var i=0;i<l.length;i++){
+    var kartu=kartuDari(l[i]);
+    if(!kartu) continue;
+    var k=kunciKartu(kartu);
+    if(k && !ada[k]){ ada[k]=1; out.push(k); }
+  }
+  return out;
+}
+document.addEventListener('click',function(e){
+  try{
+    if(!bukanHead()) return;
+    var el=kontrolDari(e.target);
+    if(!el) return;
+    var t=teks(el.value||el.textContent||'');
+    if(!t || !RE_SIMPAN.test(t)) return;
+    var m=el.closest ? el.closest('[id*="modal" i],[class*="modal" i],[class*="overlay" i],[class*="popup" i]') : null;
+    if(!m) return;
+    var nm=teks((m.id||'')+' '+(m.className||'')).toLowerCase();
+    var isi=teks(m.textContent||'').slice(0,300).toLowerCase();
+    if(!/peralatan|prevent|equipment|alat/.test(nm+' '+isi)) return;
+    pendingAwal=snapshotKunci();
+    pendingSampai=Date.now()+12000;
+    log('Simpan peralatan terdeteksi - mengamati daftar untuk mencatat milik '+namaUser());
+  }catch(err){}
+},true);
+setInterval(function(){
+  try{
+    if(pendingAwal===null || Date.now()>pendingSampai){
+      if(pendingAwal!==null && Date.now()>pendingSampai) pendingAwal=null;
+      return;
+    }
+    var kini=snapshotKunci();
+    var baru=[];
+    for(var i=0;i<kini.length;i++){
+      if(pendingAwal.indexOf(kini[i])===-1) baru.push(kini[i]);
+    }
+    if(baru.length){
+      var arr=bacaMilik(), saya=namaUser(), ubah=false;
+      for(var j=0;j<baru.length;j++){
+        var sudah=arr.some(function(x){ return x && x.k===baru[j] && teks(x.u)===saya; });
+        if(!sudah){ arr.push({k:baru[j],u:saya,t:Date.now()}); ubah=true; log('Dicatat milik '+saya+':', baru[j]); }
+      }
+      if(ubah) tulisMilik(arr);
+      pendingAwal=null;
+    }
+  }catch(e){}
+},1000);
+
+/* --- klik milik sendiri: buka jendela peran sesaat (window capture: SEBELUM PM2) --- */
+window.addEventListener('click',function(e){
+  try{
+    if(!bukanHead()) return;
+    var el=kontrolDari(e.target);
+    if(!el) return;
+    var t=teks(el.value||el.textContent||'');
+    var ikon=!t && RE_IKON_EH.test(el.innerHTML||'');
+    if(!(RE_EDIT_HAPUS_TEKS.test(t)||ikon)) return;
+    if(!dalamPm(el)) return;
+    if(!milikKah(el)) return;
+    var u=dapatkanUser();
+    if(!u) return;
+    jendelaMulai(u);
+    setTimeout(function(){ try{ jendelaSelesai(); }catch(e2){} },0);
+    log('Klik Edit/Hapus pada peralatan MILIK SENDIRI -> akses dibuka sesaat');
+  }catch(err){}
+},true);
+
+/* --- tampilkan tombol milik sendiri (rapihkan berkala) --- */
+function boot(){
+  cariHalamanPm(true);
+  rapikanTombol();
+}
+if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded',boot); }
+else boot();
+setInterval(function(){ try{ cariHalamanPm(true); rapikanTombol(); }catch(e){} },600);
+
+log('PM TAB TENANG & MILIK SENDIRI v1 aktif - tab tidak balik ke PDF; teknisi boleh Edit/Hapus peralatan miliknya sendiri');
+})();
+</script>
+<!-- ============ AKHIR PM TAB TENANG & MILIK SENDIRI v1 (PM10) ============ -->
 </body>
 </html>
