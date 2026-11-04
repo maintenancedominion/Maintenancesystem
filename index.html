@@ -17241,5 +17241,290 @@ log('PM TAMBAH SEMUA v1 aktif - tombol "+ Tambah" tampil untuk semua teknisi');
 })();
 </script>
 <!-- ============ AKHIR SR EDIT v1 (SR11) ============ -->
+<!-- =====================================================================
+  PM TAMBAH BEBAS v1 (PM8) - Semua user BISA menambah peralatan
+  (Midpoint Building)
+  ---------------------------------------------------------------------
+  Masalah: blok PM7 sudah membuat tombol "+ Tambah" tampil untuk semua
+  teknisi, TETAPI saat diklik aplikasi asli masih menolak dengan toast
+  merah "Hanya Head yang dapat mengelola peralatan" (guard role
+  currentUser.role !== 'head' milik aplikasi). Jadi teknisi lain tetap
+  tidak bisa menambah peralatan.
+
+  Cara kerja blok ini (overlay murni, TANPA SQL, blok lama tetap):
+  (L1) Mencari fungsi global aplikasi yang berisi kalimat guard
+       "Hanya Head ... peralatan" (mis. tambahPeralatan / simpanPeralatan),
+       lalu membungkusnya: selama fungsi dijalankan peran user DIBACA
+       sebagai 'head' sehingga guard lolos, dan peran asli dipulihkan
+       otomatis begitu fungsi selesai (untuk fungsi async, dipulihkan
+       saat promise selesai - guard di mana pun dalam fungsi tetap lolos).
+       Nama fungsi Edit/Hapus/Delete/Approve TIDAK pernah disentuh.
+  (L2) Pemeriksa klik tingkat dokumen (capture, paling awal):
+       - klik tombol "+ Tambah" di toolbar Preventive Maintenance
+         (ditandai adanya tombol "Excel Peralatan" di sekitarnya), atau
+       - klik tombol "Simpan/Save" di dalam modal form peralatan yang
+         sedang terlihat
+       -> membuka "jendela akses" sesaat (peran dibaca 'head' hanya
+          selama handler klik berjalan, lalu langsung dipulihkan).
+  (L3) Perisai: selama ada jendela akses / proses simpan berjalan
+       (peran sedang dibaca 'head'), klik Edit/Hapus di area PM TETAP
+       diblokir (meniru aturan PM2), jadi pembebasan akses tidak bisa
+       disalahgunakan untuk Edit/Hapus.
+  (L4) Penyapuan fungsi diulang tiap 2 detik (fungsi aplikasi bisa
+       didefinisikan belakangan / ditimpa saat render ulang) + jam
+       pengaman: peran asli SELALU dipulihkan walau ada yang lupa.
+
+  Mekanisme peran: satu penghitung bersama (AKTIF). Siapa pun yang
+  membuka akses mencatat peran asli sekali saja (properti tersembunyi
+  __pm8asli, tidak ikut terserialisasi) dan menaikkan penghitung;
+  peran asli hanya dipulihkan ketika penghitung kembali 0. Dengan ini
+  guard yang dijalankan SETELAH await di dalam fungsi async tetap lolos.
+
+  Tetap sopan ke blok lain:
+  - PM2 (Edit/Hapus khusus Head) tetap berlaku penuh.
+  - PM7 (tombol tampil) tidak diutak-atik; PM8 hanya melonggarkan AKSI.
+  - Tombol "+ Tambah" di menu LAIN (Data Vendor dll) tidak dibebaskan.
+  Cara pasang: tempel PALING BAWAH sebelum </body> (di bawah blok PM7).
+  Blok lama boleh dibiarkan. Tidak perlu SQL. Log console: [PM8]
+===================================================================== -->
+<script>
+(function(){
+'use strict';
+if(window.__PM8_AKTIF__) return;
+window.__PM8_AKTIF__=true;
+var TAG='[PM8]';
+function log(){ try{ console.log.apply(console,[TAG].concat([].slice.call(arguments))); }catch(e){} }
+function bersih(s){ return String(s==null?'':s).replace(/\s+/g,' ').trim(); }
+
+var RE_TAMBAH=/^(\+\s*)?(tambah|add)\b/i;
+var RE_SIMPAN=/^(simpan|save|submit|tambah)\b/i;
+var RE_EXCEL=/^excel\s*peralatan$/i;
+var RE_EDIT_HAPUS=/^(edit|ubah|hapus|delete|del|remove)\b/i;
+var RE_GUARD=/hanya\s+head[\s\S]{0,80}peralatan/i;      /* kalimat guard aplikasi */
+var RE_LARANG_NAMA=/^(edit|ubah|update|hapus|delete|del|remove|approve|setujui|tolak)/i;
+
+/* ---------- user & peran ---------- */
+function dapatkanUser(){
+  try{ if(typeof currentUser!=='undefined' && currentUser && typeof currentUser==='object') return currentUser; }catch(e){}
+  try{ if(window.currentUser && typeof window.currentUser==='object') return window.currentUser; }catch(e2){}
+  return null;
+}
+function peran(u){ try{ return String(u && u.role || '').toLowerCase(); }catch(e){ return ''; } }
+function peranAsli(u){
+  /* peran asli sejati: tidak terpengaruh jendela akses yang sedang terbuka */
+  try{ if(u && typeof u.__pm8asli!=='undefined' && u.__pm8asli!==null) return String(u.__pm8asli).toLowerCase(); }catch(e){}
+  return peran(u);
+}
+
+/* ---------- jendela akses: penghitung bersama + catatan peran asli ---------- */
+var AKTIF=0, BATAS=0, USER8=null;
+function catatAsli(u, nilai){
+  try{
+    if(!Object.prototype.hasOwnProperty.call(u,'__pm8asli')){
+      Object.defineProperty(u,'__pm8asli',{value:nilai,configurable:true,writable:true,enumerable:false});
+    }
+  }catch(e){ try{ u.__pm8asli=nilai; }catch(e2){} }
+}
+function spoofMulai(u, batasMs){
+  try{
+    catatAsli(u, u.role);
+    u.role='head';
+    AKTIF++; USER8=u;
+    window.__PM8_JENDELA=AKTIF;
+    BATAS=Date.now()+(batasMs||1500);
+  }catch(e){}
+}
+function spoofSelesai(u){
+  AKTIF=Math.max(0,AKTIF-1);
+  try{
+    if(AKTIF===0){
+      window.__PM8_JENDELA=0;
+      if(u && typeof u.__pm8asli!=='undefined'){ u.role=u.__pm8asli; delete u.__pm8asli; }
+    }
+  }catch(e){}
+}
+function bukaJendela(u){
+  if(!u) return;
+  spoofMulai(u, 1500);
+  setTimeout(function(){ try{ spoofSelesai(u); }catch(e){} },0);
+}
+function daruratPulih(){
+  /* jam pengaman: jangan biarkan peran 'head' nyangkut selamanya */
+  try{
+    if(AKTIF>0 && BATAS && Date.now()>BATAS+500 && USER8){
+      AKTIF=0; window.__PM8_JENDELA=0;
+      if(typeof USER8.__pm8asli!=='undefined'){ USER8.role=USER8.__pm8asli; delete USER8.__pm8asli; }
+    }
+  }catch(e){}
+}
+
+/* ---------- (L1) bungkus fungsi aplikasi yang berisi guard ---------- */
+function denganAkses(fn){
+  var bungkus=function(){
+    var u=dapatkanUser();
+    var asli=peranAsli(u);                     /* peran asli sejati */
+    var perlu=!!(u && String(asli||'').toLowerCase()!=='head');
+    if(perlu){ spoofMulai(u, 120000); }        /* fungsi async boleh lama (unggah foto) */
+    var selesai=false;
+    function pulih(){
+      if(selesai) return;
+      selesai=true;
+      if(perlu) spoofSelesai(u);
+    }
+    try{
+      var r=fn.apply(this,arguments);
+      if(r && typeof r.then==='function'){
+        /* async: peran dipulihkan saat promise selesai -> guard yang
+           berada di mana pun dalam fungsi (sebelum/sesudah await) lolos */
+        return Promise.resolve(r).then(
+          function(v){ pulih(); return v; },
+          function(err){ pulih(); throw err; }
+        );
+      }
+      pulih();
+      return r;
+    }catch(err){ pulih(); throw err; }
+  };
+  bungkus.__pm8=true;
+  return bungkus;
+}
+function sapuFungsi(){
+  var names=[];
+  try{ names=Object.getOwnPropertyNames(window); }catch(e){ return; }
+  for(var i=0;i<names.length;i++){
+    var n=names[i];
+    if(!n || n.length>44 || n.indexOf('__PM8')===0) continue;
+    if(RE_LARANG_NAMA.test(n)) continue;               /* Edit/Hapus tidak disentuh */
+    var f=null;
+    try{ f=window[n]; }catch(e){ continue; }
+    if(typeof f!=='function' || f.__pm8 || f.__pm2) continue;
+    var src='';
+    try{ src=Function.prototype.toString.call(f); }catch(e2){ continue; }
+    if(!src || src.length>40000) continue;
+    if(!RE_GUARD.test(src)) continue;                  /* hanya yang berisi guard PM */
+    try{ window[n]=denganAkses(f); log('Fungsi dibebaskan utk semua user:', n); }catch(e3){}
+  }
+}
+
+/* ---------- identifikasi kontrol & area PM ---------- */
+function kontrolDari(t){
+  try{ return t.closest ? t.closest('button,a,input,[role="button"]') : null; }catch(e){ return null; }
+}
+function teksKontrol(b){
+  try{
+    if(b.tagName==='INPUT') return /^(button|submit)$/i.test(b.type||'')?bersih(b.value||''):'';
+    return bersih(b.textContent);
+  }catch(e){ return ''; }
+}
+function terlihat(x){
+  try{
+    var cs=getComputedStyle(x);
+    if(!cs || cs.display==='none' || cs.visibility==='hidden') return false;
+    return x.offsetParent!==null || (x.getBoundingClientRect && x.getBoundingClientRect().width>0);
+  }catch(e){ return false; }
+}
+function adaExcelDalam(el){
+  /* tombol "Excel Peralatan" = tanda khas toolbar Preventive Maintenance.
+     Hanya Excel yang TERLIHAT yang dihitung - supaya halaman PM yang
+     sedang tersembunyi (mis. saat user di menu lain) tidak ikut dihitung */
+  try{
+    var cur=el, batas=7;
+    while(cur && cur!==document.body && batas-->0){
+      if(cur.querySelectorAll){
+        var l=cur.querySelectorAll('button,a,input,[role="button"]');
+        for(var i=0;i<l.length;i++){
+          var t=teksKontrol(l[i]);
+          if(t && t.length<=24 && RE_EXCEL.test(t) && terlihat(l[i])) return true;
+        }
+      }
+      cur=cur.parentElement;
+    }
+  }catch(e){}
+  return false;
+}
+function areaPmTambah(el){
+  /* area PM utk klik Tambah: penanda PM7 ATAU Excel Peralatan terlihat di sekitar */
+  try{
+    if(el.getAttribute){
+      if(el.getAttribute('data-pm7s')==='1' || el.getAttribute('data-pm7b')==='1') return true;
+    }
+  }catch(e){}
+  return adaExcelDalam(el);
+}
+function modalPm(m){
+  try{
+    var nm=bersih((m.id||'')+' '+(m.className||'')).toLowerCase();
+    if(/peralatan|prevent|equipment|alat/.test(nm)) return true;
+    var t=bersih(m.textContent);
+    if(t.length>600) t=t.slice(0,600);
+    return /peralatan|prevent|equipment/i.test(t);
+  }catch(e){ return false; }
+}
+function modalTerlihat(m){
+  try{
+    var cs=getComputedStyle(m);
+    if(!cs || cs.display==='none' || cs.visibility==='hidden') return false;
+    var r=m.getBoundingClientRect();
+    return r.width>50 && r.height>50;
+  }catch(e){ return false; }
+}
+function modalPmDari(el){
+  try{
+    var m=el.closest('[id*="modal" i],[class*="modal" i],[class*="overlay" i],[class*="popup" i]');
+    if(!m) return null;
+    return (modalTerlihat(m) && modalPm(m)) ? m : null;
+  }catch(e){ return null; }
+}
+
+/* ---------- (L3) perisai Edit/Hapus selama akses dibuka ---------- */
+document.addEventListener('click',function(e){
+  try{
+    if(!(window.__PM8_JENDELA>0)) return;
+    var u=dapatkanUser();
+    if(!u || peranAsli(u)==='head') return;            /* head asli: bebas */
+    var el=kontrolDari(e.target);
+    if(!el) return;
+    var tx=teksKontrol(el);
+    if(!tx || !RE_EDIT_HAPUS.test(tx)) return;
+    if(!(adaExcelDalam(el) || modalPmDari(el))) return;
+    e.preventDefault(); e.stopPropagation();
+    try{ if(typeof showToast==='function') showToast('Hanya Head Teknisi yang bisa Edit / Hapus peralatan', true); }catch(e2){}
+    log('Perisai: klik Edit/Hapus diblokir selama jendela tambah');
+  }catch(err){}
+},true);
+
+/* ---------- (L2) jendela akses saat klik Tambah / Simpan di area PM ---------- */
+document.addEventListener('click',function(e){
+  try{
+    var el=kontrolDari(e.target);
+    if(!el) return;
+    var tx=teksKontrol(el);
+    if(!tx) return;
+    var u=dapatkanUser();
+    if(!u || peranAsli(u)==='head') return;            /* head asli tidak perlu */
+    var klikTambah=RE_TAMBAH.test(tx) && areaPmTambah(el);
+    var klikSimpan=RE_SIMPAN.test(tx) && !!modalPmDari(el);
+    if(klikTambah || klikSimpan){
+      bukaJendela(u);
+      log('Jendela akses dibuka ('+(klikTambah?'Tambah':'Simpan peralatan')+')');
+    }
+  }catch(err){}
+},true);
+
+/* ---------- (L4) boot ---------- */
+function boot(){
+  try{ sapuFungsi(); }catch(e){ log('sapuFungsi err', e && e.message); }
+}
+if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded',boot); }
+else boot();
+setInterval(function(){
+  try{ daruratPulih(); }catch(e){}
+  try{ sapuFungsi(); }catch(e2){}
+},2000);
+
+log('PM TAMBAH BEBAS v1 aktif - semua user bisa menambah peralatan (Edit/Hapus tetap khusus Head)');
+})();
+</script>
+<!-- ============ AKHIR PM TAMBAH BEBAS v1 (PM8) ============ -->
 </body>
 </html>
