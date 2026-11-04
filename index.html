@@ -16088,5 +16088,1158 @@ else mulai();
 log('PM PANEL MENU v2 aktif - panel LAPORAN PDF dipasang di dalam menu Preventive Maintenance');
 })();
 </script>
+<!-- =====================================================================
+  PM PANEL MENU v3 (PM6) - PERBAIKAN: tampilan menu Preventive jadi rusak
+  ---------------------------------------------------------------------
+  Masalah pada blok sebelumnya (PM5): panel LAPORAN PDF memang sudah
+  masuk menu Preventive Maintenance, tetapi ditaruh DI DALAM baris flex
+  tempat kotak pencarian & tombol "+ Tambah" berada. Akibatnya kotak
+  pencarian & tombol Tambah ikut "terenggangkan" menjadi sangat tinggi
+  (stretch), dan panelnya terpotong di tepi kanan layar.
+  Cara kerja blok ini (PM6):
+  (1) Halaman PM dideteksi lebih ketat: naik dari tombol "+ Tambah" ke
+      wadah yang benar-benar seluruh halaman (lebar >= 72% layar,
+      tinggi >= 240px, dan BUKAN baris flex mendatar) -> panel tidak
+      akan pernah ditempatkan ke dalam baris alat lagi.
+  (2) Panel ditempatkan sebagai anak langsung halaman, TEPAT SETELAH
+      baris yang memuat tombol "+ Tambah" -> kartu LAPORAN PDF tampil
+      penuh di bawah tombol Tambah; kotak pencarian & Tambah normal
+      kembali.
+  (3) Penanda halus "Preventive Maintenance" dipindah ke halaman
+      sejati (penanda lama yang menempel di baris alat dihapus, dan
+      dipasang penanda kosong di baris alat agar blok PM5 tidak
+      menaruh penanda ber-teks di sana lagi) -> blok PM LAPORAN v1
+      mengenali halaman yang sama, tidak saling rebutan panel.
+  (4) Panel diberi pengaman flex (flex:1 1 100% + min-width:0) -> walau
+      suatu saat terjebak di dalam baris flex, panel mengambil barisnya
+      sendiri dan tidak merenggangkan tombol lain; tidak terpotong
+      tepi layar.
+  (5) Tombol bulat PDF melayang tetap dihapus selamanya; sisa tombol X
+      dari blok PM3 dibersihkan; panel ikut hilang saat pindah menu;
+      isi tanggal tidak hilang saat panel dipindah; aman dobel tempel.
+      Tidak perlu SQL. Log console: [PM6]
+  Cara pasang: tempel PALING BAWAH sebelum </body> (di bawah blok
+  "PM LAPORAN v1" dan blok PM5). Blok PM3 / PM4 / PM5 boleh dihapus
+  boleh dibiarkan.
+===================================================================== -->
+<script>
+(function(){
+'use strict';
+if(window.__PM6_AKTIF__) return;
+window.__PM6_AKTIF__=true;
+var TAG='[PM6]';
+function log(){ try{ console.log.apply(console,[TAG].concat([].slice.call(arguments))); }catch(e){} }
+
+function bersih(s){ return String(s==null?'':s).replace(/\s+/g,' ').trim(); }
+
+/* ---------- util terlihat ---------- */
+function terlihat(el){
+  try{
+    var r=el.getBoundingClientRect?el.getBoundingClientRect():null;
+    if(!r || r.width<8 || r.height<8) return false;
+    if(r.right<0 || r.bottom<0 || r.top>(window.innerHeight||800)) return false;
+    if(typeof getComputedStyle==='function'){
+      var cs=getComputedStyle(el);
+      if(cs && (cs.display==='none' || cs.visibility==='hidden')) return false;
+    }
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ---------- penanda klik menu Preventive Maintenance ---------- */
+var pmKlikAt=0;
+if(!window.__PM6_WATCH__){
+  window.__PM6_WATCH__=true;
+  document.addEventListener('click',function(ev){
+    try{
+      var n=ev.target, kedalaman=0, elTeks=null;
+      while(n && n!==document && kedalaman<6){
+        if(n.nodeType===1){
+          var t=bersih(n.textContent);
+          if(t){ elTeks=n; break; }
+        }
+        n=n.parentNode; kedalaman++;
+      }
+      if(!elTeks) return;
+      var tx=bersih(elTeks.textContent);
+      if(!tx || tx.length>60) return;
+      if(/preventive|preventif/i.test(tx)){ pmKlikAt=Date.now(); return; }
+      if(elTeks.closest && elTeks.closest('nav,aside,[class*="sidebar"],[id*="sidebar"],[class*="menu"],[id*="menu"]')) pmKlikAt=0;
+    }catch(e){}
+  },true);
+}
+
+/* ---------- cari tombol anchor: "+ Tambah" / "Excel Peralatan" ---------- */
+var RE_TAMBAH=/^(\+\s*)?tambah$/i;
+var RE_EXCEL=/^excel\s*peralatan$/i;
+function cariBtnAnchor(){
+  try{
+    var semua=document.querySelectorAll('button,a,input,[role="button"]');
+    var cadangan=null;
+    for(var i=0;i<semua.length;i++){
+      var b=semua[i];
+      if(b.disabled) continue;
+      var t=(b.tagName==='INPUT')?bersih(b.value||''):bersih(b.textContent);
+      if(!t || t.length>24) continue;
+      if(b.children && b.children.length>4) continue;
+      var okT=RE_TAMBAH.test(t), okE=RE_EXCEL.test(t);
+      if(!okT && !okE) continue;
+      if(!terlihat(b)) continue;
+      if(okT) return b;
+      if(!cadangan) cadangan=b;
+    }
+    return cadangan;
+  }catch(e){ return null; }
+}
+
+/* ---------- verifikasi halaman PM ---------- */
+var RE_PM_ID=/prevent|preventif|(^|[^a-z])pm([^a-z]|$)|peralatan/i;
+var RE_KOTOR=/stock\s*request|laporan\s*harian|data\s*vendor|serah\s*terima|pengajuan\s*progress/i;
+function sahih(sec){
+  try{
+    if(!sec || sec===document.body || sec===document.documentElement) return false;
+    var id=bersih((sec.id||'')+' '+(sec.className||''));
+    if(RE_PM_ID.test(id)) return true;
+    var t=bersih(sec.textContent);
+    if(t.length>20000) t=t.slice(0,20000);
+    if(RE_KOTOR.test(t)) return false;
+    if(/preventive|preventif/i.test(t)) return true;
+    if(/peralatan/i.test(t) && /riwayat|catat\s*hasil/i.test(t)) return true;
+    if(Date.now()-pmKlikAt<90000) return true;
+    return false;
+  }catch(e){ return false; }
+}
+
+/* ---------- BARU: menolak wadah yang bentuknya "baris alat" ---------- */
+function tolakSebagaiHalaman(el,btnH){
+  try{
+    var r=el.getBoundingClientRect();
+    var vw=window.innerWidth||360;
+    if(r.width < vw*0.72) return 'sempit';              /* tidak selebar halaman */
+    if(r.height < Math.max(240,(btnH||40)*2.2)) return 'pendek'; /* baris alat / sub-header */
+    if(typeof getComputedStyle==='function'){
+      var cs=getComputedStyle(el);
+      if(cs && (cs.display==='flex'||cs.display==='inline-flex')){
+        var dir=cs.flexDirection||'row';
+        var wrap=cs.flexWrap||'nowrap';
+        if(dir.indexOf('row')===0 && wrap!=='wrap') return 'flexbaris'; /* baris alat mendatar */
+      }
+    }
+    return null;
+  }catch(e){ return 'err'; }
+}
+
+/* ---------- cari WADAH HALAMAN dari tombol (bukan baris alat) ---------- */
+function cariHalaman(btn){
+  try{
+    var btnH=0;
+    try{ btnH=btn.getBoundingClientRect().height; }catch(e){}
+    /* 1) prioritas: pola halaman aplikasi (id="page-..." / class page-content / section) */
+    var c=btn.closest?btn.closest('[id^="page-"],[class*="page-content"],section'):null;
+    if(c && !tolakSebagaiHalaman(c,btnH) && sahih(c)) return c;
+    /* 2) naik dari tombol: wadah pertama yang layak jadi halaman */
+    var cur=btn, batas=16;
+    while(cur && cur!==document.body && batas-->0){
+      cur=cur.parentElement;
+      if(!cur) break;
+      if(tolakSebagaiHalaman(cur,btnH)) continue;
+      if(sahih(cur)) return cur;
+    }
+  }catch(e){}
+  return null;
+}
+
+/* ---------- penanda halus + sentinel (agar PM1 & PM5 sepakat) ---------- */
+var GAYA_PENANDA='position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:0!important;border:0!important;overflow:hidden!important;opacity:0!important;pointer-events:none!important;line-height:0!important;';
+function rapikanPenanda(sec,btn){
+  try{
+    /* hapus SEMUA penanda ber-teks kecuali penanda sejati milik blok ini -
+       termasuk penanda PM5 yang menempel di baris alat (itulah sumber
+       panel masuk baris). Sentinel kosong di dalam halaman dipelihara. */
+    var semua=document.querySelectorAll('span[data-pm5],span[data-pm6]');
+    for(var i=0;i<semua.length;i++){
+      var s=semua[i];
+      var asli=(sec && s.parentNode===sec && s.getAttribute('data-pm6')==='1');
+      if(asli) continue;
+      var berTeks=/preventive/i.test(bersih(s.textContent||''));
+      if(!berTeks && sec && sec.contains(s)) continue; /* sentinel: biarkan */
+      if(s.parentNode) s.parentNode.removeChild(s);
+    }
+  }catch(e){}
+  try{
+    if(!sec) return;
+    /* penanda sejati: anak pertama halaman -> blok PM1 pasti memilih
+       halaman ini (bukan baris alat) saat mendeteksi menu PM */
+    if(!sec.querySelector('span[data-pm6]')){
+      var m=document.createElement('span');
+      m.setAttribute('data-pm6','1');
+      m.setAttribute('data-pm5','1'); /* agar PM5 tidak menambah penanda lagi */
+      m.textContent='Preventive Maintenance';
+      m.style.cssText=GAYA_PENANDA;
+      sec.insertBefore(m,sec.firstChild);
+    }
+    /* sentinel KOSONG di semua wadah tombol di bawah halaman:
+       PM5 melihat ada span[data-pm5] lalu tidak menaruh penanda
+       ber-teks di baris alat (penanda kosong diabaikan PM1) */
+    var cur=btn, batas=20;
+    while(cur && cur.parentNode && batas-->0){
+      var p=cur.parentNode;
+      if(p===sec || p===document.body || p===document.documentElement) break;
+      if(!p.querySelector('span[data-pm5]')){
+        var sp=document.createElement('span');
+        sp.setAttribute('data-pm5','1');
+        sp.style.cssText=GAYA_PENANDA;
+        p.appendChild(sp);
+      }
+      cur=p;
+    }
+  }catch(e){}
+}
+
+/* ---------- panel LAPORAN PDF ---------- */
+var CSS_INLINE='margin:14px 12px 22px;padding:14px;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:16px;box-shadow:0 6px 18px rgba(15,23,42,.10);font-family:inherit;max-width:560px;position:static;display:block;width:auto;left:auto;right:auto;top:auto;bottom:auto;z-index:auto;max-height:none;overflow:visible;flex:1 1 100%;min-width:0;box-sizing:border-box;';
+
+function bersihkanPM3(panel){
+  try{
+    var x=panel.querySelector('[data-pm3tutup]');
+    if(x && x.parentNode) x.parentNode.removeChild(x);
+    var c0=panel.children[0], c1=panel.children[1];
+    if(c0) c0.style.paddingRight='';
+    if(c1) c1.style.paddingRight='';
+  }catch(e){}
+}
+
+function directChild(sec,btn){
+  var cur=btn, batas=20;
+  while(cur && cur.parentNode && batas-->0){
+    if(cur.parentNode===sec) return cur;
+    cur=cur.parentNode;
+  }
+  return null;
+}
+
+function tempatkan(panel,sec,btn){
+  try{
+    bersihkanPM3(panel);
+    var d=directChild(sec,btn);
+    if(d && d!==panel && d.parentNode===sec){
+      sec.insertBefore(panel,d.nextSibling); /* tepat setelah baris "+ Tambah" */
+    }else if(panel.parentNode!==sec){
+      sec.appendChild(panel);
+    }
+    panel.style.cssText=CSS_INLINE;
+    panel.removeAttribute('data-pm4');
+    return true;
+  }catch(e){ log('tempatkan gagal',e&&e.message); return false; }
+}
+
+/* ---------- hapus tombol bulat PDF melayang ---------- */
+function fabKill(){
+  try{
+    var f=document.getElementById('pm1FAB');
+    if(f && f.parentNode) f.parentNode.removeChild(f);
+  }catch(e){}
+}
+
+/* ---------- buang duplikat panel (jaga-jaga) ---------- */
+function dedupe(panel){
+  try{
+    var semua=document.querySelectorAll('#pm1Panel');
+    for(var i=0;i<semua.length;i++){
+      var p=semua[i];
+      if(p!==panel && p.parentNode) p.parentNode.removeChild(p);
+    }
+  }catch(e){}
+}
+
+/* ---------- siklus utama (tiap 1 detik) ---------- */
+var PERNAH_LOG=false;
+function sembunyikanStray(panel){
+  /* jaga-jaga: blok lain (PM4 dsb) bisa saja menaruh panel ke halaman
+     lain yang sedang terbuka (dashboard dsb) - panel LAPORAN hanya
+     boleh tampak di menu Preventive Maintenance */
+  try{
+    if(panel && terlihat(panel) && panel.style.display!=='none') panel.style.display='none';
+  }catch(e){}
+}
+function siklus(){
+  try{
+    if(!document.body) return;
+    fabKill();
+    var btn=cariBtnAnchor();
+    var panel=document.getElementById('pm1Panel');
+    if(!btn){ sembunyikanStray(panel); return; }
+    var sec=cariHalaman(btn);
+    if(!sec){ sembunyikanStray(panel); return; }
+    rapikanPenanda(sec,btn);
+    if(!panel) return; /* PM1 membuat panel otomatis (penanda sudah dipasang) */
+    dedupe(panel);
+    var d=directChild(sec,btn);
+    var salahPosisi=(panel.parentNode!==sec) || (d && d!==panel && panel.previousElementSibling!==d);
+    if(salahPosisi){
+      tempatkan(panel,sec,btn);
+      if(!PERNAH_LOG){ PERNAH_LOG=true; log('Panel LAPORAN PDF dipasang di bawah tombol Tambah (di dalam halaman Preventive Maintenance)'); }
+    }
+    /* rapikan gaya setiap siklus: tahan banting re-render & sisa css blok lama */
+    if(panel.style.cssText!==CSS_INLINE) panel.style.cssText=CSS_INLINE;
+    bersihkanPM3(panel);
+  }catch(e){}
+}
+
+function mulai(){
+  siklus();
+  setInterval(siklus,1000);
+}
+if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded',mulai); }
+else mulai();
+log('PM PANEL MENU v3 aktif - panel LAPORAN PDF di bawah tombol Tambah, tampilan menu PM normal');
+})();
+</script>
+<!-- =====================================================================
+  PM TAMBAH SEMUA v1 (PM7) - Tombol "+ Tambah" tampil untuk SEMUA teknisi
+  (Midpoint Building)
+  ---------------------------------------------------------------------
+  Masalah: aplikasi menyembunyikan tombol "+ Tambah" di menu Preventive
+  Maintenance untuk user selain Head Teknisi, jadi teknisi lain tidak
+  bisa menambah peralatan.
+  Cara kerja blok ini (overlay murni, TANPA SQL):
+  (1) Mencari halaman Preventive Maintenance lewat 4 jalur: penanda halus
+      blok PM6/PM5, id/kelas halaman, tombol "Excel Peralatan", atau
+      sapuan halaman aplikasi (dengan bukti teks PM yang positif).
+  (2) Tombol "+ Tambah" yang disembunyikan aplikasi (style display:none,
+      atribut hidden, kelas .hidden, visibility, atau pembungkus yang
+      disembunyikan) DITAMPILKAN lagi untuk SEMUA user.
+  (3) Bila aplikasi menyembunyikan lagi saat render ulang, tombol
+      otomatis ditampilkan kembali (MutationObserver + interval 1 detik).
+  (4) Bila tombol benar-benar tidak ada di DOM, tombol dibuat otomatis
+      di samping "Excel Peralatan" (gaya senada) yang memanggil fungsi
+      form tambah milik aplikasi.
+  (5) Tetap sopan ke blok lain: PM2 (Edit/Hapus khusus Head) TIDAK
+      diutak-atik - teknisi tetap tidak bisa Edit/Hapus. Blok PM4/PM5/PM6
+      (panel LAPORAN PDF di bawah Tambah) tetap jalan normal.
+  (6) Tombol "+ Tambah" di menu lain (mis. Data Vendor) tidak disentuh.
+  Cara pasang: tempel PALING BAWAH sebelum </body> (di bawah blok
+  "PM LAPORAN v1" dan blok PM6). Blok lama boleh dibiarkan.
+  Tidak perlu SQL. Log console: [PM7]
+===================================================================== -->
+<script>
+(function(){
+'use strict';
+if(window.__PM7_AKTIF__) return;
+window.__PM7_AKTIF__=true;
+var TAG='[PM7]';
+function log(){ try{ console.log.apply(console,[TAG].concat([].slice.call(arguments))); }catch(e){} }
+function bersih(s){ return String(s==null?'':s).replace(/\s+/g,' ').trim(); }
+
+var RE_TAMBAH=/^(\+\s*)?(tambah|add)\b/i;
+var RE_EXCEL=/^excel\s*peralatan$/i;
+var RE_PM_ID=/prevent|preventif|(^|[^a-z])pm([^a-z]|$)|peralatan/i;
+var RE_KOTOR=/stock\s*request|laporan\s*harian|data\s*vendor|serah\s*terima|pengajuan\s*progress/i;
+
+/* ---------- deteksi tersembunyi pada elemen itu sendiri ---------- */
+function tersembunyiSendiri(el){
+  try{
+    if(el.hidden) return true;
+    var cs=getComputedStyle(el);
+    if(!cs) return false;
+    if(cs.display==='none') return true;
+    if(cs.visibility==='hidden'||cs.visibility==='collapse') return true;
+    return false;
+  }catch(e){ return false; }
+}
+function halamanTerlihat(sec){
+  try{
+    var cs=getComputedStyle(sec);
+    if(!cs || cs.display==='none' || cs.visibility==='hidden') return false;
+    var r=sec.getBoundingClientRect();
+    return r.width>10 && r.height>10;
+  }catch(e){ return false; }
+}
+
+/* ---------- verifikasi halaman PM (hanya bukti positif, tanpa tebakan waktu) ---------- */
+function sahih(sec){
+  try{
+    if(!sec || sec===document.body || sec===document.documentElement) return false;
+    var id=bersih((sec.id||'')+' '+(sec.className||''));
+    if(RE_PM_ID.test(id)) return true;
+    var t=bersih(sec.textContent);
+    if(t.length>20000) t=t.slice(0,20000);
+    if(RE_KOTOR.test(t)) return false;
+    if(/preventive|preventif/i.test(t)) return true;
+    if(/peralatan/i.test(t) && /riwayat|catat\s*hasil/i.test(t)) return true;
+    return false;
+  }catch(e){ return false; }
+}
+function tolakBaris(el){
+  /* baris alat flex mendatar (pencarian + tombol) BUKAN halaman */
+  try{
+    var cs=getComputedStyle(el);
+    if(cs && (cs.display==='flex'||cs.display==='inline-flex')){
+      var dir=cs.flexDirection||'row';
+      var wrap=cs.flexWrap||'nowrap';
+      if(dir.indexOf('row')===0 && wrap!=='wrap') return true;
+    }
+  }catch(e){}
+  return false;
+}
+function layakJadiHalaman(el){
+  try{
+    if(!sahih(el)) return false;
+    if(tolakBaris(el)) return false;
+    if(el.querySelector('input')) return true;
+    return el.querySelectorAll('button,a,[role="button"]').length>=3;
+  }catch(e){ return false; }
+}
+
+/* ---------- cari tombol dalam sebuah wadah ---------- */
+function teksKontrol(b){
+  if(b.tagName==='INPUT') return /^(button|submit)$/i.test(b.type||'')?bersih(b.value||''):'';
+  return bersih(b.textContent);
+}
+function cariExcelDalam(root){
+  try{
+    var l=root.querySelectorAll('button,a,input,[role="button"]');
+    for(var i=0;i<l.length;i++){
+      var t=teksKontrol(l[i]);
+      if(t && t.length<=24 && RE_EXCEL.test(t)) return l[i];
+    }
+  }catch(e){}
+  return null;
+}
+function cariExcelDalamDokumen(){ return cariExcelDalam(document); }
+function cariTambahDalam(sec){
+  try{
+    var l=sec.querySelectorAll('button,a,input,[role="button"]');
+    for(var i=0;i<l.length;i++){
+      var t=teksKontrol(l[i]);
+      if(t && t.length<=24 && RE_TAMBAH.test(t)) return l[i];
+    }
+  }catch(e){}
+  return null;
+}
+
+/* ---------- cari halaman PM (4 jalur, tanpa syarat lebar agar halaman tersembunyi pun terbaca) ---------- */
+var SEC=null;
+function cariHalamanPM(){
+  try{
+    if(SEC && SEC.isConnected && sahih(SEC)) return SEC;
+    SEC=null;
+    /* 1) penanda halus blok PM6 / PM5 (anak halaman PM) */
+    var m=document.querySelector('span[data-pm6]');
+    if(m && m.parentNode && m.parentNode!==document.body){
+      var p=m.parentNode;
+      if(layakJadiHalaman(p)){ SEC=p; return SEC; }
+    }
+    var ms=document.querySelectorAll('span[data-pm5]');
+    for(var i=0;i<ms.length;i++){
+      var s=ms[i];
+      if(!/preventive/i.test(bersih(s.textContent||''))) continue; /* sentinel kosong diabaikan */
+      if(s.parentNode && s.parentNode!==document.body && layakJadiHalaman(s.parentNode)){ SEC=s.parentNode; return SEC; }
+    }
+    /* 2) id konvensi */
+    var ids=['page-preventive-maintenance','page-preventive','page-preventif','page-pm','pagePreventive','preventivePage'];
+    for(var j=0;j<ids.length;j++){
+      var e=document.getElementById(ids[j]);
+      if(e && layakJadiHalaman(e)){ SEC=e; return SEC; }
+    }
+    /* 3) dari tombol "Excel Peralatan" (terlihat maupun tidak) */
+    var exc=cariExcelDalamDokumen();
+    if(exc){
+      var c=null;
+      try{ c=exc.closest('[id^="page-"],[class*="page-content"],section'); }catch(e2){}
+      if(c && layakJadiHalaman(c)){ SEC=c; return SEC; }
+      var cur=exc, batas=14;
+      while(cur && cur!==document.body && batas-->0){
+        cur=cur.parentElement;
+        if(!cur) break;
+        if(layakJadiHalaman(cur)){ SEC=cur; return SEC; }
+      }
+    }
+    /* 4) sapu halaman aplikasi */
+    var l=document.querySelectorAll('[id^="page-"],[class*="page-content"],section');
+    for(var k=0;k<l.length;k++){
+      if(layakJadiHalaman(l[k])){ SEC=l[k]; return SEC; }
+    }
+  }catch(e){}
+  return SEC;
+}
+
+/* ---------- tampilkan tombol ---------- */
+function gayaAcuan(excel){
+  try{
+    if(excel && !tersembunyiSendiri(excel)){
+      var cs=getComputedStyle(excel);
+      if(cs && cs.display && cs.display!=='none' && cs.display!=='inline') return cs.display;
+    }
+  }catch(e){}
+  return '';
+}
+function bangkitkan(btn, acuan){
+  var berubah=false;
+  try{
+    if(btn.hasAttribute('hidden')){ btn.removeAttribute('hidden'); berubah=true; }
+    if(btn.disabled){ btn.disabled=false; btn.removeAttribute('disabled'); berubah=true; }
+    if((btn.style.display||'').replace(/\s+/g,'')==='none'){ btn.style.display=''; berubah=true; }
+    if((btn.style.visibility||'')==='hidden'){ btn.style.visibility=''; berubah=true; }
+    if(tersembunyiSendiri(btn)){
+      /* inline !important menang atas kelas .hidden !important sekalipun */
+      btn.style.setProperty('display', acuan||'inline-flex', 'important');
+      berubah=true;
+    }
+    if(berubah) btn.setAttribute('data-pm7s','1');
+  }catch(e){}
+  return berubah;
+}
+function bangkitkanOrangTua(btn, sec){
+  try{
+    if(!halamanTerlihat(sec)) return false;
+    var r=btn.getBoundingClientRect();
+    if(r.width>2 && r.height>2) return false;
+    var cur=btn.parentElement, batas=8;
+    while(cur && cur!==sec && batas-->0){
+      var cs=getComputedStyle(cur);
+      if(cs && cs.display==='none'){
+        cur.removeAttribute('hidden');
+        if((cur.style.display||'')==='none') cur.style.display='';
+        var cs2=getComputedStyle(cur);
+        if(cs2 && cs2.display==='none'){
+          var banyak=cur.querySelectorAll('button,a,input,[role="button"]').length;
+          cur.style.setProperty('display', banyak>1?'flex':'block', 'important');
+        }
+        cur.setAttribute('data-pm7w','1');
+        return true;
+      }
+      if(cs && (cs.visibility==='hidden'||cs.visibility==='collapse')){
+        cur.style.visibility='visible';
+        cur.setAttribute('data-pm7w','1');
+        return true;
+      }
+      cur=cur.parentElement;
+    }
+    btn.style.setProperty('visibility','visible','important');
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ---------- fallback: tombol tidak ada di DOM -> buat sendiri ---------- */
+var KANDIDAT_F=['tambahPeralatan','addPeralatan','tambahPreventive','addPreventive','tambahPreventif','addPreventif',
+  'tambahEquipment','addEquipment','tambahPM','addPM','tambahAlat','addAlat',
+  'openTambahPeralatan','openTambahPreventive','openTambahPreventif','openAddPeralatan','openAddPreventive',
+  'openPeralatanForm','openPreventiveForm','openPreventiveModal','openFormPeralatan','openFormPreventive','openPMForm',
+  'showPeralatanForm','showPreventiveForm','showTambahPeralatan','showTambahPreventive',
+  'formTambahPeralatan','formTambahPreventive','newPeralatan','newEquipment','createPeralatan',
+  'bukaFormPeralatan','bukaFormPreventive'];
+function cobaBukaFormTambah(){
+  for(var i=0;i<KANDIDAT_F.length;i++){
+    try{
+      var f=window[KANDIDAT_F[i]];
+      if(typeof f==='function'){ f.call(window); log('Form tambah dibuka via fungsi '+KANDIDAT_F[i]); return true; }
+    }catch(e){}
+  }
+  try{
+    for(var k in window){
+      if(!/^(buka|open|show|tambah|add|new|form|buat)/i.test(k)) continue;
+      if(!/peralatan|prevent|equipment|alat|pm$/i.test(k)) continue;
+      if(k.length>44 || /__pm|webkit|chrome/i.test(k)) continue;
+      var f2=null;
+      try{ f2=window[k]; }catch(e2){ continue; }
+      if(typeof f2==='function'){
+        try{ f2.call(window); log('Form tambah dibuka via fungsi '+k); return true; }catch(e3){}
+      }
+    }
+  }catch(e){}
+  try{
+    var mods=document.querySelectorAll('[id*="modal" i],[class*="modal" i],[id*="prevent" i],[id*="peralatan" i],[id*="tambah" i]');
+    for(var j=0;j<mods.length;j++){
+      var m=mods[j];
+      var nm=bersih((m.id||'')+' '+(m.className||'')).toLowerCase();
+      if(!/prevent|peralatan|equipment|tambah/.test(nm)) continue;
+      if(/overlay|backdrop/.test(nm) && !/prevent|peralatan|tambah/.test(nm)) continue;
+      m.style.display='flex';
+      log('Modal form tambah ditampilkan: '+(m.id||m.className));
+      return true;
+    }
+  }catch(e2){}
+  try{ if(typeof showToast==='function') showToast('Form tambah peralatan tidak ditemukan', true); }catch(e3){}
+  log('Fungsi/modal form tambah tidak ditemukan');
+  return false;
+}
+function buatTombol(sec){
+  try{
+    var excel=cariExcelDalam(sec);
+    if(!excel || !excel.parentNode) return false; /* tanpa patokan, jangan nebak tempat */
+    var b=document.createElement('button');
+    b.type='button';
+    b.textContent='+ Tambah';
+    b.setAttribute('data-pm7b','1');
+    if(excel.className) b.className=excel.className;
+    try{
+      var cs=getComputedStyle(excel);
+      b.style.cssText='margin:'+cs.margin+';padding:'+cs.padding+';border:'+cs.border+';border-radius:'+cs.borderRadius+';background:'+(cs.backgroundImage&&cs.backgroundImage!=='none'?cs.backgroundImage:cs.backgroundColor)+';color:'+cs.color+';font-weight:700;font-size:'+cs.fontSize+';';
+    }catch(e){}
+    b.addEventListener('click',function(){ cobaBukaFormTambah(); });
+    excel.parentNode.insertBefore(b,excel);
+    log('Tombol "+ Tambah" tidak ada di DOM - dibuat otomatis di samping Excel Peralatan');
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ---------- sapu utama ---------- */
+var PERNAH_LOG=false;
+function sapu(){
+  try{
+    if(!document.body) return;
+    var sec=cariHalamanPM();
+    if(!sec) return;
+    var excel=cariExcelDalam(sec);
+    var acuan=gayaAcuan(excel);
+    var btn=cariTambahDalam(sec);
+    if(!btn){
+      if(halamanTerlihat(sec)) buatTombol(sec);
+      return;
+    }
+    var perlu=tersembunyiSendiri(btn) || btn.disabled;
+    if(!perlu && halamanTerlihat(sec)){
+      var r=null;
+      try{ r=btn.getBoundingClientRect(); }catch(e){}
+      perlu=!(r && r.width>2 && r.height>2);
+    }
+    if(!perlu) return;
+    var berubah=bangkitkan(btn, acuan);
+    bangkitkanOrangTua(btn, sec);
+    if(berubah && btn.getAttribute('data-pm7s')!=='1'){
+      btn.setAttribute('data-pm7s','1');
+      if(!PERNAH_LOG){ PERNAH_LOG=true; log('Tombol "+ Tambah" ditampilkan untuk semua teknisi'); }
+    }
+  }catch(e){}
+}
+
+/* ---------- observer + boot ---------- */
+var jadwal=null;
+function antre(){
+  if(jadwal) return;
+  jadwal=setTimeout(function(){ jadwal=null; try{ sapu(); }catch(e){} },250);
+}
+var MO=window.MutationObserver||window.WebKitMutationObserver;
+if(MO){
+  try{ new MO(function(){ antre(); }).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['style','class','hidden','disabled']}); }catch(e){}
+}
+function boot(){ try{ sapu(); }catch(e){ log('sapu err', e && e.message); } }
+if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded',boot); }
+else boot();
+setInterval(function(){ try{ sapu(); }catch(e){} },1000);
+
+log('PM TAMBAH SEMUA v1 aktif - tombol "+ Tambah" tampil untuk semua teknisi');
+})();
+</script>
+<!-- ================================================================
+  SR EDIT v1  (console marker: [SR11])
+  Permintaan: "Bisa tidak untuk stock request yg sudah di simpan itu
+  bisa di edit lagi, soalnya saya perlu input biaya estimasinya"
+
+  Fitur:
+  1. Tombol "Edit / Isi Estimasi" di detail Stock Request (satu baris
+     dengan Download Gambar / Tutup / Checked-Approve / Hapus).
+  2. Klik Edit -> form Stock Request terbuka TERISI data lama:
+     tanggal, pemohon, prioritas, kebutuhan, kategori, lantai, ruang,
+     tujuan, semua barang + estimasi harga satuan. Ada pita kuning
+     "MODE EDIT" berisi tombol "Batal Edit".
+  3. Simpan -> DATA LAMA DIPERBARUI (update, bukan record baru):
+     - No. Form, status, approval Head, pembuat: TIDAK berubah
+     - estimasi harga & perubahan barang ikut tersimpan
+     - foto lama tetap ada; foto baru (kalau dipilih) DITAMBAHKAN
+     - foto per barang di data lama (items[].photos) tidak hilang
+  4. Buat Permintaan baru tetap normal (record baru seperti biasa).
+
+  Cara pasang: tempel blok ini PALING BAWAH di index.html, tepat
+  sebelum </body> (di bawah semua blok SR lain: SE1, SRE2, SRF2,
+  SR9, SR10). Blok lama tidak perlu dihapus. TANPA SQL.
+================================================================ -->
+<script>
+(function () {
+  'use strict';
+  if (window.__SR11_AKTIF) { return; }
+  window.__SR11_AKTIF = true;
+  console.log('[SR11] SR Edit v1 aktif (edit stock request tersimpan + isi estimasi)');
+
+  /* ================= helper dasar ================= */
+  function norm(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim().toLowerCase(); }
+  function angka(v) {
+    var n = parseFloat(String(v == null ? '' : v).replace(/[^\d.\-]/g, ''));
+    return isNaN(n) ? 0 : n;
+  }
+  function dig(v) { return String(v == null ? '' : v).replace(/[^\d]/g, ''); }
+  function rp(n) {
+    n = Math.round(Number(n) || 0);
+    return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  }
+  /* harga bisa tersimpan sbg number ATAU string "85.000" */
+  function hargaNum(v) {
+    if (v == null || v === '') return 0;
+    if (typeof v === 'number') return isFinite(v) ? v : 0;
+    var d = dig(v);
+    return d ? parseInt(d, 10) : 0;
+  }
+  function hargaDariInput(el) {
+    if (!el) return 0;
+    var v = el.value == null ? '' : String(el.value);
+    if (!v) return 0;
+    if (String(el.type || '').toLowerCase() === 'number') {
+      var n = parseFloat(v);
+      return isNaN(n) ? 0 : n;
+    }
+    var d = dig(v);
+    return d ? parseInt(d, 10) : 0;
+  }
+  function sb() {
+    try { if (window.sb && typeof window.sb.from === 'function') return window.sb; } catch (e2) { }
+    return null;
+  }
+  function kepala() {
+    var u = null;
+    try { u = (typeof currentUser !== 'undefined') ? currentUser : null; } catch (e) { }
+    if (!u) { try { u = window.currentUser || null; } catch (e2) { } }
+    return !!(u && u.role && String(u.role).toLowerCase() === 'head');
+  }
+  function toast(msg, tipe) {
+    try { if (typeof showToast === 'function') { showToast(msg, tipe); return; } } catch (e) { }
+    try { if (window.showToast) window.showToast(msg, tipe); } catch (e2) { }
+  }
+  function bukaModal(id) {
+    try { if (typeof openModal === 'function') { openModal(id); return; } } catch (e) { }
+    try { if (window.openModal) { window.openModal(id); return; } } catch (e2) { }
+    var m = document.getElementById(id);
+    if (m) m.style.display = 'flex';
+  }
+  function tutupModal(id) {
+    try { if (typeof closeModal === 'function') { closeModal(id); return; } } catch (e) { }
+    try { if (window.closeModal) { window.closeModal(id); return; } } catch (e2) { }
+    var m = document.getElementById(id);
+    if (m) m.style.display = 'none';
+  }
+  function tgl10(v) {
+    var s = String(v == null ? '' : v).trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    var d = new Date(s);
+    if (!isNaN(d.getTime())) {
+      var p = function (x) { return (x < 10 ? '0' : '') + x; };
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+    }
+    return '';
+  }
+
+  /* ================= state edit ================= */
+  var EDIT = { id: '', data: null };
+
+  function pastikanEditId() {
+    var ed = null;
+    try { ed = document.getElementById('stockEditId'); } catch (e) { ed = null; }
+    if (ed) return ed;
+    var m = document.getElementById('stockModal');
+    if (!m) return null;
+    ed = document.createElement('input');
+    ed.type = 'hidden';
+    ed.id = 'stockEditId';
+    m.appendChild(ed);
+    return ed;
+  }
+
+  /* ================= baca isi kartu barang (berbasis label) ================= */
+  function kontrolLabel(label) {
+    var host = label.parentElement, c = null;
+    if (host) { c = host.querySelector('input, select'); }
+    if (!c) {
+      var nx = label.nextElementSibling;
+      if (nx && /^(INPUT|SELECT)$/.test(nx.tagName)) c = nx;
+    }
+    return c;
+  }
+  function cariKontrol(card) {
+    var c = { nama: null, spec: null, qty: null, satuan: null, catatan: null, harga: null };
+    if (!card) return c;
+    var labels;
+    try { labels = card.querySelectorAll('label'); } catch (e) { labels = []; }
+    labels.forEach(function (lb) {
+      var t = norm(lb.textContent), el = kontrolLabel(lb);
+      if (!el) return;
+      var ty = String(el.type || '').toLowerCase();
+      if (t === 'nama barang' && !c.nama) c.nama = el;
+      else if (t === 'spesifikasi' && !c.spec) c.spec = el;
+      else if (t === 'qty' && !c.qty) c.qty = el;
+      else if (t === 'satuan' && !c.satuan) c.satuan = el;
+      else if (t === 'catatan' && !c.catatan) c.catatan = el;
+      else if (t.indexOf('estimasi') !== -1 && t.indexOf('harga') !== -1 && !c.harga &&
+        el.tagName === 'INPUT' && ty !== 'hidden') c.harga = el;
+    });
+    if (!c.harga) c.harga = card.querySelector('input[data-sre="harga"]');
+    if (!c.harga) {
+      var se = card.querySelector('input[data-se-harga]');
+      if (se && String(se.type || '').toLowerCase() !== 'hidden') c.harga = se;
+    }
+    /* fallback posisi (kartu tanpa label): teks1=nama, teks2=spec,
+       number1=qty, select1=satuan, teks3=catatan, number2=harga */
+    var texts = [], nums = [], sels = [];
+    card.querySelectorAll('input, select').forEach(function (el) {
+      var ty = String(el.type || '').toLowerCase();
+      if (ty === 'hidden' || ty === 'file') return;
+      if (el.tagName === 'SELECT') sels.push(el);
+      else if (ty === 'number') {
+        if (!el.hasAttribute('data-sre') && !el.hasAttribute('data-se-harga')) nums.push(el);
+      } else if (ty === 'text') texts.push(el);
+    });
+    if (!c.nama && texts[0]) c.nama = texts[0];
+    if (!c.spec && texts[1]) c.spec = texts[1];
+    if (!c.qty && nums[0]) c.qty = nums[0];
+    if (!c.satuan && sels[0]) c.satuan = sels[0];
+    if (!c.catatan && texts[2]) c.catatan = texts[2];
+    if (!c.harga && nums[1]) c.harga = nums[1];
+    return c;
+  }
+  function kumpulkanItems() {
+    var body = document.getElementById('stockItemsBody');
+    var out = [];
+    if (!body) return out;
+    var cards;
+    try { cards = body.querySelectorAll('div.bg-navy-50'); } catch (e) { return out; }
+    cards.forEach(function (card, idx) {
+      var c = cariKontrol(card);
+      function teks(el) { return el && el.value != null ? String(el.value).trim() : ''; }
+      var nama = teks(c.nama);
+      if (!nama) return;
+      var h = hargaDariInput(c.harga);
+      out.push({
+        no: idx + 1, nama: nama, spec: teks(c.spec), qty: teks(c.qty),
+        satuan: teks(c.satuan), catatan: teks(c.catatan),
+        harga: h > 0 ? h : null
+      });
+    });
+    return out;
+  }
+
+  /* ================= isi kartu dari data lama ================= */
+  function pilihAtauTambah(sel, v) {
+    if (!sel) return;
+    var s = String(v == null ? '' : v).trim();
+    if (!s) return;
+    var ada = false;
+    for (var i = 0; i < sel.options.length; i++) {
+      if (String(sel.options[i].value) === s) { ada = true; break; }
+    }
+    if (!ada) {
+      var o = document.createElement('option');
+      o.value = s;
+      o.textContent = s;
+      sel.appendChild(o);
+    }
+    sel.value = s;
+  }
+  function isiKartu(card, it) {
+    if (!card || !it) return;
+    var c = cariKontrol(card);
+    function setv(el, v) { if (el && v != null && v !== '') el.value = String(v); }
+    setv(c.nama, it.nama);
+    setv(c.spec, it.spec);
+    setv(c.qty, it.qty);
+    pilihAtauTambah(c.satuan, it.satuan);
+    setv(c.catatan, it.catatan);
+    var h = hargaNum(it.harga);
+    if (c.harga && h > 0) c.harga.value = String(h);
+  }
+  function hitungTotal() {
+    var body = document.getElementById('stockItemsBody');
+    var total = 0;
+    if (body) {
+      var cards;
+      try { cards = body.querySelectorAll('div.bg-navy-50'); } catch (e) { cards = []; }
+      cards.forEach(function (card) {
+        var c = cariKontrol(card);
+        var q = angka(c.qty ? c.qty.value : 0);
+        var h = hargaDariInput(c.harga);
+        var jml = q * (h > 0 ? h : 0);
+        total += jml;
+        var el = card.querySelector('[data-sre="jumlah"]');
+        if (el) el.textContent = 'Rp ' + rp(jml);
+      });
+    }
+    var tot = document.getElementById('stockTotal');
+    if (tot) tot.textContent = 'Rp ' + rp(total);
+    return total;
+  }
+
+  /* ================= pita MODE EDIT ================= */
+  function hapusBanner() {
+    var lama;
+    try { lama = document.querySelectorAll('[data-sr11="banner"]'); } catch (e) { return; }
+    for (var i = 0; i < lama.length; i++) {
+      if (lama[i] && lama[i].parentNode) lama[i].parentNode.removeChild(lama[i]);
+    }
+  }
+  function pasangBanner(noForm) {
+    hapusBanner();
+    var m = document.getElementById('stockModal');
+    if (!m) return;
+    var b = document.createElement('div');
+    b.setAttribute('data-sr11', 'banner');
+    b.style.cssText = 'margin:0 0 10px;padding:9px 12px;background:#FFFBEB;border:1px solid #FDE68A;'
+      + 'border-radius:12px;font-size:12px;line-height:1.5;color:#92400E;';
+    b.innerHTML = '<b>MODE EDIT</b> — perubahan akan MEMPERBARUI data ini'
+      + (noForm ? ' (No. Form ' + String(noForm) + ')' : '')
+      + '. No. Form, status & approval tidak berubah; foto lama tetap ada.<br>'
+      + '<button type="button" data-sr11="batal" style="margin-top:6px;padding:6px 12px;'
+      + 'border-radius:10px;border:1px solid #FDE68A;background:#FFFFFF;color:#92400E;'
+      + 'font-size:11px;font-weight:700;">Batal Edit</button>';
+    var batal = b.querySelector('[data-sr11="batal"]');
+    if (batal) batal.onclick = function () { batalEdit(); };
+    /* posisi: paling atas wadah isian (di bawah judul modal) */
+    var d = document.getElementById('stockDate');
+    if (d && m.contains(d)) {
+      var cur = d, anchor = null;
+      for (var i = 0; i < 6 && cur && cur !== m; i++) {
+        var p = cur.parentElement;
+        if (!p) break;
+        var cnt = p.querySelectorAll('input,select,textarea').length;
+        if (cnt >= 4) { anchor = p; break; }
+        cur = p;
+      }
+      if (anchor && m.contains(anchor) && anchor !== m) {
+        var blok = null;
+        for (var k = 0; k < anchor.children.length; k++) {
+          if (anchor.children[k].contains && anchor.children[k].contains(d)) { blok = anchor.children[k]; break; }
+        }
+        if (blok) { anchor.insertBefore(b, blok); return; }
+        anchor.insertBefore(b, anchor.firstChild);
+        return;
+      }
+    }
+    var body = document.getElementById('stockItemsBody');
+    if (body && body.parentElement && body.parentElement !== body) {
+      body.parentElement.insertBefore(b, body);
+      return;
+    }
+    m.appendChild(b);
+  }
+
+  function keluarModeEdit(sertakanFile) {
+    EDIT.id = '';
+    EDIT.data = null;
+    try { var ed = document.getElementById('stockEditId'); if (ed) ed.value = ''; } catch (e) { }
+    hapusBanner();
+    if (sertakanFile) {
+      try { if (typeof stockFiles !== 'undefined') stockFiles = []; } catch (e) { try { window.stockFiles = []; } catch (e2) { } }
+      try { var fi = document.getElementById('stockFileInput'); if (fi) fi.value = ''; } catch (e1) { }
+      try { var fp = document.getElementById('stockFilePreview'); if (fp) fp.innerHTML = ''; } catch (e3) { }
+    }
+  }
+  function batalEdit() {
+    keluarModeEdit(true);
+    tutupModal('stockModal');
+    toast('Mode edit dibatalkan');
+  }
+
+  /* ================= 1. BUKA MODE EDIT ================= */
+  window.editStockRequest = async function (id) {
+    try {
+      if (!kepala()) { toast('Hanya Head Teknisi yang bisa mengedit Stock Request', 'error'); return; }
+      var sbObj = sb();
+      if (!sbObj) { toast('Koneksi database belum siap', 'error'); return; }
+      var res = await sbObj.from('stock_requests').select('*').eq('id', id).single();
+      if (!res || !res.data) { toast('Data tidak ditemukan', 'error'); return; }
+      var s = res.data;
+      var m = document.getElementById('stockModal');
+      if (!m) { toast('Form stock request tidak ditemukan', 'error'); return; }
+
+      tutupModal('stockDetailModal');
+      EDIT.id = String(id);
+      EDIT.data = s;
+
+      /* form bersih dulu (fungsi asli aplikasi), lalu diisi data lama */
+      try { window.openStockForm(); } catch (eO) { console.warn('[SR11] openStockForm:', eO); }
+      var ed = pastikanEditId();
+      if (ed) ed.value = String(id);
+
+      function el(ofId) { return document.getElementById(ofId); }
+      var t = tgl10(s.request_date);
+      if (t) { var de = el('stockDate'); if (de) de.value = t; }
+      var req = el('stockRequester'); if (req) req.value = s.requester_name || '';
+      pilihAtauTambah(el('stockPriority'), s.priority);
+      pilihAtauTambah(el('stockLocation'), s.location_needed);
+      var kat = el('stockCategory'); if (kat) kat.value = s.category || '';
+      var lantai = el('stockFloor'); if (lantai) lantai.value = s.floor || '';
+      var ruang = el('stockRoom'); if (ruang) ruang.value = s.room || '';
+      var tujuan = el('stockPurpose'); if (tujuan) tujuan.value = s.purpose || '';
+
+      var body = document.getElementById('stockItemsBody');
+      var items = Array.isArray(s.items) ? s.items : [];
+      if (body) body.innerHTML = '';
+      try { if (typeof stockItemCounter !== 'undefined') stockItemCounter = 0; } catch (eC) { }
+      items.forEach(function (it) {
+        var dataRow = {
+          nama: (it && it.nama) || '',
+          spec: (it && it.spec) || '',
+          qty: (it && it.qty != null) ? it.qty : '',
+          satuan: (it && it.satuan) || '',
+          catatan: (it && it.catatan) || '',
+          harga: (it && it.harga != null) ? it.harga : ''
+        };
+        try { window.addStockItemRow(dataRow); } catch (eA) { try { window.addStockItemRow(); } catch (eB) { } }
+        var cards;
+        try { cards = body.querySelectorAll('div.bg-navy-50'); } catch (eD) { cards = []; }
+        if (body && cards.length) isiKartu(cards[cards.length - 1], it);
+      });
+      if (!items.length) { try { window.addStockItemRow(); } catch (eE) { } }
+
+      hitungTotal();
+      pasangBanner(s.form_number || '');
+      bukaModal('stockModal');
+      console.log('[SR11] Mode edit dibuka utk', id, '-', items.length, 'barang');
+    } catch (err) {
+      console.error('[SR11] edit:', err);
+      toast('Gagal membuka mode edit: ' + (err && err.message ? err.message : err), 'error');
+    }
+  };
+
+  /* ================= 2. SIMPAN MODE EDIT (update, bukan insert) ================= */
+  async function simpanEdit(editId) {
+    var btn = null;
+    try { btn = document.getElementById('saveStockBtn'); } catch (e0) { }
+    if (btn && btn.disabled) return;
+    function kunci(k) { if (btn) { btn.disabled = k; btn.textContent = k ? 'Menyimpan...' : 'Simpan'; } }
+    kunci(true);
+    try {
+      var sbObj = sb();
+      if (!sbObj) { toast('Koneksi database belum siap', 'error'); return; }
+
+      function nilai(ofId) { var x = document.getElementById(ofId); return x && x.value != null ? String(x.value).trim() : ''; }
+      var date = nilai('stockDate');
+      var requester = nilai('stockRequester');
+      var priority = nilai('stockPriority');
+      var location = nilai('stockLocation');
+      if (!requester) { toast('Nama pemohon wajib diisi', 'error'); return; }
+      if (!priority || !location) { toast('Lengkapi data wajib', 'error'); return; }
+      var items = kumpulkanItems();
+      if (!items.length) { toast('Masukkan minimal 1 barang', 'error'); return; }
+
+      /* foto baru (kalau user pilih) -> ditambahkan ke foto lama */
+      var files = [];
+      try { if (typeof stockFiles !== 'undefined' && stockFiles && stockFiles.length) files = stockFiles; } catch (eF) { }
+      var urlsBaru = [];
+      for (var i = 0; i < files.length; i++) {
+        var compressed = await compressAlatImage(files[i], 800, 0.5);
+        var fname = 'stock_request/' + Date.now() + '_' + i + '.jpg';
+        var up = await sbObj.storage.from('ticket-images').upload(fname, compressed, { contentType: 'image/jpeg', upsert: true });
+        if (up.error) throw up.error;
+        urlsBaru.push(sbObj.storage.from('ticket-images').getPublicUrl(fname).data.publicUrl);
+      }
+
+      /* data TERBARU dari database utk merge (foto per barang dgn tidak hilang) */
+      var res0 = await sbObj.from('stock_requests').select('*').eq('id', editId).single();
+      if (!res0 || !res0.data) throw new Error('Data tidak ditemukan di database');
+      var lama = res0.data;
+      var itemsLama = Array.isArray(lama.items) ? lama.items : [];
+      var itemsMerge = items.map(function (it, idx) {
+        var o = itemsLama[idx];
+        if (o && typeof o === 'object' && !Array.isArray(o)) {
+          return Object.assign({}, o, it);
+        }
+        return it;
+      });
+
+      var urlsLama = Array.isArray(lama.image_urls) ? lama.image_urls.filter(Boolean).map(String) : [];
+      var semuaUrl = urlsLama.concat(urlsBaru);
+      if (!semuaUrl.length && lama.image_url) semuaUrl = [String(lama.image_url)];
+
+      var dasar = {
+        request_date: date, requester_name: requester, priority: priority,
+        location_needed: location, items: itemsMerge,
+        image_url: semuaUrl[0] || null, image_urls: semuaUrl
+      };
+      var opsional = {};
+      if (nilai('stockCategory') || lama.category != null) opsional.category = nilai('stockCategory') || null;
+      if (nilai('stockFloor') || lama.floor != null) opsional.floor = nilai('stockFloor') || null;
+      if (nilai('stockRoom') || lama.room != null) opsional.room = nilai('stockRoom') || null;
+      if (nilai('stockPurpose') || lama.purpose != null) opsional.purpose = nilai('stockPurpose') || null;
+      var payload = Object.keys(opsional).length ? Object.assign({}, dasar, opsional) : dasar;
+
+      var res = await sbObj.from('stock_requests').update(payload).eq('id', editId);
+      if (res && res.error && Object.keys(opsional).length &&
+        /column|PGRST204|Could not find/i.test(String(res.error.message || ''))) {
+        res = await sbObj.from('stock_requests').update(dasar).eq('id', editId);
+      }
+      if (res && res.error) throw res.error;
+
+      toast('Stock Request berhasil diperbarui');
+      try {
+        await logActivity('Update', 'Stock Request', 'Memperbarui permintaan barang ' + location +
+          (lama.form_number ? ' (No. ' + lama.form_number + ')' : ''));
+      } catch (eL) { }
+
+      keluarModeEdit(true);
+      tutupModal('stockModal');
+      try { if (typeof loadStockRequests === 'function') loadStockRequests(); } catch (eQ) { }
+    } catch (err) {
+      console.error('[SR11] simpan edit:', err);
+      toast('Gagal: ' + (err && err.message ? err.message : err), 'error');
+    } finally {
+      kunci(false);
+    }
+  }
+
+  /* ================= 3. BUNGKUS SIMPAN & BUKA FORM ================= */
+  var SAVE_ASLI = (typeof window.saveStockRequest === 'function') ? window.saveStockRequest : null;
+  if (SAVE_ASLI && !SAVE_ASLI.__sr11) {
+    var SAVE_BARU = async function () {
+      var editId = '';
+      try { var ed = document.getElementById('stockEditId'); editId = ed && ed.value ? String(ed.value) : ''; } catch (e) { }
+      if (EDIT.id && !editId) editId = EDIT.id;
+      if (!editId) { return SAVE_ASLI.apply(this, arguments); } /* mode baru: rantai lama */
+      return simpanEdit(editId);
+    };
+    SAVE_BARU.__sr11 = true;
+    window.saveStockRequest = SAVE_BARU;
+    console.log('[SR11] saveStockRequest dibungkus (mode edit = update)');
+  }
+
+  var OF_ASLI = (typeof window.openStockForm === 'function') ? window.openStockForm : null;
+  if (OF_ASLI && !OF_ASLI.__sr11) {
+    var OF_BARU = function () {
+      keluarModeEdit(false); /* buka form baru = selalu bukan mode edit */
+      return OF_ASLI.apply(this, arguments);
+    };
+    OF_BARU.__sr11 = true;
+    window.openStockForm = OF_BARU;
+    console.log('[SR11] openStockForm dibungkus (reset mode edit)');
+  }
+
+  /* ================= 4. TOMBOL EDIT DI DETAIL ================= */
+  function sisipTombolEdit(id) {
+    var act = document.getElementById('stockDetailActions');
+    if (!act || !act.isConnected) return;
+    if (act.querySelector('[data-sr11="edit"]')) return;
+    if (!kepala()) return;
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('data-sr11', 'edit');
+    b.setAttribute('data-sr11-id', String(id));
+    b.className = 'px-4 py-2 rounded-xl text-sm font-500 text-amber-600 hover:bg-amber-50 transition';
+    b.textContent = 'Edit / Isi Estimasi';
+    b.onclick = function () { try { window.editStockRequest(id); } catch (e) { console.error('[SR11]', e); } };
+    act.insertBefore(b, act.firstChild);
+    console.log('[SR11] Tombol Edit / Isi Estimasi ditambahkan ke detail');
+  }
+  (function bungkusDetail() {
+    var asli = window.openStockDetail;
+    if (typeof asli !== 'function' || asli.__sr11) return;
+    var BARU = async function (id) {
+      var r = await asli.apply(this, arguments);
+      try { sisipTombolEdit(id); } catch (e) { console.warn('[SR11] tombol edit:', e); }
+      return r;
+    };
+    BARU.__sr11 = true;
+    window.openStockDetail = BARU;
+    console.log('[SR11] openStockDetail dibungkus (tombol Edit)');
+  })();
+})();
+</script>
+<!-- ============ AKHIR SR EDIT v1 (SR11) ============ -->
 </body>
 </html>
