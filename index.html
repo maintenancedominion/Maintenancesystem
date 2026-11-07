@@ -28884,5 +28884,504 @@ log('JEMBATAN KONEKSI SUPABASE (PM20) aktif - cari URL+anon key aplikasi utama, 
 })();
 </script>
 <!-- ============ AKHIR PM20 - JEMBATAN KONEKSI SUPABASE v1 ============ -->
+<!-- ============ PM20 - JEMBATAN KONEKSI SUPABASE v2 (FIX 401 PUBLISHABLE KEY) ============ -->
+<!-- FIX (kasus Billy 2026-11-07): PM20 v1 memvalidasi kredensial lewat ROOT
+     /rest/v1/ - dan Supabase project baru MENOLAK root untuk kunci publik:
+     GET /rest/v1/ + sb_publishable_... -> 401 {"message":"Secret API key required"}
+     PADAHAL kunci valid untuk tabel (GET /rest/v1/preventive_equipments -> 200/206).
+     Akibat: pencarian otomatis menolak kunci yang BENAR, dan panel sambung
+     manual menolak publishable key yang valid ("Supabase menolak HTTP 401").
+     v2 menguji kredensial ke ENDPOINT TABEL yang dipakai aplikasi:
+       - HTTP 200/206                      -> kunci valid + tabel ada
+       - HTTP 400/404 dgn kode PGRST/"code"-> kunci valid (tabel belum ada)
+         (autentikasi lolos; kunci salah selalu 401, bukan 404)
+       - HTTP 401/403                      -> kunci ditolak
+       - lain / jaringan gagal             -> ragu (diterima tanpa verifikasi,
+         perilaku sama dgn v1 untuk kredensial milik aplikasi sendiri)
+     Selain itu v2: mengambil alih chip/panel/mandiri milik v1 (v1 tidak perlu
+     dihapus), menimpa __PM20_STATUS/__PM20_CEK/__PM20_SAMBUNG dgn versi v2,
+     dan menyimpan manual-connect ke SEMUA pm*net (menimpa kunci lama yang salah).
+     Pemasangan: DI BAWAH blok PM20 v1, paling bawah index.html sebelum </body>.
+     Dobel-tempel aman. TANPA SQL. -->
+<script>
+(function(){
+if(window.__PM20_V2){ return; }   /* dobel-tempel aman */
+window.__PM20_V2='v2';
+
+var CEPAT=(window.__PM20_CEPAT===true);                 /* hook uji otomatis */
+var T0=Date.now();
+var JADWAL_SCAN=CEPAT?[0,300,600,900]:[0,2500,6000,10000];
+var BATAS_CHIP=CEPAT?1300:11000;
+var BATAS_MANDIRI=CEPAT?500:2500;
+var KUNCI_NET=['pm18net','pm16net','pm19net','pm15net','pm14net'];   /* format sama {u,k}; pm12/pm13 format lama tidak disentuh */
+var MAX_UJI=8;
+/* tabel yang dicoba utk validasi (urut: tabel milik PM18 dulu) */
+var TABEL_UJI=['preventive_equipments','aset_alat','pm_jadwal','alat'];
+
+var KANDIDAT=[];
+var HASIL={cari:0,valid:'',sumber:'',ragu:false,ditulis:[],gagalUji:0,akhirStatus:0,waktu:'',rincian:null};
+var SUDAH_BERI=0, SELESAI=0, IDX_UJI=0, MANDIRI_DIPASANG=0;
+var DIPROBE={};
+
+function log(){ try{ var a=['[PM20v2]']; for(var i=0;i<arguments.length;i++) a.push(arguments[i]); console.log.apply(console,a); }catch(e){} }
+function teks(x){ try{ return String(x==null?'':x).trim(); }catch(e){ return ''; } }
+function lsAmbil(k){ try{ return JSON.parse(localStorage.getItem(k)||'null'); }catch(e){ return null; } }
+function netValid(o){ return !!(o && teks(o.u) && teks(o.k)); }
+function rapikanKunci(k){ return teks(k).replace(/^Bearer\s+/i,''); }
+
+/* ---------- URL -> basis REST (https://xxx.supabase.co/rest/v1) ---------- */
+var RE_URL=/https?:\/\/[a-z0-9][a-z0-9-]{1,60}\.supabase\.(?:co|in|net)/gi;
+var RE_PASANG=/createClient\s*\(\s*['"]([^'"]+)['"]\s*,\s*['"]([A-Za-z0-9_\-.]{20,})['"]/gi;
+var RE_JWT=/eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g;
+var RE_PUB=/sb_publishable_[A-Za-z0-9_-]{20,}/g;
+
+function basisDari21(u){
+  u=teks(u); if(!u) return '';
+  if(!/^https?:\/\//i.test(u)) u='https://'+u.replace(/^\/+/,'');
+  try{
+    var p=new URL(u);
+    if(p.protocol!=='https:' && location.protocol==='https:') return ''; /* cegah mixed-content */
+    return p.origin+'/rest/v1';
+  }catch(e){ return ''; }
+}
+
+/* ---------- SUMBER 1: teks script aplikasi ---------- */
+function kunciDariTeks21(t,out){
+  var m;
+  RE_JWT.lastIndex=0;
+  while((m=RE_JWT.exec(t))) out.kunci.push({k:m[0],skor:40,sumber:'skrip'});
+  RE_PUB.lastIndex=0;
+  while((m=RE_PUB.exec(t))) out.kunci.push({k:m[0],skor:40,sumber:'skrip'});
+}
+function pindaiSkrip21(){
+  var out={urls:[],kunci:[]};
+  try{
+    var s=document.scripts||[];
+    for(var i=0;i<s.length;i++){
+      var t=''; try{ t=s[i].textContent||s[i].text||''; }catch(e){}
+      if(!t || t.indexOf('__PM20_VERSI')>=0 || t.indexOf('__PM20_V2')>=0) continue;   /* lewati blok PM20 v1 & v2 sendiri */
+      var m;
+      RE_PASANG.lastIndex=0;
+      while((m=RE_PASANG.exec(t))){
+        var u1=basisDari21(m[1]), k1=rapikanKunci(m[2]);
+        if(u1 && k1) out.urls.push({u:u1,k:k1,skor:100,sumber:'createClient'});
+      }
+      RE_URL.lastIndex=0;
+      while((m=RE_URL.exec(t))) out.urls.push({u:basisDari21(m[0]),k:'',skor:30,sumber:'skrip'});
+      kunciDariTeks21(t,out);
+    }
+  }catch(e){}
+  return out;
+}
+/* ---------- SUMBER 2: klien supabase-js di window ---------- */
+function pindaiWindow21(){
+  var out={urls:[],kunci:[]};
+  try{
+    var ks=Object.keys(window), batas=Math.min(ks.length,4000);
+    for(var i=0;i<batas;i++){
+      var v; try{ v=window[ks[i]]; }catch(e){ continue; }
+      if(!v || typeof v!=='object' || v===window || v===document) continue;
+      var su='', sk='';
+      try{ su=teks(v.supabaseUrl); }catch(e){}
+      try{ sk=teks(v.supabaseKey) || (v.headers?teks(v.headers.apikey):'') || (v.rest&&v.rest.headers?teks(v.rest.headers.apikey):''); }catch(e2){}
+      if(su && /^https?:/i.test(su)){
+        out.urls.push({u:basisDari21(su),k:rapikanKunci(sk),skor:90,sumber:'window'});
+        if(sk) out.kunci.push({k:rapikanKunci(sk),skor:55,sumber:'window'});
+      }
+    }
+    var gU=teks(window.SUPABASE_URL)||teks(window.SB_URL);
+    var gK=teks(window.SUPABASE_ANON_KEY)||teks(window.SUPABASE_KEY)||teks(window.SB_ANON_KEY)||teks(window.SB_KEY);
+    if(gU) out.urls.push({u:basisDari21(gU),k:rapikanKunci(gK),skor:80,sumber:'global'});
+    if(gK) out.kunci.push({k:rapikanKunci(gK),skor:50,sumber:'global'});
+  }catch(e){}
+  return out;
+}
+/* ---------- SUMBER 3: tag meta ---------- */
+function pindaiMeta21(){
+  var out={urls:[],kunci:[]};
+  try{
+    var ms=document.getElementsByTagName('meta');
+    for(var i=0;i<ms.length;i++){
+      var n='',c='';
+      try{ n=teks(ms[i].getAttribute('name')).toLowerCase(); c=teks(ms[i].getAttribute('content')); }catch(e){}
+      if(!c) continue;
+      if(/supabase.?url|sb.?url/.test(n)) out.urls.push({u:basisDari21(c),k:'',skor:70,sumber:'meta'});
+      if(/supabase.?(anon)?key|sb.?(anon|publishable).?key/.test(n)) out.kunci.push({k:rapikanKunci(c),skor:60,sumber:'meta'});
+    }
+  }catch(e){}
+  return out;
+}
+/* ---------- SUMBER 4: request yang sudah lewat (performance) ---------- */
+function pindaiPerf21(){
+  var out={urls:[],kunci:[]};
+  try{
+    if(typeof performance==='undefined' || !performance.getEntriesByType) return out;
+    var es=performance.getEntriesByType('resource')||[];
+    for(var i=0;i<es.length && i<800;i++){
+      var nm=teks(es[i] && es[i].name), p=nm.indexOf('/rest/v1/');
+      if(p>0 && /supabase\.(co|in|net)/i.test(nm)){
+        var b=basisDari21(nm.slice(0,p+9));
+        if(b) out.urls.push({u:b,k:'',skor:60,sumber:'performa'});
+      }
+    }
+  }catch(e){}
+  return out;
+}
+
+/* ---------- rakit kandidat koneksi unik, urut skor ---------- */
+function bangunKandidat21(){
+  var sumber=[pindaiSkrip21(),pindaiWindow21(),pindaiMeta21(),pindaiPerf21()];
+  try{ HASIL.rincian={skripUrl:sumber[0].urls.length,skripKunci:sumber[0].kunci.length,windowUrl:sumber[1].urls.length,windowKunci:sumber[1].kunci.length,metaUrl:sumber[2].urls.length,metaKunci:sumber[2].kunci.length,perfUrl:sumber[3].urls.length,skripTotal:document.scripts?document.scripts.length:-1}; }catch(e0){}
+  var urls=[],kuncis=[],i,j;
+  for(i=0;i<sumber.length;i++){
+    for(j=0;j<sumber[i].urls.length;j++){ var x=sumber[i].urls[j]; if(x.u) urls.push(x); }
+    for(j=0;j<sumber[i].kunci.length;j++){ var y=sumber[i].kunci[j]; if(y.k && y.k.length>=20) kuncis.push(y); }
+  }
+  var hasil=[],a,b,c,d;
+  for(a=0;a<urls.length;a++){ if(urls[a].k) hasil.push({u:urls[a].u,k:urls[a].k,skor:(urls[a].skor||0)+60,sumber:urls[a].sumber}); }
+  kuncis.sort(function(p,q){ return (q.skor||0)-(p.skor||0); });
+  var kunciUnik=[];
+  for(b=0;b<kuncis.length;b++){
+    (function(){ var kb=kuncis[b].k; for(var z=0;z<kunciUnik.length;z++){ if(kunciUnik[z].k===kb) return; } kunciUnik.push(kuncis[b]); })();
+    if(kunciUnik.length>=6) break;
+  }
+  var urlUnik=[];
+  for(c=0;c<urls.length;c++){
+    if(urls[c].k) continue;
+    var ada=false; for(var z2=0;z2<urlUnik.length;z2++){ if(urlUnik[z2].u===urls[c].u){ ada=true; break; } }
+    if(!ada) urlUnik.push(urls[c]);
+  }
+  for(d=0;d<urlUnik.length;d++){
+    for(var e=0;e<Math.min(4,kunciUnik.length);e++){
+      hasil.push({u:urlUnik[d].u,k:kunciUnik[e].k,skor:(urlUnik[d].skor||0)+(kunciUnik[e].skor||0),sumber:urlUnik[d].sumber+'+'+kunciUnik[e].sumber});
+    }
+  }
+  for(var f=0;f<hasil.length;f++){
+    var h=hasil[f], sama=false;
+    for(var z3=0;z3<KANDIDAT.length;z3++){ if(KANDIDAT[z3].u===h.u && KANDIDAT[z3].k===h.k){ sama=true; break; } }
+    if(!sama) KANDIDAT.push(h);
+  }
+  KANDIDAT.sort(function(p,q){ return (q.skor||0)-(p.skor||0); });
+  HASIL.cari=KANDIDAT.length;
+}
+
+/* ---------- VALIDASI v2 lewat iframe bersih (fetch asli, tanpa mata-mata) ----------
+   PROBE KE TABEL (bukan root - root Supabase baru menolak kunci publik dgn 401).
+   ujiSatu21(u,tbl,k,cb): cb(status, teksBody) - status<0 = jaringan/iframe gagal. */
+function ujiSatu21(u,tbl,k,cb){
+  var selesai=0, to=null, f=null;
+  function akhir(st,body){
+    if(selesai) return; selesai=1;
+    if(to) clearTimeout(to);
+    try{ if(f && f.parentNode) f.parentNode.removeChild(f); }catch(e){}
+    try{ cb(st,teks(body)); }catch(e2){}
+  }
+  to=setTimeout(function(){ akhir(-1,''); },7000);
+  try{
+    f=document.createElement('iframe');
+    f.style.cssText='position:fixed!important;left:-9999px!important;top:-9999px!important;width:2px!important;height:2px!important;border:0!important;opacity:0!important';
+    f.setAttribute('aria-hidden','true');
+    f.onload=function(){
+      try{
+        var cw=f.contentWindow;
+        if(!cw || typeof cw.fetch!=='function') throw new Error('tanpa fetch');
+        var op={method:'GET',headers:{apikey:k,Authorization:'Bearer '+k}};
+        if(cw.AbortController){ var ctl=new cw.AbortController(); op.signal=ctl.signal; setTimeout(function(){ try{ctl.abort();}catch(e){} },6000); }
+        cw.fetch(u+'/'+tbl+'?select=id&limit=1',op).then(function(r){
+          var st=r?r.status:-1;
+          try{
+            r.text().then(function(t){ akhir(st,t||''); }).catch(function(){ akhir(st,''); });
+          }catch(e2){ akhir(st,''); }
+        }).catch(function(){ akhir(-1,''); });
+      }catch(e){ akhir(-2,''); }
+    };
+    f.src='about:blank';
+    (document.body||document.documentElement).appendChild(f);
+  }catch(e){ akhir(-2,''); }
+}
+/* nilai satu jawaban probe tabel: 'ya' | 'tidak' | 'ragu' */
+function nilaiKoneksi21(st,body){
+  if(st===200 || st===206) return 'ya';
+  if(st===400 || st===404){
+    var b=body||'';
+    if(b.indexOf('PGRST')>=0 || b.indexOf('"code"')>=0) return 'ya';   /* auth lolos, tabel belum ada */
+    return st===404 ? 'tidak' : 'ragu';
+  }
+  if(st===401 || st===403) return 'tidak';
+  return 'ragu';
+}
+/* coba tabel demi tabel; jawaban pertama yang pasti menentukan.
+   cb(hasil,status): hasil='ya'|'tidak'|'ragu' */
+function ujiKoneksi21(u,k,cb){
+  var i=0, ditolak=0, stDitolak=0;
+  function lanjut(){
+    if(i>=TABEL_UJI.length){ cb(ditolak?'tidak':'ragu', ditolak?stDitolak:-1); return; }
+    var tbl=TABEL_UJI[i++];
+    ujiSatu21(u,tbl,k,function(st,body){
+      var v=nilaiKoneksi21(st,body);
+      if(v==='ya'){ cb('ya',st); return; }
+      if(v==='tidak'){ ditolak++; stDitolak=st; }
+      lanjut();
+    });
+  }
+  lanjut();
+}
+
+/* ---------- tulis kunci NET blok PM ----------
+   auto    (manual=false): isi yang masih KOSONG saja (jangan menimpa milik user)
+   manual  (manual=true) : tulis SEMUA (menimpa kunci lama yang salah) dgn kunci yang SUDAH TERBUKTI valid */
+function simpanSemua21(u,k,manual){
+  var ditulis=[];
+  for(var i=0;i<KUNCI_NET.length;i++){
+    var ada=lsAmbil(KUNCI_NET[i]);
+    var sama=!!(ada && teks(ada.u)===u && teks(ada.k)===k);
+    if(manual && !sama){
+      try{ localStorage.setItem(KUNCI_NET[i],JSON.stringify({u:u,k:k})); ditulis.push(KUNCI_NET[i]); }catch(e){}
+    }else if(!manual && !netValid(ada)){
+      try{ localStorage.setItem(KUNCI_NET[i],JSON.stringify({u:u,k:k})); ditulis.push(KUNCI_NET[i]); }catch(e){}
+    }
+  }
+  return ditulis;
+}
+
+/* ---------- pemicu hidup: 1 fetch lewat window (termasuk mata-mata PM) ---------- */
+function beriTahu21(u,k){
+  if(SUDAH_BERI) return;
+  SUDAH_BERI=1;
+  try{
+    window.fetch(u+'/',{method:'GET',headers:{apikey:k,Authorization:'Bearer '+k}})
+      .then(function(){ log('pemicu koneksi terkirim - blok PM memuat ulang data'); })
+      .catch(function(){});
+  }catch(e){}
+}
+
+/* ---------- ambil alih UI milik v1 (chip/panel/mandiri) ---------- */
+function bersihkanV1(){
+  try{ var c=document.getElementById('pm20Chip'); if(c) c.parentNode.removeChild(c); }catch(e){}
+  try{ var p=document.getElementById('pm20Panel'); if(p) p.style.display='none'; }catch(e){}
+  try{ var m=document.getElementById('pm20Mandiri'); if(m) m.parentNode.removeChild(m); }catch(e){}
+}
+
+function selesaiValid21(u,k,sumber,manual){
+  if(SELESAI) return;
+  SELESAI=1;
+  HASIL.valid='ya'; HASIL.sumber=sumber; HASIL.waktu=new Date().toLocaleTimeString();
+  HASIL.ditulis=simpanSemua21(u,k,manual);
+  log('KONEKSI SIAP ('+sumber+')'+(HASIL.ditulis.length?' - ditulis: '+HASIL.ditulis.join(', '):' - localStorage sudah ada'));
+  try{ window.__pm20siap={u:u,kunci:(teks(k).slice(0,10)+'...('+teks(k).length+')'),sumber:sumber,waktu:HASIL.waktu,versi:'v2'}; }catch(e){}
+  buangChip21();
+  bersihkanV1();
+  /* mata-mata blok yang masih hidup langsung menangkap pemicu ini (data blok
+     tsb bisa hidup seketika) */
+  if(document.readyState!=='loading') beriTahu21(u,k);
+  if(!appAda21()) return;   /* mode mandiri: tanpa aplikasi, tidak perlu muat ulang */
+  /* PENTING: blok PM16-PM19 hanya membaca localStorage SAAT BOOT, dan
+     mata-mata mereka saling menimpa saat dipasang berurutan. SETELAH koneksi
+     baru ditemukan, muat ulang SATU kali supaya SEMUA blok boot dengan
+     koneksi dari localStorage. Anti-loop: sessionStorage pm20reload. */
+  setTimeout(function(){
+    try{
+      var sudah=null; try{ sudah=sessionStorage.getItem('pm20reload'); }catch(e){}
+      if(sudah){ log('sudah pernah muat ulang - berhenti (kalau data masih kosong, pakai chip/panel bantuan)'); return; }
+      log('muat ulang 1x agar semua blok PM boot dengan koneksi baru');
+      try{ sessionStorage.setItem('pm20reload','1'); }catch(e2){}
+      try{ location.reload(); }catch(e3){}
+    }catch(e4){}
+  },1500);
+}
+
+/* ---------- satu putaran pencarian + uji ---------- */
+function satuputaran21(){
+  if(SELESAI) return;
+  try{
+    for(var i=0;i<KUNCI_NET.length;i++){
+      var ada=lsAmbil(KUNCI_NET[i]);
+      if(netValid(ada)){
+        SELESAI=1; HASIL.valid='ya'; HASIL.sumber='localStorage ('+KUNCI_NET[i]+')'; HASIL.waktu=new Date().toLocaleTimeString();
+        log('koneksi sudah ada di localStorage - PM20 v2 pasif');
+        buangChip21();
+        bersihkanV1();
+        return;
+      }
+    }
+    bangunKandidat21();
+    if(!KANDIDAT.length){ log('belum menemukan kandidat koneksi (tunggu scan berikut) rincian='+JSON.stringify(HASIL.rincian)); return; }
+    ujiBerurutan21();
+  }catch(e){}
+}
+function ujiBerurutan21(){
+  if(SELESAI) return;
+  while(IDX_UJI<KANDIDAT.length && DIPROBE[KANDIDAT[IDX_UJI].u+'|'+KANDIDAT[IDX_UJI].k]) IDX_UJI++;
+  if(IDX_UJI>=KANDIDAT.length || IDX_UJI>=MAX_UJI){ log('semua kandidat kunci ditolak Supabase ('+Math.min(IDX_UJI,KANDIDAT.length)+' kandidat)'); return; }
+  var c=KANDIDAT[IDX_UJI++];
+  DIPROBE[c.u+'|'+c.k]=1;
+  ujiKoneksi21(c.u,c.k,function(v,st){
+    if(v==='ya'){ selesaiValid21(c.u,c.k,c.sumber,false); }
+    else if(v==='tidak'){ HASIL.gagalUji++; HASIL.akhirStatus=st; log('kunci ditolak Supabase (HTTP '+st+') sumber: '+c.sumber+' - kandidat berikut'); ujiBerurutan21(); }
+    else { HASIL.ragu=true; log('tidak bisa menguji (jaringan/iframe) - terima kredensial dari aplikasi sendiri'); selesaiValid21(c.u,c.k,c.sumber+' (tak terverifikasi)',false); }
+  });
+}
+
+/* ---------- deteksi aplikasi & mode mandiri ---------- */
+function appAda21(){
+  try{ return !!document.querySelector('#sidebarNav,#page-preventive,.nav-item,[data-page],aside#sidebar,#pm16Hal,#pm18Hal,#pm16Form'); }catch(e){ return false; }
+}
+function pasangMandiri21(){
+  if(MANDIRI_DIPASANG || appAda21()) return;
+  MANDIRI_DIPASANG=1;
+  try{
+    var d=document.createElement('div'); d.id='pm21Mandiri';
+    d.style.cssText='position:fixed;inset:0;z-index:2147483000;background:rgba(15,23,42,.72);display:flex;align-items:center;justify-content:center;padding:16px;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif';
+    d.innerHTML='<div style="background:#0f172a;color:#e5e7eb;max-width:430px;width:100%;border:1px solid #d4af37;border-radius:16px;padding:20px;box-shadow:0 18px 50px rgba(0,0,0,.5)">'
+      +'<div style="font-size:11px;letter-spacing:.14em;color:#d4af37;font-weight:700">PM20 &bull; v2 &bull; BLOK INSTALASI</div>'
+      +'<div style="font-size:19px;font-weight:800;margin:6px 0 10px;color:#fff">Jembatan Koneksi Supabase (FIX 401)</div>'
+      +'<div style="font-size:13px;line-height:1.65;color:#cbd5e1">File ini adalah <b style="color:#fbbf24">blok instalasi</b>, bukan halaman aplikasi.'
+      +'<br><br><b style="color:#fff">Cara pasang:</b> 1) buka index.html dengan text editor &rarr; 2) salin SELURUH isi file ini &rarr; 3) tempel di paling bawah index.html (tepat sebelum <code style="color:#fbbf24">&lt;/body&gt;</code>), DI BAWAH blok PM20 v1 &rarr; 4) simpan + muat ulang.'
+      +'<br><br><b style="color:#fff">Perbaikan v2:</b> validasi koneksi sekarang menembak ke tabel Supabase langsung, jadi <b style="color:#fbbf24">anon key &amp; publishable key</b> yang valid TIDAK lagi ditolak palsu (HTTP 401 di root <code>/rest/v1/</code> kini hanya untuk secret key).</div>'
+      +'<button id="pm21MandiriOk" style="margin-top:14px;width:100%;padding:12px;border:0;border-radius:10px;background:#d4af37;color:#111827;font-weight:800;font-size:14px;cursor:pointer">MENGERTI</button>'
+      +'</div>';
+    (document.body||document.documentElement).appendChild(d);
+    var ok=document.getElementById('pm21MandiriOk');
+    if(ok) ok.onclick=function(){ try{ d.style.display='none'; }catch(e){} };
+  }catch(e){}
+}
+
+/* ---------- chip bantuan + panel sambung manual ---------- */
+function buangChip21(){ try{ var c=document.getElementById('pm21Chip'); if(c) c.parentNode.removeChild(c); }catch(e){} }
+function cekChip21(){
+  if(SELESAI) return;
+  if(Date.now()-T0<BATAS_CHIP) return;
+  try{
+    if(!document.body) return;
+    if(!appAda21()){ pasangMandiri21(); return; }
+    if(document.getElementById('pm21Chip')) return;
+    var d=document.createElement('div'); d.id='pm21Chip';
+    d.style.cssText='position:fixed;left:12px;bottom:14px;z-index:2147483000;max-width:78vw;background:rgba(15,23,42,.96);color:#f3f4f6;border:1px solid #d4af37;border-radius:12px;padding:10px 14px;font:600 13px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.45);cursor:pointer';
+    d.textContent='Koneksi Supabase belum ketemu - ketuk untuk menyambung manual';
+    d.onclick=bukaPanel21;
+    document.body.appendChild(d);
+    log('kredensial tidak ditemukan otomatis - chip bantuan ditampilkan');
+  }catch(e){}
+}
+function bukaPanel21(){
+  try{
+    var lama=document.getElementById('pm21Panel');
+    if(lama){ lama.style.display='flex'; isiStatusPanel21(); return; }
+    var d=document.createElement('div'); d.id='pm21Panel';
+    d.style.cssText='position:fixed;inset:0;z-index:2147483001;background:rgba(15,23,42,.72);display:flex;align-items:center;justify-content:center;padding:16px;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif';
+    d.innerHTML='<div style="background:#0f172a;color:#e5e7eb;max-width:440px;width:100%;border:1px solid #d4af37;border-radius:16px;padding:20px;box-shadow:0 18px 50px rgba(0,0,0,.5)">'
+      +'<div style="font-size:11px;letter-spacing:.14em;color:#d4af37;font-weight:700">PM20 &bull; v2 &bull; SAMBUNG MANUAL</div>'
+      +'<div style="font-size:18px;font-weight:800;margin:6px 0 8px;color:#fff">Koneksi Supabase</div>'
+      +'<div id="pm21PanelStatus" style="font-size:12px;line-height:1.6;color:#94a3b8;margin-bottom:10px"></div>'
+      +'<label style="display:block;font-size:11px;font-weight:700;color:#cbd5e1;margin:8px 0 4px">URL SUPABASE</label>'
+      +'<input id="pm21InUrl" placeholder="https://xxxx.supabase.co" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #334155;border-radius:10px;background:#1e293b;color:#f8fafc;font:13px ui-monospace,monospace">'
+      +'<label style="display:block;font-size:11px;font-weight:700;color:#cbd5e1;margin:10px 0 4px">ANON KEY (PUBLIC)</label>'
+      +'<input id="pm21InKunci" placeholder="sb_publishable_... atau eyJhbGciOi..." style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #334155;border-radius:10px;background:#1e293b;color:#f8fafc;font:12px ui-monospace,monospace">'
+      +'<div id="pm21PanelPesan" style="display:none;margin-top:10px;font-size:12px;line-height:1.5;border-radius:8px;padding:8px 10px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:14px">'
+      +'<button id="pm21BtnOk" style="flex:1;padding:12px;border:0;border-radius:10px;background:#d4af37;color:#111827;font-weight:800;font-size:14px;cursor:pointer">SAMBUNGKAN</button>'
+      +'<button id="pm21BtnTutup" style="flex:0 0 auto;padding:12px 16px;border:1px solid #334155;border-radius:10px;background:transparent;color:#cbd5e1;font-weight:700;font-size:13px;cursor:pointer">Tutup</button>'
+      +'</div>'
+      +'<div style="margin-top:10px;font-size:11px;line-height:1.55;color:#64748b">URL &amp; anon key ada di dashboard Supabase &rarr; pilih project &rarr; tombol <b>Connect</b> &rarr; <b>Data API</b> (atau Project Settings &rarr; API Keys). Pakai kunci <b>anon / publishable</b> (bukan service/secret). PM20 v2 menguji langsung ke tabel, jadi kunci publishable didukung penuh.</div>'
+      +'</div>';
+    (document.body||document.documentElement).appendChild(d);
+    isiStatusPanel21();
+    document.getElementById('pm21BtnOk').onclick=function(){ sambungManual21(); };
+    document.getElementById('pm21BtnTutup').onclick=function(){ d.style.display='none'; };
+  }catch(e){}
+}
+function isiStatusPanel21(){
+  try{
+    var el=document.getElementById('pm21PanelStatus'); if(!el) return;
+    var p18=lsAmbil('pm18net');
+    el.textContent='Kandidat ditemukan: '+HASIL.cari+' &bull; kunci ditolak: '+HASIL.gagalUji
+      +(HASIL.akhirStatus?(' (terakhir HTTP '+HASIL.akhirStatus+')'):'')
+      +' &bull; pm18net: '+(netValid(p18)?'ada':'kosong')
+      +(KANDIDAT.length?('\nContoh kandidat: '+KANDIDAT[0].sumber):'');
+  }catch(e){}
+}
+function pesanPanel21(teksPesan,merah){
+  try{
+    var el=document.getElementById('pm21PanelPesan'); if(!el) return;
+    el.style.display='block';
+    el.style.background=merah?'rgba(220,38,38,.16)':'rgba(30,160,90,.16)';
+    el.style.color=merah?'#fca5a5':'#86efac';
+    el.textContent=teksPesan;
+  }catch(e){}
+}
+function sambungManual21(){
+  try{
+    var u=basisDari21(document.getElementById('pm21InUrl') && document.getElementById('pm21InUrl').value);
+    var k=rapikanKunci(document.getElementById('pm21InKunci') && document.getElementById('pm21InKunci').value);
+    if(!u){ pesanPanel21('URL tidak valid. Contoh: https://xxxx.supabase.co',true); return; }
+    if(!k || k.length<20){ pesanPanel21('Anon key belum diisi / terlalu pendek.',true); return; }
+    pesanPanel21('Menguji koneksi ke Supabase (lewat tabel)...',false);
+    ujiKoneksi21(u,k,function(v,st){
+      if(v==='ya'){
+        selesaiValid21(u,k,'manual',true);
+        pesanPanel21('TERSAMBUNG. Data PM dimuat ulang - panel menutup sendiri.',false);
+        setTimeout(function(){ try{ var p=document.getElementById('pm21Panel'); if(p) p.style.display='none'; }catch(e){} },1600);
+      }else if(v==='tidak'){
+        pesanPanel21('Supabase menolak kunci ini (HTTP '+st+'). Periksa URL & key: pakai anon/publishable key PUBLIC, bukan service/secret key.',true);
+      }else{
+        pesanPanel21('Tidak bisa menguji (jaringan?). Kredensial tetap disimpan - muat ulang halaman untuk melihat hasil.',true);
+        selesaiValid21(u,k,'manual (tak terverifikasi)',true);
+      }
+    });
+  }catch(e){}
+}
+
+/* ---------- perintah console (menimpa versi v1) ---------- */
+window.__PM21_STATUS=window.__PM20_STATUS=function(){
+  var p18=lsAmbil('pm18net'), p16=lsAmbil('pm16net');
+  return {
+    versi:'v2 (fix 401)', koneksi:HASIL.valid||'belum', sumber:HASIL.sumber||'-',
+    ragu:HASIL.ragu, kandidat:KANDIDAT.length, kunciDitolak:HASIL.gagalUji, akhirStatus:HASIL.akhirStatus,
+    ditulis:HASIL.ditulis.slice(0), waktu:HASIL.waktu||'-', rincian:HASIL.rincian,
+    pm18net:netValid(p18)?'ada':'kosong', pm16net:netValid(p16)?'ada':'kosong',
+    app:appAda21(), mandiri:!!document.getElementById('pm21Mandiri'),
+    chip:!!document.getElementById('pm21Chip'), selesai:!!SELESAI,
+    pm20v1:window.__PM20_VERSI||'-'
+  };
+};
+window.__PM21_CEK=window.__PM20_CEK=function(){
+  var s=window.__PM21_STATUS();
+  log('STATUS: koneksi='+s.koneksi+' sumber='+s.sumber+' kandidat='+s.kandidat+' ditolak='+s.kunciDitolak+' akhirHTTP='+(s.akhirStatus||'-')+' ragu='+s.ragu);
+  log('localStorage: pm18net='+s.pm18net+' pm16net='+s.pm16net+' ditulis='+s.ditulis.join(','));
+  log('aplikasi='+s.app+' chip='+s.chip+' mandiri='+s.mandiri+' PM20v1='+s.pm20v1);
+  log('kandidat teratas:');
+  for(var i=0;i<Math.min(3,KANDIDAT.length);i++) log('  '+(i+1)+'. '+KANDIDAT[i].sumber+' skor='+KANDIDAT[i].skor+' url='+KANDIDAT[i].u+' kunci='+(teks(KANDIDAT[i].k).slice(0,10)+'...('+teks(KANDIDAT[i].k).length+')'));
+  return s;
+};
+window.__PM21_SAMBUNG=window.__PM20_SAMBUNG=function(u,k){
+  var b=basisDari21(u); k=rapikanKunci(k);
+  if(!b || !k || k.length<20) return {ok:false,pesan:'URL / kunci kosong atau salah format'};
+  ujiKoneksi21(b,k,function(v,st){
+    if(v==='ya'){ selesaiValid21(b,k,'manual (__PM21_SAMBUNG)',true); log('TERSAMBUNG'); }
+    else if(v==='tidak') log('ditolak Supabase (HTTP '+st+')');
+    else { selesaiValid21(b,k,'manual (tak terverifikasi)',true); log('tidak bisa diuji - disimpan saja'); }
+  });
+  return {ok:true,pesan:'menguji... cek hasil: __PM21_STATUS()'};
+};
+
+/* ---------- BOOT ---------- */
+function jalan21(){
+  for(var i=0;i<JADWAL_SCAN.length;i++){ (function(ms){ setTimeout(satuputaran21,ms); })(JADWAL_SCAN[i]); }
+  setTimeout(cekChip21,BATAS_CHIP+60);
+  setTimeout(pasangMandiri21,BATAS_MANDIRI);
+  /* penjaga v1: buang chip/panel/mandiri PM20 v1 selama 45 dtk pertama
+     (v1 hanya membuat chip 1x, jadi cukup sampai situ) */
+  var n=0;
+  var tJaga=setInterval(function(){
+    n++; bersihkanV1();
+    if(n>45 || (SELESAI && n>5)){ clearInterval(tJaga); }
+  },1000);
+}
+if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded',jalan21); }
+else jalan21();
+log('JEMBATAN KONEKSI SUPABASE (PM20 v2, FIX 401) aktif - validasi ke TABEL langsung; cek: __PM21_CEK()');
+})();
+</script>
+<!-- ============ AKHIR PM20 v2 - JEMBATAN KONEKSI SUPABASE (FIX 401) ============ -->
 </body>
 </html>
