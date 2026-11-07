@@ -29383,5 +29383,1714 @@ log('JEMBATAN KONEKSI SUPABASE (PM20 v2, FIX 401) aktif - validasi ke TABEL lang
 })();
 </script>
 <!-- ============ AKHIR PM20 v2 - JEMBATAN KONEKSI SUPABASE (FIX 401) ============ -->
+<!-- ================================================================
+[PM21] MATRIKS JADWAL PM - kalender kotak warna per shift
+  - Tombol emas di halaman Jadwal PM (PM16) -> buka layar MATRIKS
+  - Kolom = tanggal 1..akhir bulan; baris = Morning(Pagi)/Middle(Siang)/Night(Malam)
+  - Kotak berwarna per kategori: Genset = HIJAU TUA (G), AC = KUNING (AC),
+    kategori lain diberi warna otomatis (tetap & konsisten)
+  - Legenda warna kategori di bawah + jumlah tugas
+  - Navigasi bulan, lama tampil 1/2/3/6 bulan, tombol Hari ini & muat ulang
+  - Tap kotak -> rincian tugas hari itu -> bisa lanjut ke Daftar Jadwal PM
+  - Data: tabel pm_jadwal (koneksi dari pm16net / PM20) + jadwal lokal HP
+  - Mode mandiri: kalau file dibuka langsung -> panel demo emas
+  Tempel DI BAWAH blok PM20 v2, tepat sebelum </body>.
+  Dobel-tempel aman (guard __PM21_VERSI). Blok lain tidak disentuh.
+================================================================= -->
+<script>
+(function(){
+'use strict';
+if(window.__PM21_VERSI){ try{ console.log('[PM21] sudah terpasang - lewati'); }catch(e){} return; }
+window.__PM21_VERSI='v1';
+var CEPAT=(window.__PM21_CEPAT===true);
+
+/* ================= alat bantu dasar ================= */
+function teks(x){ try{ return (x===null||x===undefined)?'':String(x).trim(); }catch(e){ return ''; } }
+function esc(s){ return teks(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function pad2(n){ return (n<10?'0':'')+n; }
+function keISO(d){ return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
+function dariISO(s){ s=teks(s); if(!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null; var p=s.split('-'); return new Date(Number(p[0]),Number(p[1])-1,Number(p[2])); }
+var NAMA_BULAN=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+var HARI_PENDEK=['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
+var HARI_PENUH=['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+function lsAmbil(k){ try{ var r=localStorage.getItem(k); return r?JSON.parse(r):null; }catch(e){ return null; } }
+function netValid(n){ return !!(n && teks(n.u) && teks(n.k)); }
+function netAktif21(){
+  var ks=['pm16net','pm18net','pm19net','pm15net','pm14net'];
+  for(var i=0;i<ks.length;i++){ var n=lsAmbil(ks[i]); if(netValid(n)) return {u:teks(n.u),k:teks(n.k),sumber:ks[i]}; }
+  try{ if(window.__PM20_CONF && teks(window.__PM20_CONF.u) && teks(window.__PM20_CONF.k))
+    return {u:teks(window.__PM20_CONF.u),k:teks(window.__PM20_CONF.k),sumber:'__PM20_CONF'}; }catch(e){}
+  return null;
+}
+function basisDari21(u){
+  u=teks(u); if(!u) return '';
+  if(!/^https?:\/\//i.test(u)) u='https://'+u.replace(/^\/+/,'');
+  try{ var p=new URL(u); return p.origin+'/rest/v1'; }catch(e){ return ''; }
+}
+function fmtTgl21(s){ var d=dariISO(s); return d? pad2(d.getDate())+' '+NAMA_BULAN[d.getMonth()]+' '+d.getFullYear() : teks(s); }
+function fmtPenuh21(s){ var d=dariISO(s); return d? HARI_PENUH[d.getDay()]+', '+d.getDate()+' '+NAMA_BULAN[d.getMonth()]+' '+d.getFullYear() : teks(s); }
+function labelInterval(n){ n=Number(n||0); if(n===7) return '7 hari (mingguan)'; if(n===30) return '1 bulan'; if(n===60) return '2 bulan'; if(n===90) return '3 bulan'; if(n===120) return '4 bulan'; if(n===180) return '6 bulan'; return n+' hari'; }
+
+/* ================= kategori -> kode + warna ================= */
+function kodeKat21(nama){
+  var n=teks(nama).toLowerCase();
+  if(!n) return 'PM';
+  if(/genset|generator/.test(n)) return 'G';
+  if(/^ac/.test(n) || /hvac|air con/.test(n)) return 'AC';
+  if(/chiller/.test(n)) return 'CH';
+  if(/boiler/.test(n)) return 'BL';
+  if(/cooling/.test(n)) return 'CT';
+  if(/pompa|pump|plumb/.test(n)) return 'PL';
+  if(/elektrik|listrik|panel|electr/.test(n)) return 'EL';
+  if(/lift|elev/.test(n)) return 'LF';
+  if(/escal/.test(n)) return 'ES';
+  if(/cctv|kamera/.test(n)) return 'CC';
+  if(/fire|alarm|apar|hydrant/.test(n)) return 'FA';
+  var kata=n.split(/[^a-z0-9]+/).filter(Boolean);
+  if(kata.length>=2) return (kata[0].charAt(0)+kata[1].charAt(0)).toUpperCase();
+  if(kata[0].length<=3) return kata[0].toUpperCase();
+  return kata[0].charAt(0).toUpperCase();
+}
+var PALET21=['#0e7490','#7c3aed','#be123c','#b45309','#1d4ed8','#4d7c0f','#c2410c','#0f766e','#a21caf','#334155','#15803d','#dc2626'];
+function warnaKat21(nama){
+  var n=teks(nama).toLowerCase();
+  if(/genset|generator/.test(n)) return {bg:'#166534',fg:'#ffffff'};   /* hijau tua (permintaan Head) */
+  if(/^ac/.test(n) || /hvac|air con/.test(n)) return {bg:'#facc15',fg:'#713f12'}; /* kuning (permintaan Head) */
+  var h=0; for(var i=0;i<n.length;i++){ h=((h*31)+n.charCodeAt(i))>>>0; }
+  return {bg:PALET21[h%PALET21.length],fg:'#ffffff'};
+}
+
+/* ================= status data ================= */
+var DATA21={rows:[],status:'awal',pesan:'',net:null,saat:'',demo:false};
+var HAL21=null, BULAN0=null, LAMA21=1, MODE21='app';
+
+var SHIFTS21=[{v:'Morning',id:'Pagi',tit:'Shift 1'}, {v:'Middle',id:'Siang',tit:'Shift 2'}, {v:'Night',id:'Malam',tit:'Shift 3'}];
+var CSS21='#pm21TombolKartu{margin:0 0 12px;background:linear-gradient(135deg,#0f172a,#1e293b);border:1.5px solid #d4af37;border-radius:14px;padding:13px 15px;display:flex;align-items:center;gap:12px;cursor:pointer;width:100%;text-align:left;box-shadow:0 2px 8px rgba(15,23,42,.18)}'+
+'#pm21TombolKartu span{display:block;font-size:11px;color:#cbd5e1;margin-top:2px}'+
+'#pm21TombolKartu b{display:block;font-size:14.5px;color:#f5c518;letter-spacing:.4px}'+
+'#pm21TombolKartu .pm21ico{flex:none;width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,#d4af37,#f5c518);display:flex;align-items:center;justify-content:center;font-size:21px;margin:0}'+
+'#pm21TombolKartu .pm21panah{flex:none;color:#d4af37;font-size:18px;font-weight:bold;margin:0}'+
+'#pm21Hal{font-family:Arial,Helvetica,sans-serif;position:fixed;inset:0;z-index:2147482900;background:#f1f5f9;overflow-y:auto;-webkit-overflow-scrolling:touch;display:none}'+
+'#pm21Hal.pm21on{display:block}'+
+'#pm21Kepala{position:sticky;top:0;z-index:20;background:linear-gradient(135deg,#0f172a,#1e293b);padding:13px 15px;display:flex;align-items:center;gap:10px;border-bottom:2px solid #d4af37}'+
+'#pm21Kepala b{font-size:15px;color:#f5c518;letter-spacing:.4px}'+
+'#pm21Kepala small{display:block;font-size:9.5px;color:#94a3b8;margin-top:2px;letter-spacing:.6px}'+
+'#pm21Kepala button{margin-left:auto;flex:none;border:0;border-radius:10px;padding:8px 13px;font-weight:bold;font-size:13px;background:rgba(212,175,55,.16);color:#f5c518;cursor:pointer}'+
+'#pm21Isi{padding:12px 12px 30px;max-width:1100px;margin:0 auto}'+
+'#pm21Hal .pm21kartu{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:12px;margin-bottom:12px;box-shadow:0 1px 3px rgba(15,23,42,.06)}'+
+'#pm21Ctrl{display:flex;flex-wrap:wrap;gap:7px;align-items:center}'+
+'#pm21Ctrl button{border:1.5px solid #cbd5e1;background:#fff;border-radius:10px;padding:9px 13px;font-weight:bold;font-size:13px;color:#334155;cursor:pointer}'+
+'#pm21Ctrl button.pm21nav{width:42px;padding:9px 0}'+
+'#pm21Ctrl button.pm21emas{border-color:#d4af37;background:#fffbeb;color:#92400e}'+
+'#pm21Ctrl label{font-size:10px;font-weight:bold;color:#64748b;text-transform:uppercase;letter-spacing:.4px}'+
+'#pm21Ctrl select{padding:9px 8px;border:1.5px solid #cbd5e1;border-radius:10px;font-size:13px;color:#334155;background:#fff}'+
+'#pm21LabelBulan{font-weight:bold;font-size:14.5px;color:#0f172a;margin-left:2px}'+
+'#pm21StatusNet{width:100%;font-size:11.5px;color:#475569;margin-top:2px}'+
+'#pm21StatusNet.pm21merah{color:#b91c1c;font-weight:bold}'+
+'#pm21StatusNet.pm21hijau{color:#15803d}'+
+'.pm21Bulan{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:10px;margin-bottom:12px;box-shadow:0 1px 3px rgba(15,23,42,.06)}'+
+'.pm21Bulan h3{margin:2px 0 8px;font-size:14.5px;color:#0f172a}'+
+'.pm21Bulan h3 small{font-weight:normal;color:#64748b;font-size:11px;margin-left:6px}'+
+'.pm21scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid #e2e8f0;border-radius:10px}'+
+'.pm21tbl{border-collapse:separate;border-spacing:1px;background:#e2e8f0;width:100%;min-width:100%}'+
+'.pm21tbl th,.pm21tbl td{background:#fff;padding:0;margin:0}'+
+'.pm21tbl thead th{position:sticky;top:0;z-index:3;background:#f8fafc;font-size:10.5px;color:#334155;padding:4px 1px;text-align:center;min-width:26px;line-height:1.15}'+
+'.pm21tbl thead th b{font-size:11.5px;display:block}'+
+'.pm21tbl thead th small{font-size:8.5px;color:#64748b;display:block}'+
+'.pm21tbl thead th.pm21min b{color:#b91c1c}'+
+'.pm21tbl thead th.pm21hrini b{color:#92400e}'+
+'.pm21tbl thead th.pm21sudut{position:sticky;left:0;z-index:4;min-width:58px;background:#f8fafc}'+
+'.pm21tbl td.pm21lab{position:sticky;left:0;z-index:2;min-width:58px;background:#f8fafc;padding:6px 5px;text-align:center}'+
+'.pm21tbl td.pm21lab b{display:block;font-size:11px;color:#0f172a}'+
+'.pm21tbl td.pm21lab small{display:block;font-size:9px;color:#64748b}'+
+'.pm21tbl td.pm21lab .pm21dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-bottom:2px}'+
+'.pm21tbl td.pm21sel{height:44px;vertical-align:top;padding:2px;cursor:pointer}'+
+'.pm21tbl td.pm21sel.pm21weekend{background:#f8fafc}'+
+'.pm21tbl td.pm21sel.pm21hrini{outline:2px solid #d4af37;outline-offset:-2px;background:#fffbeb}'+
+'.pm21kotak{display:flex;flex-wrap:wrap;gap:1px;align-items:flex-start;justify-content:center;width:100%;height:100%}'+
+'.pm21chip{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 3px;border-radius:5px;font-size:9px;font-weight:bold;letter-spacing:.2px;line-height:1;cursor:pointer}'+
+'.pm21chip.pm21nopt{opacity:.5;text-decoration:line-through}'+
+'.pm21chip.pm21sls{box-shadow:inset 0 0 0 1.5px #ffffffaa}'+
+'.pm21lebih{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 3px;border-radius:5px;font-size:8.5px;font-weight:bold;background:#e2e8f0;color:#475569}'+
+'.pm21kosongB{font-size:12px;color:#64748b;text-align:center;padding:10px 0}'+
+'.pm21legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}'+
+'.pm21legend .pm21lg{display:inline-flex;align-items:center;gap:5px;border:1px solid #e2e8f0;border-radius:999px;padding:4px 9px 4px 5px;font-size:11px;color:#334155;background:#fff}'+
+'.pm21legend .pm21lg i{width:14px;height:14px;border-radius:4px;display:inline-block;font-style:normal}'+
+'.pm21legend .pm21lg b{font-size:10.5px}'+
+'.pm21legend .pm21lg small{color:#64748b;font-size:10px}'+
+'.pm21catatanW{font-size:10.5px;color:#64748b;margin-top:7px;line-height:1.5}'+
+'#pm21Sheet{position:fixed;left:0;right:0;bottom:0;z-index:2147483000;background:#fff;border-radius:16px 16px 0 0;box-shadow:0 -6px 24px rgba(15,23,42,.25);max-height:72%;overflow-y:auto;display:none;transform:translateY(100%);transition:transform .22s ease}'+
+'#pm21Sheet.pm21on{display:block;transform:translateY(0)}'+
+'#pm21Sheet .pm21shKepala{position:sticky;top:0;background:linear-gradient(135deg,#0f172a,#1e293b);padding:11px 14px;display:flex;align-items:flex-start;gap:10px;border-radius:16px 16px 0 0}'+
+'#pm21Sheet .pm21shKepala b{font-size:13.5px;color:#f5c518}'+
+'#pm21Sheet .pm21shKepala small{display:block;font-size:10.5px;color:#cbd5e1;margin-top:2px}'+
+'#pm21Sheet .pm21shKepala button{margin-left:auto;flex:none;border:0;background:rgba(212,175,55,.16);color:#f5c518;border-radius:9px;padding:6px 11px;font-weight:bold;font-size:12px;cursor:pointer}'+
+'#pm21Sheet .pm21shIsi{padding:10px 12px 14px}'+
+'.pm21tugas{border:1px solid #e2e8f0;border-radius:12px;padding:9px 11px;margin-bottom:8px;background:#fff}'+
+'.pm21tugas b{font-size:13px;color:#0f172a;display:block}'+
+'.pm21tugas .pm21tgchips{margin:4px 0}'+
+'.pm21tugas .pm21tgchips span{display:inline-block;padding:2.5px 8px;border-radius:999px;font-size:9.5px;font-weight:bold;margin-right:4px;margin-top:2px}'+
+'.pm21tugas span.pm21baris{display:block;font-size:11.5px;color:#475569;margin-top:2.5px;line-height:1.45}'+
+'.pm21tugas span.pm21hp{display:inline-block;margin-top:5px;background:#fef9c3;color:#854d0e;border-radius:7px;padding:2.5px 8px;font-size:9.5px;font-weight:bold}'+
+'#pm21shTombol{display:flex;gap:8px;margin-top:10px}'+
+'#pm21shTombol button{flex:1;padding:11px 12px;border:0;border-radius:11px;font-weight:bold;font-size:12.5px;cursor:pointer}'+
+'#pm21btnDaftar{background:#1d4ed8;color:#fff}'+
+'#pm21btnTutupSh{background:#e2e8f0;color:#334155}'+
+'#pm21Banner{border-radius:12px;padding:10px 12px;font-size:12px;line-height:1.5;margin-bottom:12px;display:none}'+
+'#pm21Banner.pm21on{display:block}'+
+'#pm21Banner.pm21emas{background:#fffbeb;border:1.5px solid #f59e0b;color:#92400e}'+
+'#pm21Banner.pm21merah{background:#fef2f2;border:1.5px solid #ef4444;color:#b91c1c}'+
+'#pm21Mandiri{position:fixed;left:10px;right:10px;bottom:10px;z-index:2147483100;background:linear-gradient(135deg,#0f172a,#1e293b);border:1.5px solid #d4af37;border-radius:16px;padding:14px;box-shadow:0 8px 30px rgba(15,23,42,.4);display:none;font-family:Arial,Helvetica,sans-serif}'+
+'#pm21Mandiri.pm21on{display:block}'+
+'#pm21Mandiri b{color:#f5c518;font-size:13.5px;letter-spacing:.4px}'+
+'#pm21Mandiri p{color:#cbd5e1;font-size:11.5px;line-height:1.55;margin:6px 0}'+
+'#pm21Mandiri button{border:0;border-radius:10px;padding:10px 13px;font-weight:bold;font-size:12.5px;cursor:pointer;margin-right:7px;margin-top:4px}'+
+'#pm21btnDemo{background:linear-gradient(135deg,#d4af37,#f5c518);color:#1e293b}'+
+'#pm21btnMdTutup{background:#334155;color:#e2e8f0}';
+
+/* ================= fetch pm_jadwal lewat iframe bersih (fetch asli) ================= */
+function ambilIframe21(url,k,cb){
+  var selesai=0,to=null,f=null;
+  function akhir(st,body){
+    if(selesai) return; selesai=1;
+    if(to) clearTimeout(to);
+    try{ if(f && f.parentNode) f.parentNode.removeChild(f); }catch(e){}
+    try{ cb(st,body); }catch(e2){}
+  }
+  to=setTimeout(function(){ akhir(-1,null); },CEPAT?4000:9000);
+  try{
+    f=document.createElement('iframe');
+    f.style.cssText='position:fixed!important;left:-9999px!important;top:-9999px!important;width:2px!important;height:2px!important;border:0!important;opacity:0!important';
+    f.setAttribute('aria-hidden','true');
+    f.onload=function(){
+      try{
+        var cw=f.contentWindow;
+        if(!cw || typeof cw.fetch!=='function') throw new Error('tanpa fetch');
+        var op={method:'GET',headers:{apikey:k,Authorization:'Bearer '+k}};
+        if(cw.AbortController){ var ctl=new cw.AbortController(); op.signal=ctl.signal; setTimeout(function(){ try{ctl.abort();}catch(e){} },CEPAT?3500:8000); }
+        cw.fetch(url,op).then(function(r){
+          var st=r?r.status:-1;
+          try{ r.text().then(function(t){ akhir(st,t||''); }).catch(function(){ akhir(st,''); }); }
+          catch(e2){ akhir(st,''); }
+        }).catch(function(){ akhir(-1,null); });
+      }catch(e){ akhir(-2,null); }
+    };
+    f.src='about:blank';
+    (document.body||document.documentElement).appendChild(f);
+  }catch(e){ akhir(-2,null); }
+}
+function baris21(x){
+  x=x||{};
+  return {kode:teks(x.kode),peralatan:teks(x.peralatan),lokasi:teks(x.lokasi),room:teks(x.room),
+    kategori:teks(x.kategori),sic:teks(x.sic),tanggal:teks(x.tanggal),shift:teks(x.shift)||'Morning',
+    petugas:teks(x.petugas),catatan:teks(x.catatan),status:teks(x.status)||'Terjadwal',
+    interval_hari:Number(x.interval_hari||0),ulang_sampai:teks(x.ulang_sampai),lokal:!!x.lokal};
+}
+function bacaLokal21(){
+  var arr=lsAmbil('pm16lokal')||[], out=[];
+  for(var i=0;i<arr.length;i++){ var b=baris21(arr[i]); b.lokal=true; if(b.tanggal) out.push(b); }
+  return out;
+}
+function muatData21(cb){
+  var net=netAktif21(); DATA21.net=net;
+  var lokal=bacaLokal21();
+  if(!net){
+    DATA21={rows:lokal,status:lokal.length?'ok':'tanpa_net',pesan:lokal.length?'':'Belum ada koneksi Supabase - matriks masih kosong. Koneksi diatur lewat blok PM20 di halaman Preventive Maintenance, atau buat jadwal dulu di halaman Jadwal PM.',net:null,saat:''};
+    if(cb) cb(); return;
+  }
+  var url=net.u+'/pm_jadwal?select=*&order=tanggal.asc,shift.asc&limit=1000';
+  ambilIframe21(url,net.k,function(st,body){
+    var rows=[];
+    if(st===200||st===206){
+      try{ rows=JSON.parse(body)||[]; }catch(e){ rows=[]; }
+      var out=[];
+      for(var i=0;i<rows.length;i++){ var b=baris21(rows[i]); if(b.tanggal) out.push(b); }
+      DATA21={rows:out.concat(lokal),status:'ok',pesan:'',net:net,saat:new Date().toTimeString().slice(0,5)};
+    } else if(st===401||st===403){
+      DATA21={rows:lokal,status:'ditolak',pesan:'Koneksi Supabase ditolak (HTTP '+st+') - jalankan ulang blok PM20 (SAMBUNG MANUAL) di halaman Preventive Maintenance untuk memperbaiki kredensial.',net:net,saat:''};
+    } else if(st===400||st===404){
+      DATA21={rows:lokal,status:'tanpa_tabel',pesan:'Tabel pm_jadwal belum ada di Supabase - buka halaman Jadwal PM lalu jalankan tombol Salin SQL, atau buat jadwal dulu lewat form.',net:net,saat:''};
+    } else {
+      DATA21={rows:lokal,status:'gagal',pesan:'Tidak bisa menghubungi Supabase sekarang (jaringan) - tampilkan jadwal di HP ini saja.',net:net,saat:''};
+    }
+    if(cb) cb();
+  });
+}
+
+/* ================= judul alat (KODE - Nama) ================= */
+function judulAlat21(r){
+  var kode=teks(r.kode).toUpperCase(), nama=teks(r.peralatan);
+  if(kode && nama && nama.toUpperCase().indexOf(kode)<0) return kode+' \u2022 '+nama;
+  return nama||kode||'(tanpa nama)';
+}
+
+/* ================= susun matriks 1 bulan ================= */
+function selMap21(rows){
+  var m={};
+  for(var i=0;i<rows.length;i++){
+    var r=rows[i]; if(!r.tanggal) continue;
+    var k=r.tanggal+'|'+(r.shift||'Morning');
+    if(!m[k]) m[k]=[];
+    m[k].push(r);
+  }
+  return m;
+}
+function barisBulan21(y,m,rows,todayISO){
+  var jml=new Date(y,m+1,0).getDate();
+  var map=selMap21(rows), total=0, d;
+  for(d=1;d<=jml;d++){ var t=y+'-'+pad2(m+1)+'-'+pad2(d); var a=map[t+'|Morning']||[],b=map[t+'|Middle']||[],c=map[t+'|Night']||[]; total+=a.length+b.length+c.length; }
+  var h='<div class="pm21Bulan"><h3>'+NAMA_BULAN[m]+' '+y+'<small>'+total+' tugas PM</small></h3><div class="pm21scroll"><table class="pm21tbl"><thead><tr>';
+  h+='<th class="pm21sudut">Shift</th>';
+  for(d=1;d<=jml;d++){
+    var dt=new Date(y,m,d), dow=dt.getDay();
+    var cls=(dow===0?' pm21min':'')+(todayISO===y+'-'+pad2(m+1)+'-'+pad2(d)?' pm21hrini':'');
+    h+='<th class="'+cls+'"><b>'+d+'</b><small>'+HARI_PENDEK[dow]+'</small></th>';
+  }
+  h+='</tr></thead><tbody>';
+  var warnaShift={Morning:'#f59e0b',Middle:'#3b82f6',Night:'#6366f1'};
+  for(var s=0;s<SHIFTS21.length;s++){
+    var sh=SHIFTS21[s];
+    h+='<tr><td class="pm21lab"><span class="pm21dot" style="background:'+warnaShift[sh.v]+'"></span><b>'+sh.v+'</b><small>'+sh.id+' \u2022 '+sh.tit+'</small></td>';
+    for(d=1;d<=jml;d++){
+      var tgl=y+'-'+pad2(m+1)+'-'+pad2(d);
+      var dow2=new Date(y,m,d).getDay();
+      var lst=map[tgl+'|'+sh.v]||[];
+      var cls2='pm21sel'+(dow2===0||dow2===6?' pm21weekend':'')+(todayISO===tgl?' pm21hrini':'');
+      h+='<td class="'+cls2+'" data-tg="'+tgl+'" data-sh="'+sh.v+'"><div class="pm21kotak">';
+      /* kelompokkan per kategori */
+      var urut=[],hitung={},contoh={};
+      for(var i=0;i<lst.length;i++){
+        var kat=lst[i].kategori||'(tanpa kategori)';
+        if(!hitung[kat]){ hitung[kat]=0; urut.push(kat); contoh[kat]=lst[i]; }
+        hitung[kat]++;
+      }
+      urut.sort(function(a,b){ return a.toLowerCase()<b.toLowerCase()?-1:(a.toLowerCase()>b.toLowerCase()?1:0); });
+      var tampil=Math.min(urut.length,4), sisanya=urut.length-tampil;
+      for(var u2=0;u2<tampil;u2++){
+        var kat2=urut[u2], wr=warnaKat21(kat2==='(tanpa kategori)'?'':kat2);
+        var nopt=0,sls=0;
+        for(var v2=0;v2<lst.length;v2++){ if((lst[v2].kategori||'(tanpa kategori)')===kat2){ if(/batal|cancel/i.test(lst[v2].status)) nopt=1; if(/^selesai$/i.test(lst[v2].status)) sls=1; } }
+        var kode=kodeKat21(kat2==='(tanpa kategori)'?'':kat2);
+        var txt=kode+(hitung[kat2]>1?'\u00d7'+hitung[kat2]:'');
+        h+='<span class="pm21chip'+(nopt?' pm21nopt':'')+(sls?' pm21sls':'')+'" data-kat="'+esc(kat2)+'" style="background:'+wr.bg+';color:'+wr.fg+'" title="'+esc(kat2)+' \u2022 '+hitung[kat2]+' tugas - tap utk rincian">'+esc(txt)+'</span>';
+      }
+      if(sisanya>0) h+='<span class="pm21lebih" title="'+sisanya+' kategori lagi - tap utk rincian">+'+sisanya+'</span>';
+      if(!urut.length) h+='<span style="color:#cbd5e1;font-size:8.5px">\u00b7</span>';
+      h+='</div></td>';
+    }
+    h+='</tr>';
+  }
+  h+='</tbody></table></div>';
+  if(!total) h+='<div class="pm21kosongB">Belum ada tugas PM pada bulan ini - buat lewat form Jadwal PM.</div>';
+  h+='</div>';
+  return h;
+}
+function legenda21(rows){
+  var hitung={},urut=[];
+  for(var i=0;i<rows.length;i++){
+    var kat=rows[i].kategori||'(tanpa kategori)';
+    if(!hitung[kat]){ hitung[kat]=0; urut.push(kat); }
+    hitung[kat]++;
+  }
+  urut.sort(function(a,b){ return a.toLowerCase()<b.toLowerCase()?-1:(a.toLowerCase()>b.toLowerCase()?1:0); });
+  var h='<p class="pm21judul" style="font-size:13px;font-weight:bold;color:#0f172a;margin:0 0 8px">Keterangan Warna Kategori</p><div class="pm21legend">';
+  for(var j=0;j<urut.length;j++){
+    var kat=urut[j], wr=warnaKat21(kat==='(tanpa kategori)'?'':kat);
+    h+='<span class="pm21lg"><i style="background:'+wr.bg+';color:'+wr.fg+';font-size:8.5px;font-weight:bold;display:inline-flex;align-items:center;justify-content:center">'+esc(kodeKat21(kat==='(tanpa kategori)'?'':kat))+'</i>'+esc(kat==='(tanpa kategori)'?'Tanpa kategori':kat)+'<small>'+hitung[kat]+' tugas</small></span>';
+  }
+  if(!urut.length) h+='<span class="pm21lg"><i style="background:#e2e8f0"></i>Belum ada kategori</span>';
+  h+='</div><p class="pm21catatanW">Warna tetap: <b style="color:#166534">Genset = hijau tua (G)</b> \u2022 <b style="color:#713f12">AC = kuning (AC)</b>. Kategori lain diberi warna otomatis dan selalu sama untuk kategori yang sama. Kotak bercoret = jadwal batal, kotak bergaris ganda = sudah selesai. Tap kotak mana pun untuk melihat rincian tugas.</p>';
+  return h;
+}
+
+/* ================= sheet rincian ================= */
+function bukaSheet21(tgl,shift){
+  var sh=shift||'Morning', shObj=null;
+  for(var i=0;i<SHIFTS21.length;i++) if(SHIFTS21[i].v===sh) shObj=SHIFTS21[i];
+  var lst=[];
+  for(var j=0;j<DATA21.rows.length;j++){ var r=DATA21.rows[j]; if(r.tanggal===tgl && (r.shift||'Morning')===sh) lst.push(r); }
+  lst.sort(function(a,b){ return judulAlat21(a).toLowerCase()<judulAlat21(b).toLowerCase()?-1:1; });
+  var kep=document.querySelector('#pm21Sheet .pm21shKepala b');
+  var kepSm=document.querySelector('#pm21Sheet .pm21shKepala small');
+  var isi=document.querySelector('#pm21Sheet .pm21shIsi');
+  if(!kep||!isi) return;
+  kep.textContent='Tugas PM '+fmtPenuh21(tgl);
+  kepSm.textContent='Shift '+sh+(shObj?' ('+shObj.id+')':'')+' \u2022 '+lst.length+' tugas';
+  var h='';
+  if(!lst.length) h='<div class="pm21kosongB">Tidak ada tugas pada tanggal & shift ini.</div>';
+  for(var k=0;k<lst.length;k++){
+    var r=lst[k], wr=warnaKat21(r.kategori);
+    var warnaSt=/^selesai$/i.test(r.status)?['#dcfce7','#166534']:/batal|cancel/i.test(r.status)?['#fee2e2','#b91c1c']:['#e2e8f0','#334155'];
+    h+='<div class="pm21tugas"><b>'+esc(judulAlat21(r))+'</b>';
+    h+='<div class="pm21tgchips">';
+    h+='<span style="background:'+wr.bg+';color:'+wr.fg+'">'+esc(kodeKat21(r.kategori)+' \u2022 '+(r.kategori||'Tanpa kategori'))+'</span>';
+    h+='<span style="background:#f1f5f9;color:#334155">'+esc(r.shift)+'</span>';
+    h+='<span style="background:'+warnaSt[0]+';color:'+warnaSt[1]+'">'+esc(r.status)+'</span>';
+    h+='</div>';
+    if(r.lokasi||r.room) h+='<span class="pm21baris">\uD83D\uDCCD '+esc([r.lokasi,r.room].filter(Boolean).join(' \u2022 '))+'</span>';
+    h+='<span class="pm21baris">\uD83D\uDC64 Petugas: '+esc(r.petugas||'(diisi tulisan tangan)')+'</span>';
+    if(r.sic) h+='<span class="pm21baris">\u270d\ufe0f Paraf SIC: '+esc(r.sic)+'</span>';
+    if(r.catatan) h+='<span class="pm21baris">\uD83D\uDCDD '+esc(r.catatan)+'</span>';
+    if(Number(r.interval_hari||0)>0) h+='<span class="pm21baris">\uD83D\uDD01 Diulang setiap '+esc(labelInterval(r.interval_hari))+(r.ulang_sampai?' s/d '+esc(fmtTgl21(r.ulang_sampai)):'')+'</span>';
+    if(r.lokal) h+='<span class="pm21hp">HP ini saja (belum terkirim server)</span>';
+    h+='</div>';
+  }
+  isi.innerHTML=h;
+  var shEl=document.getElementById('pm21Sheet');
+  shEl.setAttribute('data-tg',tgl); shEl.setAttribute('data-sh',sh);
+  shEl.classList.add('pm21on');
+}
+function tutupSheet21(){ var s=document.getElementById('pm21Sheet'); if(s) s.classList.remove('pm21on'); }
+
+/* ================= overlay matriks ================= */
+function bulanAwalDefault(){ var d=new Date(); return {y:d.getFullYear(),m:d.getMonth()}; }
+function buka21(){
+  tutupSheet21();
+  if(!HAL21) HAL21=bangunHal21();
+  if(!BULAN0) BULAN0=bulanAwalDefault();
+  if(MODE21==='mandiri' && DATA21.status==='awal') DATA21={rows:demoRows21(),status:'ok',pesan:'',net:null,saat:'',demo:true};
+  HAL21.classList.add('pm21on');
+  HAL21.scrollTop=0;
+  render21(false);
+  if(MODE21==='app') muatData21(function(){ render21(false); });
+}
+function tutup21(){ tutupSheet21(); if(HAL21) HAL21.classList.remove('pm21on'); }
+function render21(fresh){
+  var isi=document.getElementById('pm21Isi');
+  if(!isi) return;
+  var bulan=TAMPIL21[LAMA21]||1;
+  var todayISO=keISO(new Date());
+  var html='', rows=DATA21.rows, total=rows.length;
+  for(var i=0;i<bulan;i++){
+    var m0=BULAN0.m+i, y=BULAN0.y+Math.floor(m0/12), m=m0%12;
+    html+=barisBulan21(y,m,rows,todayISO);
+  }
+  var lab=document.getElementById('pm21LabelBulan');
+  if(lab){
+    var mAkhir=BULAN0.m+bulan-1, yA=BULAN0.y+Math.floor(mAkhir/12), mA=mAkhir%12;
+    lab.textContent=NAMA_BULAN[BULAN0.m]+' '+BULAN0.y+(bulan>1? ' s/d '+NAMA_BULAN[mA]+' '+yA:'');
+  }
+  var st=document.getElementById('pm21StatusNet');
+  if(st){
+    if(DATA21.status==='ok'){
+      st.className='pm21hijau';
+      st.textContent=(DATA21.demo?'Contoh demo':'Tersambung'+(DATA21.net&&DATA21.net.sumber?' ('+DATA21.net.sumber+')':''))+' \u2022 '+total+' jadwal dimuat'+(DATA21.saat?' \u2022 '+DATA21.saat:'')+(LAMA21>1?' \u2022 '+bulan+' bulan':'');
+    } else if(DATA21.status==='awal'){ st.className=''; st.textContent='Memuat jadwal...'; }
+    else { st.className='pm21merah'; st.textContent=DATA21.pesan||'Belum tersambung.'; }
+  }
+  var ban=document.getElementById('pm21Banner');
+  if(ban){
+    if(DATA21.status==='ok'||DATA21.status==='awal'){ ban.className=''; ban.innerHTML=''; }
+    else{
+      ban.className='pm21on '+(DATA21.status==='ditolak'||DATA21.status==='gagal'?'pm21merah':'pm21emas');
+      ban.innerHTML=esc(DATA21.pesan||'');
+      if(DATA21.rows.length) ban.innerHTML+='<br><small>Jadwal di HP ini tetap ditampilkan ('+DATA21.rows.length+').</small>';
+    }
+  }
+  var wrap=document.getElementById('pm21Grid');
+  if(wrap) wrap.innerHTML=html+(legenda21(rows));
+}
+var TAMPIL21={1:1,2:2,3:3,6:6};
+function bangunHal21(){
+  if(!document.getElementById('pm21Css')){
+    var st=document.createElement('style'); st.id='pm21Css'; st.textContent=CSS21; document.head.appendChild(st);
+  }
+  var hal=document.createElement('div'); hal.id='pm21Hal';
+  hal.innerHTML=
+    '<div id="pm21Kepala">'+
+      '<div><b>MATRIKS JADWAL PM</b><small>DOMINION LOUNGE &amp; MASTERPIECE \u2022 kotak warna per tanggal &amp; shift</small></div>'+
+      '<button type="button" id="pm21Tutup">\u2715 Tutup</button>'+
+    '</div>'+
+    '<div id="pm21Isi">'+
+      '<div id="pm21Banner"></div>'+
+      '<div class="pm21kartu"><div id="pm21Ctrl">'+
+        '<button type="button" class="pm21nav" id="pm21Prev" aria-label="Bulan sebelumnya">\u25c0</button>'+
+        '<span id="pm21LabelBulan">-</span>'+
+        '<button type="button" class="pm21nav" id="pm21Next" aria-label="Bulan berikutnya">\u25b6</button>'+
+        '<button type="button" id="pm21HariIni">Hari ini</button>'+
+        '<button type="button" class="pm21emas" id="pm21MuatUlang">\u21bb Muat ulang</button>'+
+        '<label for="pm21Lama">Lama tampil</label>'+
+        '<select id="pm21Lama"><option value="1">1 bulan</option><option value="2">2 bulan</option><option value="3">3 bulan</option><option value="6">6 bulan</option></select>'+
+        '<span id="pm21StatusNet"></span>'+
+      '</div></div>'+
+      '<div id="pm21Grid"></div>'+
+    '</div>'+
+    '<div id="pm21Sheet"><div class="pm21shKepala"><div><b>-</b><small>-</small></div><button type="button" id="pm21shTutup">\u2715</button></div><div class="pm21shIsi"></div></div>';
+  document.body.appendChild(hal);
+  /* event */
+  document.getElementById('pm21Tutup').addEventListener('click',tutup21);
+  document.getElementById('pm21Prev').addEventListener('click',function(){
+    var m0=BULAN0.y*12+BULAN0.m-1; BULAN0={y:Math.floor(m0/12),m:((m0%12)+12)%12}; render21(false);
+  });
+  document.getElementById('pm21Next').addEventListener('click',function(){
+    var m0=BULAN0.y*12+BULAN0.m+1; BULAN0={y:Math.floor(m0/12),m:m0%12}; render21(false);
+  });
+  document.getElementById('pm21HariIni').addEventListener('click',function(){ BULAN0=bulanAwalDefault(); render21(false); });
+  document.getElementById('pm21MuatUlang').addEventListener('click',function(){
+    var b=this; b.textContent='\u21bb Memuat...';
+    muatData21(function(){ render21(false); b.textContent='\u21bb Muat ulang'; });
+  });
+  document.getElementById('pm21Lama').addEventListener('change',function(){ LAMA21=Number(this.value)||1; render21(false); });
+  document.getElementById('pm21shTutup').addEventListener('click',tutupSheet21);
+  var sheetEl=document.getElementById('pm21Sheet');
+  sheetEl.addEventListener('click',function(ev){
+    var t=ev.target;
+    if(t.id==='pm21btnDaftar'){ tutup21(); return; }
+    if(t.id==='pm21btnTutupSh'){ tutupSheet21(); return; }
+  });
+  /* delegasi: kotak & chip */
+  hal.addEventListener('click',function(ev){
+    var chip=ev.target.closest('.pm21chip');
+    var sel=ev.target.closest('td.pm21sel');
+    if(chip && sel){ bukaSheet21(sel.getAttribute('data-tg'),sel.getAttribute('data-sh')); return; }
+    if(sel){ bukaSheet21(sel.getAttribute('data-tg'),sel.getAttribute('data-sh')); return; }
+  });
+  /* tombol rincian -> daftar jadwal PM (dibuat saat sheet dibuka) */
+  var isiSh=sheetEl.querySelector('.pm21shIsi');
+  var tombolW=document.createElement('div'); tombolW.id='pm21shTombol';
+  tombolW.innerHTML='<button type="button" id="pm21btnDaftar">Lihat Daftar Jadwal PM</button><button type="button" id="pm21btnTutupSh">Tutup</button>';
+  isiSh.parentNode.insertBefore(tombolW,isiSh.nextSibling);
+  return hal;
+}
+
+/* ================= tombol di halaman Jadwal PM (PM16) ================= */
+function pasangTombol21(){
+  var isi=document.getElementById('pm16Isi');
+  if(!isi) return false;
+  if(document.getElementById('pm21TombolKartu') && isi.contains(document.getElementById('pm21TombolKartu'))) return true;
+  var lama=document.getElementById('pm21TombolKartu'); if(lama && lama.parentNode) lama.parentNode.removeChild(lama);
+  var b=document.createElement('button');
+  b.type='button'; b.id='pm21TombolKartu';
+  b.innerHTML='<span class="pm21ico">\uD83D\uDDFA\uFE0F</span><span class="pm21teks" style="flex:1;min-width:0;text-align:left"><b>MATRIKS PM</b><span>Kalender kotak warna tiap tanggal &amp; shift (pagi/siang/malam) - legenda kategori di bawahnya</span></span><span class="pm21panah">\u25b6</span>';
+  b.addEventListener('click',buka21);
+  isi.insertBefore(b,isi.firstChild);
+  return true;
+}
+
+/* ================= data demo (mandiri / belum ada data) ================= */
+function demoRows21(){
+  var d=new Date(), y=d.getFullYear(), m=d.getMonth();
+  function iso(bulanOffset,hari){ var mm=m+bulanOffset, yy=y+Math.floor(mm/12); mm=mm%12; var jml=new Date(yy,mm+1,0).getDate(); var hh=Math.min(hari,jml); return yy+'-'+pad2(mm+1)+'-'+pad2(hh); }
+  return [
+    {kode:'GEN-001',peralatan:'Genset Utama 200 kVA',kategori:'Genset',lokasi:'Masterpiece',room:'Rooftop',tanggal:iso(0,1),shift:'Morning',status:'Terjadwal',petugas:'',catatan:'cek level oli + test on load',sic:'SIC Masterpiece',interval_hari:30,ulang_sampai:''},
+    {kode:'HVAC-011',peralatan:'AC Split 1 PK',kategori:'AC',lokasi:'Masterpiece',room:'Lt.5 - 501',tanggal:iso(0,1),shift:'Middle',status:'Terjadwal',petugas:'Mawan',catatan:'cleaning filter',sic:'SIC Masterpiece',interval_hari:30,ulang_sampai:''},
+    {kode:'HVAC-012',peralatan:'AC Cassette 2 PK',kategori:'AC',lokasi:'Dominion Lounge',room:'Lt.1 - Lobby',tanggal:iso(0,1),shift:'Middle',status:'Terjadwal',petugas:'Edo',catatan:'cleaning filter + cek freon',sic:'SIC Dominion Lounge',interval_hari:0,ulang_sampai:''},
+    {kode:'PLM-002',peralatan:'Pompa Air Bersih',kategori:'Plumbing',lokasi:'Dominion Lounge',room:'G - Mes',tanggal:iso(0,3),shift:'Morning',status:'Terjadwal',petugas:'Mawan',catatan:'',sic:'',interval_hari:7,ulang_sampai:''},
+    {kode:'ELK-003',peralatan:'Panel Listrik Utama',kategori:'Elektrikal',lokasi:'Masterpiece',room:'G - Panel',tanggal:iso(0,4),shift:'Night',status:'Terjadwal',petugas:'Edo',catatan:'cek ampere + thermal',sic:'SIC Masterpiece',interval_hari:0,ulang_sampai:''},
+    {kode:'GEN-001',peralatan:'Genset Utama 200 kVA',kategori:'Genset',lokasi:'Masterpiece',room:'Rooftop',tanggal:iso(0,7),shift:'Morning',status:'Terjadwal',petugas:'',catatan:'',sic:'',interval_hari:30,ulang_sampai:''},
+    {kode:'HVAC-011',peralatan:'AC Split 1 PK',kategori:'AC',lokasi:'Masterpiece',room:'Lt.5 - 501',tanggal:iso(0,7),shift:'Morning',status:'Terjadwal',petugas:'Mawan',catatan:'',sic:'',interval_hari:30,ulang_sampai:''},
+    {kode:'CHL-001',peralatan:'Chiller 30 TR',kategori:'Chiller',lokasi:'Masterpiece',room:'Rooftop',tanggal:iso(0,14),shift:'Morning',status:'Terjadwal',petugas:'Mawan',catatan:'backwash + cek tekanan',sic:'SIC Masterpiece',interval_hari:30,ulang_sampai:''},
+    {kode:'GEN-001',peralatan:'Genset Utama 200 kVA',kategori:'Genset',lokasi:'Masterpiece',room:'Rooftop',tanggal:iso(0,15),shift:'Morning',status:'Terjadwal',petugas:'',catatan:'',sic:'',interval_hari:30,ulang_sampai:''},
+    {kode:'HVAC-011',peralatan:'AC Split 1 PK',kategori:'AC',lokasi:'Masterpiece',room:'Lt.5 - 501',tanggal:iso(0,21),shift:'Morning',status:'Terjadwal',petugas:'Mawan',catatan:'',sic:'',interval_hari:30,ulang_sampai:''},
+    {kode:'PLM-002',peralatan:'Pompa Air Bersih',kategori:'Plumbing',lokasi:'Dominion Lounge',room:'G - Mes',tanggal:iso(0,22),shift:'Night',status:'Terjadwal',petugas:'Edo',catatan:'',sic:'',interval_hari:7,ulang_sampai:''},
+    {kode:'GEN-001',peralatan:'Genset Utama 200 kVA',kategori:'Genset',lokasi:'Masterpiece',room:'Rooftop',tanggal:iso(1,1),shift:'Morning',status:'Terjadwal',petugas:'',catatan:'',sic:'',interval_hari:30,ulang_sampai:''},
+    {kode:'HVAC-011',peralatan:'AC Split 1 PK',kategori:'AC',lokasi:'Masterpiece',room:'Lt.5 - 501',tanggal:iso(1,5),shift:'Middle',status:'Terjadwal',petugas:'Mawan',catatan:'',sic:'',interval_hari:30,ulang_sampai:''},
+    {kode:'CHL-001',peralatan:'Chiller 30 TR',kategori:'Chiller',lokasi:'Masterpiece',room:'Rooftop',tanggal:iso(1,12),shift:'Morning',status:'Terjadwal',petugas:'Mawan',catatan:'',sic:'',interval_hari:30,ulang_sampai:''}
+  ].map(baris21);
+}
+
+/* ================= mode mandiri (file dibuka langsung) ================= */
+function pasangMandiri21(){
+  if(document.getElementById('pm21Mandiri')) return;
+  var p=document.createElement('div'); p.id='pm21Mandiri'; p.className='pm21on';
+  p.innerHTML='<b>PM21 \u2022 MATRIKS JADWAL PM</b>'+
+    '<p>File ini dibuka langsung (di luar index.html), jadi halaman Jadwal PM belum ada. Setelah blok ini ditempel di index.html, tombol emas <b>MATRIKS PM</b> otomatis muncul di halaman Jadwal PM dan isinya otomatis dari jadwal PM yang sudah dibuat.</p>'+
+    '<button type="button" id="pm21btnDemo">Lihat Contoh Matriks (demo)</button>'+
+    '<button type="button" id="pm21btnMdTutup">Tutup</button>';
+  document.body.appendChild(p);
+  document.getElementById('pm21btnDemo').addEventListener('click',function(){
+    p.classList.remove('pm21on');
+    DATA21={rows:[],status:'awal',pesan:'',net:null,saat:'',demo:false};
+    buka21();
+  });
+  document.getElementById('pm21btnMdTutup').addEventListener('click',function(){ p.classList.remove('pm21on'); });
+}
+
+/* ================= boot ================= */
+var BOOT21=0;
+function boot21(){
+  if(BOOT21) return; BOOT21=1;
+  try{
+    if(!document.getElementById('pm21Css')){
+      var st=document.createElement('style'); st.id='pm21Css'; st.textContent=CSS21; document.head.appendChild(st);
+    }
+  }catch(e){}
+  function jalankan21(){
+    if(document.getElementById('pm16Isi')){
+      if(pasangTombol21()) MODE21='app';
+      return;
+    }
+    if(!window.__PM16_BUKA){
+      MODE21='mandiri';
+      if(!document.getElementById('pm21Mandiri')) pasangMandiri21();
+    }
+  }
+  setTimeout(jalankan21, CEPAT?250:1300);
+  setInterval(jalankan21, CEPAT?600:2000);
+  /* PENTING: jangan pakai nama __PM21_STATUS/__PM21_CEK - sudah dipakai alias PM20 v2.
+     API PM21: __PM21_BUKA + __PM21_MSTATUS (matriks) */
+  try{ window.__PM21_MSTATUS=function(){ return {versi:window.__PM21_VERSI,mode:MODE21,status:DATA21.status,jumlah:DATA21.rows.length,net:DATA21.net,lama:LAMA21,bulan0:BULAN0,tombol:!!document.getElementById('pm21TombolKartu'),overlay:!!(HAL21&&HAL21.classList.contains('pm21on'))}; }; }catch(e){}
+}
+if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded',boot21); } else { boot21(); }
+window.__PM21_BUKA=function(){ buka21(); };
+})();
+</script>
+<!-- ================================================================
+[PM21] MATRIKS JADWAL PM v2 - kalender kotak warna per shift + UNDUH
+  Semua fitur v1 tetap ada:
+  - Tombol emas di halaman Jadwal PM (PM16) -> buka layar MATRIKS
+  - Kolom = tanggal 1..akhir bulan; baris = Morning(Pagi)/Middle(Siang)/Night(Malam)
+  - Kotak berwarna per kategori: Genset = HIJAU TUA (G), AC = KUNING (AC),
+    kategori lain diberi warna otomatis (tetap & konsisten)
+  - Legenda warna kategori di bawah + jumlah tugas
+  - Navigasi bulan, lama tampil 1/2/3/6 bulan, tombol Hari ini & muat ulang
+  BARU di v2:
+  1. 1 kotak bisa berisi BEBERAPA kategori sekaligus, tiap kategori
+     satu kotak kecil dgn jumlah unit (mis. EFx2, ACx3). Tap kotak
+     kecilnya -> TAB kategori (Semua/EF/AC) + daftar bernomor, jadi
+     2-3 unit yang beda lantai/room terlihat satu per satu.
+  2. UNDUH GAMBAR (PNG): matriks + legenda jadi 1 gambar siap kirim.
+  3. UNDUH PDF (landscape): 1 dokumen resmi berurutan - kop ->
+     MATRIKS kotak warna -> KETERANGAN warna kategori -> RINCIAN
+     jadwal PM (tabel lengkap + kolom Paraf SIC utk tanda tangan)
+     -> blok tanda tangan (Disusun oleh / Paraf SIC / Tembusan).
+  4. UNDUH EXCEL (.xls): susunan sama - matriks (sel berwarna) ->
+     keterangan -> rincian jadwal PM.
+  Data: tabel pm_jadwal (koneksi dari pm16net / PM20) + jadwal lokal HP.
+  Mode mandiri: kalau file dibuka langsung -> panel demo emas.
+  GANTI PM21 v1: HAPUS dulu blok PM21 v1 (komentar "[PM21] MATRIKS
+  JADWAL PM" sampai </script> penutupnya), lalu tempel blok ini di
+  tempat yang sama tepat sebelum </body>. Blok PM1-PM20 tidak disentuh.
+================================================================= -->
+<script>
+(function(){
+'use strict';
+if(window.__PM21_V2){ try{ console.log('[PM21 v2] sudah terpasang - lewati'); }catch(e){} return; }
+window.__PM21_V2='v2';
+var CEPAT=(window.__PM21_CEPAT===true);
+
+/* ================= alat bantu dasar ================= */
+function teks(x){ try{ return (x===null||x===undefined)?'':String(x).trim(); }catch(e){ return ''; } }
+function esc(s){ return teks(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function pad2(n){ return (n<10?'0':'')+n; }
+function keISO(d){ return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
+function dariISO(s){ s=teks(s); if(!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null; var p=s.split('-'); return new Date(Number(p[0]),Number(p[1])-1,Number(p[2])); }
+var NAMA_BULAN=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+var HARI_PENDEK=['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
+var HARI_PENUH=['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+function lsAmbil(k){ try{ var r=localStorage.getItem(k); return r?JSON.parse(r):null; }catch(e){ return null; } }
+function netValid(n){ return !!(n && teks(n.u) && teks(n.k)); }
+function netAktif21(){
+  var ks=['pm16net','pm18net','pm19net','pm15net','pm14net'];
+  for(var i=0;i<ks.length;i++){ var n=lsAmbil(ks[i]); if(netValid(n)) return {u:teks(n.u),k:teks(n.k),sumber:ks[i]}; }
+  try{ if(window.__PM20_CONF && teks(window.__PM20_CONF.u) && teks(window.__PM20_CONF.k))
+    return {u:teks(window.__PM20_CONF.u),k:teks(window.__PM20_CONF.k),sumber:'__PM20_CONF'}; }catch(e){}
+  return null;
+}
+function basisDari21(u){
+  u=teks(u); if(!u) return '';
+  if(!/^https?:\/\//i.test(u)) u='https://'+u.replace(/^\/+/,'');
+  try{ var p=new URL(u); return p.origin+'/rest/v1'; }catch(e){ return ''; }
+}
+function fmtTgl21(s){ var d=dariISO(s); return d? pad2(d.getDate())+' '+NAMA_BULAN[d.getMonth()]+' '+d.getFullYear() : teks(s); }
+function fmtPenuh21(s){ var d=dariISO(s); return d? HARI_PENUH[d.getDay()]+', '+d.getDate()+' '+NAMA_BULAN[d.getMonth()]+' '+d.getFullYear() : teks(s); }
+function labelInterval(n){ n=Number(n||0); if(n===7) return '7 hari (mingguan)'; if(n===30) return '1 bulan'; if(n===60) return '2 bulan'; if(n===90) return '3 bulan'; if(n===120) return '4 bulan'; if(n===180) return '6 bulan'; return n+' hari'; }
+
+/* ================= kategori -> kode + warna ================= */
+function kodeKat21(nama){
+  var n=teks(nama).toLowerCase();
+  if(!n) return 'PM';
+  if(/genset|generator/.test(n)) return 'G';
+  if(/^ac/.test(n) || /hvac|air con/.test(n)) return 'AC';
+  if(/chiller/.test(n)) return 'CH';
+  if(/boiler/.test(n)) return 'BL';
+  if(/cooling/.test(n)) return 'CT';
+  if(/pompa|pump|plumb/.test(n)) return 'PL';
+  if(/elektrik|listrik|panel|electr/.test(n)) return 'EL';
+  if(/lift|elev/.test(n)) return 'LF';
+  if(/escal/.test(n)) return 'ES';
+  if(/cctv|kamera/.test(n)) return 'CC';
+  if(/fire|alarm|apar|hydrant/.test(n)) return 'FA';
+  var kata=n.split(/[^a-z0-9]+/).filter(Boolean);
+  if(kata.length>=2) return (kata[0].charAt(0)+kata[1].charAt(0)).toUpperCase();
+  if(kata[0].length<=3) return kata[0].toUpperCase();
+  return kata[0].charAt(0).toUpperCase();
+}
+var PALET21=['#0e7490','#7c3aed','#be123c','#b45309','#1d4ed8','#4d7c0f','#c2410c','#0f766e','#a21caf','#334155','#15803d','#dc2626'];
+function warnaKat21(nama){
+  var n=teks(nama).toLowerCase();
+  if(/genset|generator/.test(n)) return {bg:'#166534',fg:'#ffffff'};   /* hijau tua (permintaan Head) */
+  if(/^ac/.test(n) || /hvac|air con/.test(n)) return {bg:'#facc15',fg:'#713f12'}; /* kuning (permintaan Head) */
+  var h=0; for(var i=0;i<n.length;i++){ h=((h*31)+n.charCodeAt(i))>>>0; }
+  return {bg:PALET21[h%PALET21.length],fg:'#ffffff'};
+}
+
+/* ================= kelompokkan tugas per kategori (dipakai layar + ekspor) ================= */
+function grupKat21(lst){
+  var urut=[],hitung={},isi={};
+  for(var i=0;i<lst.length;i++){
+    var kat=lst[i].kategori||'(tanpa kategori)';
+    if(!hitung[kat]){ hitung[kat]=0; urut.push(kat); isi[kat]=[]; }
+    hitung[kat]++; isi[kat].push(lst[i]);
+  }
+  urut.sort(function(a,b){ return a.toLowerCase()<b.toLowerCase()?-1:(a.toLowerCase()>b.toLowerCase()?1:0); });
+  var out=[];
+  for(var j=0;j<urut.length;j++){
+    var kat2=urut[j], it=isi[kat2], nopt=0, sls=0;
+    for(var v=0;v<it.length;v++){ if(/batal|cancel/i.test(it[v].status)) nopt=1; if(/^selesai$/i.test(it[v].status)) sls=1; }
+    out.push({kat:kat2,n:hitung[kat2],nopt:nopt,sls:sls,items:it});
+  }
+  return out;
+}
+function kodeKatTampil21(kat){ return kodeKat21(kat==='(tanpa kategori)'?'':kat); }
+
+/* ================= status data ================= */
+var DATA21={rows:[],status:'awal',pesan:'',net:null,saat:'',demo:false};
+var HAL21=null, BULAN0=null, LAMA21=1, MODE21='app';
+
+var SHIFTS21=[{v:'Morning',id:'Pagi',tit:'Shift 1'}, {v:'Middle',id:'Siang',tit:'Shift 2'}, {v:'Night',id:'Malam',tit:'Shift 3'}];
+var CSS21='#pm21TombolKartu{margin:0 0 12px;background:linear-gradient(135deg,#0f172a,#1e293b);border:1.5px solid #d4af37;border-radius:14px;padding:13px 15px;display:flex;align-items:center;gap:12px;cursor:pointer;width:100%;text-align:left;box-shadow:0 2px 8px rgba(15,23,42,.18)}'+
+'#pm21TombolKartu span{display:block;font-size:11px;color:#cbd5e1;margin-top:2px}'+
+'#pm21TombolKartu b{display:block;font-size:14.5px;color:#f5c518;letter-spacing:.4px}'+
+'#pm21TombolKartu .pm21ico{flex:none;width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,#d4af37,#f5c518);display:flex;align-items:center;justify-content:center;font-size:21px;margin:0}'+
+'#pm21TombolKartu .pm21panah{flex:none;color:#d4af37;font-size:18px;font-weight:bold;margin:0}'+
+'#pm21Hal{font-family:Arial,Helvetica,sans-serif;position:fixed;inset:0;z-index:2147482900;background:#f1f5f9;overflow-y:auto;-webkit-overflow-scrolling:touch;display:none}'+
+'#pm21Hal.pm21on{display:block}'+
+'#pm21Kepala{position:sticky;top:0;z-index:20;background:linear-gradient(135deg,#0f172a,#1e293b);padding:13px 15px;display:flex;align-items:center;gap:10px;border-bottom:2px solid #d4af37}'+
+'#pm21Kepala b{font-size:15px;color:#f5c518;letter-spacing:.4px}'+
+'#pm21Kepala small{display:block;font-size:9.5px;color:#94a3b8;margin-top:2px;letter-spacing:.6px}'+
+'#pm21Kepala button{margin-left:auto;flex:none;border:0;border-radius:10px;padding:8px 13px;font-weight:bold;font-size:13px;background:rgba(212,175,55,.16);color:#f5c518;cursor:pointer}'+
+'#pm21Isi{padding:12px 12px 30px;max-width:1100px;margin:0 auto}'+
+'#pm21Hal .pm21kartu{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:12px;margin-bottom:12px;box-shadow:0 1px 3px rgba(15,23,42,.06)}'+
+'#pm21Ctrl{display:flex;flex-wrap:wrap;gap:7px;align-items:center}'+
+'#pm21Ctrl button{border:1.5px solid #cbd5e1;background:#fff;border-radius:10px;padding:9px 13px;font-weight:bold;font-size:13px;color:#334155;cursor:pointer}'+
+'#pm21Ctrl button.pm21nav{width:42px;padding:9px 0}'+
+'#pm21Ctrl button.pm21emas{border-color:#d4af37;background:#fffbeb;color:#92400e}'+
+'#pm21Ctrl label{font-size:10px;font-weight:bold;color:#64748b;text-transform:uppercase;letter-spacing:.4px}'+
+'#pm21Ctrl select{padding:9px 8px;border:1.5px solid #cbd5e1;border-radius:10px;font-size:13px;color:#334155;background:#fff}'+
+'#pm21LabelBulan{font-weight:bold;font-size:14.5px;color:#0f172a;margin-left:2px}'+
+'#pm21StatusNet{width:100%;font-size:11.5px;color:#475569;margin-top:2px}'+
+'#pm21StatusNet.pm21merah{color:#b91c1c;font-weight:bold}'+
+'#pm21StatusNet.pm21hijau{color:#15803d}'+
+'.pm21Bulan{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:10px;margin-bottom:12px;box-shadow:0 1px 3px rgba(15,23,42,.06)}'+
+'.pm21Bulan h3{margin:2px 0 8px;font-size:14.5px;color:#0f172a}'+
+'.pm21Bulan h3 small{font-weight:normal;color:#64748b;font-size:11px;margin-left:6px}'+
+'.pm21scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid #e2e8f0;border-radius:10px}'+
+'.pm21tbl{border-collapse:separate;border-spacing:1px;background:#e2e8f0;width:100%;min-width:100%}'+
+'.pm21tbl th,.pm21tbl td{background:#fff;padding:0;margin:0}'+
+'.pm21tbl thead th{position:sticky;top:0;z-index:3;background:#f8fafc;font-size:10.5px;color:#334155;padding:4px 1px;text-align:center;min-width:26px;line-height:1.15}'+
+'.pm21tbl thead th b{font-size:11.5px;display:block}'+
+'.pm21tbl thead th small{font-size:8.5px;color:#64748b;display:block}'+
+'.pm21tbl thead th.pm21min b{color:#b91c1c}'+
+'.pm21tbl thead th.pm21hrini b{color:#92400e}'+
+'.pm21tbl thead th.pm21sudut{position:sticky;left:0;z-index:4;min-width:58px;background:#f8fafc}'+
+'.pm21tbl td.pm21lab{position:sticky;left:0;z-index:2;min-width:58px;background:#f8fafc;padding:6px 5px;text-align:center}'+
+'.pm21tbl td.pm21lab b{display:block;font-size:11px;color:#0f172a}'+
+'.pm21tbl td.pm21lab small{display:block;font-size:9px;color:#64748b}'+
+'.pm21tbl td.pm21lab .pm21dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-bottom:2px}'+
+'.pm21tbl td.pm21sel{height:44px;vertical-align:top;padding:2px;cursor:pointer}'+
+'.pm21tbl td.pm21sel.pm21weekend{background:#f8fafc}'+
+'.pm21tbl td.pm21sel.pm21hrini{outline:2px solid #d4af37;outline-offset:-2px;background:#fffbeb}'+
+'.pm21kotak{display:flex;flex-wrap:wrap;gap:1px;align-items:flex-start;justify-content:center;width:100%;height:100%}'+
+'.pm21chip{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 3px;border-radius:5px;font-size:9px;font-weight:bold;letter-spacing:.2px;line-height:1;cursor:pointer}'+
+'.pm21chip.pm21nopt{opacity:.5;text-decoration:line-through}'+
+'.pm21chip.pm21sls{box-shadow:inset 0 0 0 1.5px #ffffffaa}'+
+'.pm21lebih{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 3px;border-radius:5px;font-size:8.5px;font-weight:bold;background:#e2e8f0;color:#475569}'+
+'.pm21kosongB{font-size:12px;color:#64748b;text-align:center;padding:10px 0}'+
+'.pm21legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}'+
+'.pm21legend .pm21lg{display:inline-flex;align-items:center;gap:5px;border:1px solid #e2e8f0;border-radius:999px;padding:4px 9px 4px 5px;font-size:11px;color:#334155;background:#fff}'+
+'.pm21legend .pm21lg i{width:14px;height:14px;border-radius:4px;display:inline-block;font-style:normal}'+
+'.pm21legend .pm21lg b{font-size:10.5px}'+
+'.pm21legend .pm21lg small{color:#64748b;font-size:10px}'+
+'.pm21catatanW{font-size:10.5px;color:#64748b;margin-top:7px;line-height:1.5}'+
+'#pm21Sheet{position:fixed;left:0;right:0;bottom:0;z-index:2147483000;background:#fff;border-radius:16px 16px 0 0;box-shadow:0 -6px 24px rgba(15,23,42,.25);max-height:72%;overflow-y:auto;display:none;transform:translateY(100%);transition:transform .22s ease}'+
+'#pm21Sheet.pm21on{display:block;transform:translateY(0)}'+
+'#pm21Sheet .pm21shKepala{position:sticky;top:0;background:linear-gradient(135deg,#0f172a,#1e293b);padding:11px 14px;display:flex;align-items:flex-start;gap:10px;border-radius:16px 16px 0 0}'+
+'#pm21Sheet .pm21shKepala b{font-size:13.5px;color:#f5c518}'+
+'#pm21Sheet .pm21shKepala small{display:block;font-size:10.5px;color:#cbd5e1;margin-top:2px}'+
+'#pm21Sheet .pm21shKepala button{margin-left:auto;flex:none;border:0;background:rgba(212,175,55,.16);color:#f5c518;border-radius:9px;padding:6px 11px;font-weight:bold;font-size:12px;cursor:pointer}'+
+'#pm21Sheet .pm21shIsi{padding:10px 12px 14px}'+
+'.pm21tugas{border:1px solid #e2e8f0;border-radius:12px;padding:9px 11px;margin-bottom:8px;background:#fff}'+
+'.pm21tugas b{font-size:13px;color:#0f172a;display:block}'+
+'.pm21tugas .pm21tgchips{margin:4px 0}'+
+'.pm21tugas .pm21tgchips span{display:inline-block;padding:2.5px 8px;border-radius:999px;font-size:9.5px;font-weight:bold;margin-right:4px;margin-top:2px}'+
+'.pm21tugas span.pm21baris{display:block;font-size:11.5px;color:#475569;margin-top:2.5px;line-height:1.45}'+
+'.pm21tugas span.pm21hp{display:inline-block;margin-top:5px;background:#fef9c3;color:#854d0e;border-radius:7px;padding:2.5px 8px;font-size:9.5px;font-weight:bold}'+
+'#pm21shTombol{display:flex;gap:8px;margin-top:10px}'+
+'#pm21shTombol button{flex:1;padding:11px 12px;border:0;border-radius:11px;font-weight:bold;font-size:12.5px;cursor:pointer}'+
+'#pm21btnDaftar{background:#1d4ed8;color:#fff}'+
+'#pm21btnTutupSh{background:#e2e8f0;color:#334155}'+
+'#pm21Banner{border-radius:12px;padding:10px 12px;font-size:12px;line-height:1.5;margin-bottom:12px;display:none}'+
+'#pm21Banner.pm21on{display:block}'+
+'#pm21Banner.pm21emas{background:#fffbeb;border:1.5px solid #f59e0b;color:#92400e}'+
+'#pm21Banner.pm21merah{background:#fef2f2;border:1.5px solid #ef4444;color:#b91c1c}'+
+'#pm21DlRow{display:flex;flex-wrap:wrap;gap:7px;width:100%;margin-top:9px;padding-top:10px;border-top:1px dashed #e2e8f0;align-items:center}'+
+'#pm21DlRow label{font-size:10px;font-weight:bold;color:#64748b;text-transform:uppercase;letter-spacing:.4px}'+
+'#pm21DlRow button{border:1.5px solid #cbd5e1;background:#fff;border-radius:10px;padding:9px 12px;font-weight:bold;font-size:12.5px;color:#334155;cursor:pointer}'+
+'#pm21DlRow button.pm21dlEmas{border-color:#d4af37;background:#fffbeb;color:#92400e}'+
+'#pm21DlRow button:disabled{opacity:.55}'+
+'#pm21Sheet .pm21shTabs{display:flex;flex-wrap:wrap;gap:5px;padding:9px 12px 0}'+
+'#pm21Sheet .pm21shTab{border:1.5px solid #cbd5e1;background:#fff;border-radius:999px;padding:5px 10px;font-size:10.5px;font-weight:bold;color:#334155;cursor:pointer;display:inline-flex;align-items:center;gap:4px}'+
+'#pm21Sheet .pm21shTab.pm21shTabOn{border-color:#d4af37;background:#fffbeb;color:#92400e}'+
+'#pm21Sheet .pm21shTab i{width:10px;height:10px;border-radius:3px;display:inline-block;font-style:normal}'+
+'#pm21Sheet .pm21shInfo{font-size:10px;color:#64748b;padding:6px 14px 0;line-height:1.45}'+
+'#pm21Mandiri{position:fixed;left:10px;right:10px;bottom:10px;z-index:2147483100;background:linear-gradient(135deg,#0f172a,#1e293b);border:1.5px solid #d4af37;border-radius:16px;padding:14px;box-shadow:0 8px 30px rgba(15,23,42,.4);display:none;font-family:Arial,Helvetica,sans-serif}'+
+'#pm21Mandiri.pm21on{display:block}'+
+'#pm21Mandiri b{color:#f5c518;font-size:13.5px;letter-spacing:.4px}'+
+'#pm21Mandiri p{color:#cbd5e1;font-size:11.5px;line-height:1.55;margin:6px 0}'+
+'#pm21Mandiri button{border:0;border-radius:10px;padding:10px 13px;font-weight:bold;font-size:12.5px;cursor:pointer;margin-right:7px;margin-top:4px}'+
+'#pm21btnDemo{background:linear-gradient(135deg,#d4af37,#f5c518);color:#1e293b}'+
+'#pm21btnMdTutup{background:#334155;color:#e2e8f0}';
+
+/* ================= fetch pm_jadwal lewat iframe bersih (fetch asli) ================= */
+function ambilIframe21(url,k,cb){
+  var selesai=0,to=null,f=null;
+  function akhir(st,body){
+    if(selesai) return; selesai=1;
+    if(to) clearTimeout(to);
+    try{ if(f && f.parentNode) f.parentNode.removeChild(f); }catch(e){}
+    try{ cb(st,body); }catch(e2){}
+  }
+  to=setTimeout(function(){ akhir(-1,null); },CEPAT?4000:9000);
+  try{
+    f=document.createElement('iframe');
+    f.style.cssText='position:fixed!important;left:-9999px!important;top:-9999px!important;width:2px!important;height:2px!important;border:0!important;opacity:0!important';
+    f.setAttribute('aria-hidden','true');
+    f.onload=function(){
+      try{
+        var cw=f.contentWindow;
+        if(!cw || typeof cw.fetch!=='function') throw new Error('tanpa fetch');
+        var op={method:'GET',headers:{apikey:k,Authorization:'Bearer '+k}};
+        if(cw.AbortController){ var ctl=new cw.AbortController(); op.signal=ctl.signal; setTimeout(function(){ try{ctl.abort();}catch(e){} },CEPAT?3500:8000); }
+        cw.fetch(url,op).then(function(r){
+          var st=r?r.status:-1;
+          try{ r.text().then(function(t){ akhir(st,t||''); }).catch(function(){ akhir(st,''); }); }
+          catch(e2){ akhir(st,''); }
+        }).catch(function(){ akhir(-1,null); });
+      }catch(e){ akhir(-2,null); }
+    };
+    f.src='about:blank';
+    (document.body||document.documentElement).appendChild(f);
+  }catch(e){ akhir(-2,null); }
+}
+function baris21(x){
+  x=x||{};
+  return {kode:teks(x.kode),peralatan:teks(x.peralatan),lokasi:teks(x.lokasi),room:teks(x.room),
+    kategori:teks(x.kategori),sic:teks(x.sic),tanggal:teks(x.tanggal),shift:teks(x.shift)||'Morning',
+    petugas:teks(x.petugas),catatan:teks(x.catatan),status:teks(x.status)||'Terjadwal',
+    interval_hari:Number(x.interval_hari||0),ulang_sampai:teks(x.ulang_sampai),lokal:!!x.lokal};
+}
+function bacaLokal21(){
+  var arr=lsAmbil('pm16lokal')||[], out=[];
+  for(var i=0;i<arr.length;i++){ var b=baris21(arr[i]); b.lokal=true; if(b.tanggal) out.push(b); }
+  return out;
+}
+function muatData21(cb){
+  var net=netAktif21(); DATA21.net=net;
+  var lokal=bacaLokal21();
+  if(!net){
+    DATA21={rows:lokal,status:lokal.length?'ok':'tanpa_net',pesan:lokal.length?'':'Belum ada koneksi Supabase - matriks masih kosong. Koneksi diatur lewat blok PM20 di halaman Preventive Maintenance, atau buat jadwal dulu di halaman Jadwal PM.',net:null,saat:''};
+    if(cb) cb(); return;
+  }
+  var url=net.u+'/pm_jadwal?select=*&order=tanggal.asc,shift.asc&limit=1000';
+  ambilIframe21(url,net.k,function(st,body){
+    var rows=[];
+    if(st===200||st===206){
+      try{ rows=JSON.parse(body)||[]; }catch(e){ rows=[]; }
+      var out=[];
+      for(var i=0;i<rows.length;i++){ var b=baris21(rows[i]); if(b.tanggal) out.push(b); }
+      DATA21={rows:out.concat(lokal),status:'ok',pesan:'',net:net,saat:new Date().toTimeString().slice(0,5)};
+    } else if(st===401||st===403){
+      DATA21={rows:lokal,status:'ditolak',pesan:'Koneksi Supabase ditolak (HTTP '+st+') - jalankan ulang blok PM20 (SAMBUNG MANUAL) di halaman Preventive Maintenance untuk memperbaiki kredensial.',net:net,saat:''};
+    } else if(st===400||st===404){
+      DATA21={rows:lokal,status:'tanpa_tabel',pesan:'Tabel pm_jadwal belum ada di Supabase - buka halaman Jadwal PM lalu jalankan tombol Salin SQL, atau buat jadwal dulu lewat form.',net:net,saat:''};
+    } else {
+      DATA21={rows:lokal,status:'gagal',pesan:'Tidak bisa menghubungi Supabase sekarang (jaringan) - tampilkan jadwal di HP ini saja.',net:net,saat:''};
+    }
+    if(cb) cb();
+  });
+}
+
+/* ================= judul alat (KODE - Nama) ================= */
+function judulAlat21(r){
+  var kode=teks(r.kode).toUpperCase(), nama=teks(r.peralatan);
+  if(kode && nama && nama.toUpperCase().indexOf(kode)<0) return kode+' \u2022 '+nama;
+  return nama||kode||'(tanpa nama)';
+}
+
+/* ================= susun matriks 1 bulan ================= */
+function selMap21(rows){
+  var m={};
+  for(var i=0;i<rows.length;i++){
+    var r=rows[i]; if(!r.tanggal) continue;
+    var k=r.tanggal+'|'+(r.shift||'Morning');
+    if(!m[k]) m[k]=[];
+    m[k].push(r);
+  }
+  return m;
+}
+function barisBulan21(y,m,rows,todayISO){
+  var jml=new Date(y,m+1,0).getDate();
+  var map=selMap21(rows), total=0, d;
+  for(d=1;d<=jml;d++){ var t=y+'-'+pad2(m+1)+'-'+pad2(d); var a=map[t+'|Morning']||[],b=map[t+'|Middle']||[],c=map[t+'|Night']||[]; total+=a.length+b.length+c.length; }
+  var h='<div class="pm21Bulan"><h3>'+NAMA_BULAN[m]+' '+y+'<small>'+total+' tugas PM</small></h3><div class="pm21scroll"><table class="pm21tbl"><thead><tr>';
+  h+='<th class="pm21sudut">Shift</th>';
+  for(d=1;d<=jml;d++){
+    var dt=new Date(y,m,d), dow=dt.getDay();
+    var cls=(dow===0?' pm21min':'')+(todayISO===y+'-'+pad2(m+1)+'-'+pad2(d)?' pm21hrini':'');
+    h+='<th class="'+cls+'"><b>'+d+'</b><small>'+HARI_PENDEK[dow]+'</small></th>';
+  }
+  h+='</tr></thead><tbody>';
+  var warnaShift={Morning:'#f59e0b',Middle:'#3b82f6',Night:'#6366f1'};
+  for(var s=0;s<SHIFTS21.length;s++){
+    var sh=SHIFTS21[s];
+    h+='<tr><td class="pm21lab"><span class="pm21dot" style="background:'+warnaShift[sh.v]+'"></span><b>'+sh.v+'</b><small>'+sh.id+' \u2022 '+sh.tit+'</small></td>';
+    for(d=1;d<=jml;d++){
+      var tgl=y+'-'+pad2(m+1)+'-'+pad2(d);
+      var dow2=new Date(y,m,d).getDay();
+      var lst=map[tgl+'|'+sh.v]||[];
+      var cls2='pm21sel'+(dow2===0||dow2===6?' pm21weekend':'')+(todayISO===tgl?' pm21hrini':'');
+      h+='<td class="'+cls2+'" data-tg="'+tgl+'" data-sh="'+sh.v+'"><div class="pm21kotak">';
+      /* kelompokkan per kategori (1 kotak = 1 kategori, jml unit di belakang kode) */
+      var kel=grupKat21(lst);
+      var tampil=Math.min(kel.length,4), sisanya=kel.length-tampil;
+      for(var u2=0;u2<tampil;u2++){
+        var g=kel[u2], wr=warnaKat21(g.kat==='(tanpa kategori)'?'':g.kat);
+        var kode=kodeKatTampil21(g.kat);
+        var txt=kode+(g.n>1?'\u00d7'+g.n:'');
+        h+='<span class="pm21chip'+(g.nopt?' pm21nopt':'')+(g.sls?' pm21sls':'')+'" data-kat="'+esc(g.kat)+'" style="background:'+wr.bg+';color:'+wr.fg+'" title="'+esc(g.kat)+' \u2022 '+g.n+' tugas - tap utk rincian per unit/room">'+esc(txt)+'</span>';
+      }
+      if(sisanya>0) h+='<span class="pm21lebih" title="'+sisanya+' kategori lagi - tap utk rincian">+'+sisanya+'</span>';
+      if(!kel.length) h+='<span style="color:#cbd5e1;font-size:8.5px">\u00b7</span>';
+      h+='</div></td>';
+    }
+    h+='</tr>';
+  }
+  h+='</tbody></table></div>';
+  if(!total) h+='<div class="pm21kosongB">Belum ada tugas PM pada bulan ini - buat lewat form Jadwal PM.</div>';
+  h+='</div>';
+  return h;
+}
+function legenda21(rows){
+  var hitung={},urut=[];
+  for(var i=0;i<rows.length;i++){
+    var kat=rows[i].kategori||'(tanpa kategori)';
+    if(!hitung[kat]){ hitung[kat]=0; urut.push(kat); }
+    hitung[kat]++;
+  }
+  urut.sort(function(a,b){ return a.toLowerCase()<b.toLowerCase()?-1:(a.toLowerCase()>b.toLowerCase()?1:0); });
+  var h='<p class="pm21judul" style="font-size:13px;font-weight:bold;color:#0f172a;margin:0 0 8px">Keterangan Warna Kategori</p><div class="pm21legend">';
+  for(var j=0;j<urut.length;j++){
+    var kat=urut[j], wr=warnaKat21(kat==='(tanpa kategori)'?'':kat);
+    h+='<span class="pm21lg"><i style="background:'+wr.bg+';color:'+wr.fg+';font-size:8.5px;font-weight:bold;display:inline-flex;align-items:center;justify-content:center">'+esc(kodeKat21(kat==='(tanpa kategori)'?'':kat))+'</i>'+esc(kat==='(tanpa kategori)'?'Tanpa kategori':kat)+'<small>'+hitung[kat]+' tugas</small></span>';
+  }
+  if(!urut.length) h+='<span class="pm21lg"><i style="background:#e2e8f0"></i>Belum ada kategori</span>';
+  h+='</div><p class="pm21catatanW">Warna tetap: <b style="color:#166534">Genset = hijau tua (G)</b> \u2022 <b style="color:#713f12">AC = kuning (AC)</b>. Kategori lain diberi warna otomatis dan selalu sama untuk kategori yang sama. Kotak bercoret = jadwal batal, kotak bergaris ganda = sudah selesai. Tap kotak mana pun untuk melihat rincian tugas.</p>';
+  return h;
+}
+
+/* ================= sheet rincian (v2: TAB kategori + nomor urut unit) ================= */
+function bukaSheet21(tgl,shift,katAktif){
+  var sh=shift||'Morning', shObj=null;
+  for(var i=0;i<SHIFTS21.length;i++) if(SHIFTS21[i].v===sh) shObj=SHIFTS21[i];
+  var lst=[];
+  for(var j=0;j<DATA21.rows.length;j++){ var r=DATA21.rows[j]; if(r.tanggal===tgl && (r.shift||'Morning')===sh) lst.push(r); }
+  var kel=grupKat21(lst);
+  katAktif=teks(katAktif);
+  if(katAktif){ var ada=false; for(var a2=0;a2<kel.length;a2++) if(kel[a2].kat===katAktif) ada=true; if(!ada) katAktif=''; }
+  var tampil=lst;
+  if(katAktif){ tampil=[]; for(var f2=0;f2<lst.length;f2++) if((lst[f2].kategori||'(tanpa kategori)')===katAktif) tampil.push(lst[f2]); }
+  tampil.sort(function(a,b){ return judulAlat21(a).toLowerCase()<judulAlat21(b).toLowerCase()?-1:1; });
+  var kep=document.querySelector('#pm21Sheet .pm21shKepala b');
+  var kepSm=document.querySelector('#pm21Sheet .pm21shKepala small');
+  var isi=document.querySelector('#pm21Sheet .pm21shIsi');
+  if(!kep||!isi) return;
+  kep.textContent='Tugas PM '+fmtPenuh21(tgl);
+  kepSm.textContent='Shift '+sh+(shObj?' ('+shObj.id+')':'')+' \u2022 '+lst.length+' tugas'+(katAktif?' \u2022 filter: '+katAktif:'');
+  var h='';
+  if(kel.length>1){
+    h+='<div class="pm21shTabs">';
+    h+='<button type="button" class="pm21shTab'+(katAktif===''?' pm21shTabOn':'')+'" data-kat="">Semua ('+lst.length+')</button>';
+    for(var k2=0;k2<kel.length;k2++){
+      var g2=kel[k2], wr2=warnaKat21(g2.kat==='(tanpa kategori)'?'':g2.kat);
+      h+='<button type="button" class="pm21shTab'+(katAktif===g2.kat?' pm21shTabOn':'')+'" data-kat="'+esc(g2.kat)+'"><i style="background:'+wr2.bg+'"></i>'+esc(kodeKatTampil21(g2.kat))+(g2.n>1?' \u00d7'+g2.n:'')+'</button>';
+    }
+    h+='</div>';
+  }
+  if(katAktif) h+='<div class="pm21shInfo">Menampilkan kategori <b>'+esc(katAktif)+'</b> saja ('+tampil.length+' tugas). Nomor urut = unit ke-1, ke-2, dst - bisa beda lantai/room. Tap "Semua" untuk melihat seluruh tugas shift ini.</div>';
+  if(!tampil.length) h+='<div class="pm21kosongB">Tidak ada tugas pada tanggal & shift ini.</div>';
+  for(var k=0;k<tampil.length;k++){
+    var r=tampil[k], wr=warnaKat21(r.kategori);
+    var warnaSt=/^selesai$/i.test(r.status)?['#dcfce7','#166534']:/batal|cancel/i.test(r.status)?['#fee2e2','#b91c1c']:['#e2e8f0','#334155'];
+    h+='<div class="pm21tugas"><b>'+(tampil.length>1?(k+1)+'. ':'')+esc(judulAlat21(r))+'</b>';
+    h+='<div class="pm21tgchips">';
+    h+='<span style="background:'+wr.bg+';color:'+wr.fg+'">'+esc(kodeKatTampil21(r.kategori)+' \u2022 '+(r.kategori||'Tanpa kategori'))+'</span>';
+    h+='<span style="background:#f1f5f9;color:#334155">'+esc(r.shift)+'</span>';
+    h+='<span style="background:'+warnaSt[0]+';color:'+warnaSt[1]+'">'+esc(r.status)+'</span>';
+    h+='</div>';
+    if(r.lokasi||r.room) h+='<span class="pm21baris">\uD83D\uDCCD '+esc([r.lokasi,r.room].filter(Boolean).join(' \u2022 '))+'</span>';
+    h+='<span class="pm21baris">\uD83D\uDC64 Petugas: '+esc(r.petugas||'(diisi tulisan tangan)')+'</span>';
+    if(r.sic) h+='<span class="pm21baris">\u270d\ufe0f Paraf SIC: '+esc(r.sic)+'</span>';
+    if(r.catatan) h+='<span class="pm21baris">\uD83D\uDCDD '+esc(r.catatan)+'</span>';
+    if(Number(r.interval_hari||0)>0) h+='<span class="pm21baris">\uD83D\uDD01 Diulang setiap '+esc(labelInterval(r.interval_hari))+(r.ulang_sampai?' s/d '+esc(fmtTgl21(r.ulang_sampai)):'')+'</span>';
+    if(r.lokal) h+='<span class="pm21hp">HP ini saja (belum terkirim server)</span>';
+    h+='</div>';
+  }
+  isi.innerHTML=h;
+  var shEl=document.getElementById('pm21Sheet');
+  shEl.setAttribute('data-tg',tgl); shEl.setAttribute('data-sh',sh); shEl.setAttribute('data-kat',katAktif);
+  shEl.classList.add('pm21on');
+}
+function tutupSheet21(){ var s=document.getElementById('pm21Sheet'); if(s) s.classList.remove('pm21on'); }
+
+/* =====================================================================
+   EKSPOR v2: GAMBAR (PNG canvas) / PDF (jsPDF+autotable) / EXCEL (.xls)
+   Susunan dokumen PDF & Excel sesuai permintaan Head:
+   atas -> MATRIKS kotak warna -> KETERANGAN warna kategori ->
+   bawah -> JADWAL PM (rincian lengkap)
+   ===================================================================== */
+function rentangView21(){
+  var bulan=TAMPIL21[LAMA21]||1, out=[];
+  for(var i=0;i<bulan;i++){
+    var m0=BULAN0.m+i, y=BULAN0.y+Math.floor(m0/12), m=m0%12;
+    out.push({y:y,m:m,label:NAMA_BULAN[m]+' '+y,jml:new Date(y,m+1,0).getDate()});
+  }
+  return out;
+}
+function tugasView21(){
+  var bl=rentangView21(), out=[];
+  for(var b=0;b<bl.length;b++){
+    var awal=bl[b].y+'-'+pad2(bl[b].m+1)+'-01', akhir=bl[b].y+'-'+pad2(bl[b].m+1)+'-'+pad2(bl[b].jml);
+    for(var i=0;i<DATA21.rows.length;i++){
+      var r=DATA21.rows[i];
+      if(r.tanggal>=awal && r.tanggal<=akhir) out.push(r);
+    }
+  }
+  var so={Morning:0,Middle:1,Night:2};
+  out.sort(function(a,b){
+    if(a.tanggal!==b.tanggal) return a.tanggal<b.tanggal?-1:1;
+    var sa=so[a.shift]!==undefined?so[a.shift]:9, sb=so[b.shift]!==undefined?so[b.shift]:9;
+    if(sa!==sb) return sa-sb;
+    return judulAlat21(a).toLowerCase()<judulAlat21(b).toLowerCase()?-1:1;
+  });
+  return out;
+}
+function katStats21(rows){
+  var m={},u=[];
+  for(var i=0;i<rows.length;i++){ var kat=rows[i].kategori||'(tanpa kategori)'; if(!m[kat]){ m[kat]=0; u.push(kat); } m[kat]++; }
+  u.sort(function(a,b){ return a.toLowerCase()<b.toLowerCase()?-1:1; });
+  return u.map(function(k){ return {kat:k,n:m[k]}; });
+}
+function namaRapi21(s){ return teks(s).replace(/[^\w.\-]+/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,'')||'Matriks_PM'; }
+function namaFileEkspor21(ext){
+  var bl=rentangView21(), a=bl[0], z=bl[bl.length-1];
+  var n='Matriks_PM_'+NAMA_BULAN[a.m].slice(0,3)+a.y;
+  if(bl.length>1) n+='_sd_'+NAMA_BULAN[z.m].slice(0,3)+z.y;
+  return namaRapi21(n)+'.'+ext;
+}
+function hexRgb21(h){
+  h=teks(h).replace('#','');
+  if(!/^[0-9a-fA-F]{6}$/.test(h)) return [100,116,139];
+  return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];
+}
+function unduhBlob21(blob,nama){
+  try{
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=nama;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function(){ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(e){} },4000);
+    return true;
+  }catch(e){ return false; }
+}
+function statusEkspor21(pesan){ var st=document.getElementById('pm21StatusNet'); if(st) st.textContent=pesan; }
+function tombolSibuk21(btn,fn){
+  if(!btn||btn.disabled) return;
+  var lama=btn.textContent;
+  btn.disabled=true; btn.textContent='\u23f3 Menyiapkan...';
+  setTimeout(function(){
+    try{ fn(); }
+    catch(e){ statusEkspor21('Gagal menyiapkan file - '+String(e&&e.message||e)); }
+    btn.disabled=false; btn.textContent=lama;
+  },60);
+}
+function teksPeriodeEkspor21(){
+  var bl=rentangView21();
+  return 'Periode: '+bl[0].label+(bl.length>1?' s/d '+bl[bl.length-1].label:'')+' \u2022 Shift 1 Morning (Pagi) / Shift 2 Middle (Siang) / Shift 3 Night (Malam)';
+}
+function stempelWaktu21(){
+  var k=new Date();
+  return pad2(k.getDate())+' '+NAMA_BULAN[k.getMonth()]+' '+k.getFullYear()+' '+pad2(k.getHours())+':'+pad2(k.getMinutes());
+}
+
+/* ---------- GAMBAR (PNG) ---------- */
+function rrPath21(c,x,y,w,h,r){
+  c.beginPath();
+  c.moveTo(x+r,y);
+  c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r);
+  c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r);
+  c.closePath();
+}
+function chipCv21(c,x,y,w,h,bg,fg,txt,nopt,sls){
+  c.fillStyle=bg; rrPath21(c,x,y,w,h,3); c.fill();
+  c.fillStyle=fg; c.font='bold 9.5px Arial'; c.textAlign='center'; c.textBaseline='middle';
+  c.fillText(txt,x+w/2,y+h/2+.5);
+  if(sls){ c.strokeStyle='rgba(255,255,255,.8)'; c.lineWidth=1.4; rrPath21(c,x+1.3,y+1.3,w-2.6,h-2.6,2); c.stroke(); }
+  if(nopt){ c.strokeStyle=fg; c.lineWidth=1.4; c.beginPath(); c.moveTo(x+1.5,y+h/2+.5); c.lineTo(x+w-1.5,y+h/2+.5); c.stroke(); }
+  c.textBaseline='alphabetic'; c.textAlign='left';
+}
+function eksporGambar21(){
+  var tugas=tugasView21();
+  if(!tugas.length){ statusEkspor21('Tidak ada tugas PM pada periode ini - tidak ada yang diunduh.'); return; }
+  var bl=rentangView21(), stats=katStats21(tugas);
+  var maxD=0; for(var b=0;b<bl.length;b++) maxD=Math.max(maxD,bl[b].jml);
+  var sk=2, pad=36, labW=118, colW=38, kepT=124, judulT=32, thT=44, rowH=58, gapB=18;
+  var legT=30, legRow=30, catT=64, kakiT=40;
+  var W=pad*2+labW+maxD*colW;
+  var H=kepT + bl.length*(judulT+thT+3*rowH+gapB) + (legT+Math.ceil(stats.length/3)*legRow+catT) + kakiT;
+  var cv=document.createElement('canvas'); cv.width=W*sk; cv.height=H*sk;
+  var c=cv.getContext('2d'); c.scale(sk,sk);
+  c.fillStyle='#ffffff'; c.fillRect(0,0,W,H);
+  c.fillStyle='#0f172a'; c.fillRect(0,0,W,7);
+  /* kop */
+  c.textAlign='center'; c.fillStyle='#0f172a'; c.font='bold 27px Arial';
+  c.fillText('MATRIKS JADWAL PM', W/2, 44);
+  c.font='bold 18px Arial';
+  c.fillText('DOMINION LOUNGE & MASTERPIECE', W/2, 69);
+  c.font='13px Arial'; c.fillStyle='#475569';
+  c.fillText(teksPeriodeEkspor21(), W/2, 93);
+  c.font='11.5px Arial'; c.fillStyle='#64748b';
+  c.textAlign='right';
+  c.fillText('Dicetak: '+stempelWaktu21(), W-pad, 40);
+  c.fillText('Departemen Engineering', W-pad, 58);
+  c.textAlign='left';
+  c.fillStyle='#0f172a'; c.fillRect(pad, 106, W-pad*2, 2.5);
+  var map=selMap21(DATA21.rows), todayISO=keISO(new Date());
+  var warnaShift={Morning:'#f59e0b',Middle:'#3b82f6',Night:'#6366f1'};
+  var y=kepT;
+  for(var mb=0; mb<bl.length; mb++){
+    var B=bl[mb];
+    var totB=0; for(var dd=1;dd<=B.jml;dd++){ var t=B.y+'-'+pad2(B.m+1)+'-'+pad2(dd); totB+=(map[t+'|Morning']||[]).length+(map[t+'|Middle']||[]).length+(map[t+'|Night']||[]).length; }
+    c.font='bold 16px Arial'; c.fillStyle='#0f172a'; c.textAlign='left';
+    c.fillText(B.label, pad, y+18);
+    c.font='12px Arial'; c.fillStyle='#64748b'; c.textAlign='right';
+    c.fillText(totB+' tugas PM \u2022 kotak kecil = kategori \u2022 angka = jumlah unit', pad+labW+B.jml*colW, y+18);
+    c.textAlign='left';
+    y+=judulT;
+    var x0=pad, tw=labW+B.jml*colW;
+    /* kepala kolom */
+    c.fillStyle='#0f172a'; c.fillRect(x0,y,tw,thT);
+    c.fillStyle='#ffffff'; c.font='bold 12px Arial'; c.textAlign='center';
+    c.fillText('SHIFT', x0+labW/2, y+thT/2+4);
+    for(var d=1;d<=B.jml;d++){
+      var dt=new Date(B.y,B.m,d), dow=dt.getDay(), xx=x0+labW+(d-1)*colW;
+      c.fillStyle= dow===0 ? '#fca5a5' : '#ffffff';
+      c.font='bold 12.5px Arial'; c.fillText(String(d), xx+colW/2, y+18);
+      c.font='9px Arial'; c.fillStyle= dow===0 ? '#fca5a5' : '#cbd5e1';
+      c.fillText(HARI_PENDEK[dow], xx+colW/2, y+32);
+    }
+    y+=thT;
+    /* baris shift */
+    for(var s=0;s<SHIFTS21.length;s++){
+      var sh=SHIFTS21[s];
+      c.fillStyle='#f8fafc'; c.fillRect(x0,y,labW,rowH);
+      c.strokeStyle='#cbd5e1'; c.lineWidth=1; c.strokeRect(x0+.5,y+.5,labW-1,rowH-1);
+      c.fillStyle=warnaShift[sh.v]; c.beginPath(); c.arc(x0+15,y+rowH/2,4,0,7); c.fill();
+      c.fillStyle='#0f172a'; c.font='bold 12.5px Arial';
+      c.fillText(sh.v, x0+25, y+rowH/2-2);
+      c.font='9.5px Arial'; c.fillStyle='#64748b';
+      c.fillText(sh.id+' \u2022 '+sh.tit, x0+25, y+rowH/2+13);
+      for(var d2=1;d2<=B.jml;d2++){
+        var tgl=B.y+'-'+pad2(B.m+1)+'-'+pad2(d2), dow2=new Date(B.y,B.m,d2).getDay();
+        var xx2=x0+labW+(d2-1)*colW;
+        var isWk=(dow2===0||dow2===6), isTo=todayISO===tgl;
+        c.fillStyle= isTo ? '#fffbeb' : (isWk?'#f1f5f9':'#ffffff');
+        c.fillRect(xx2,y,colW,rowH);
+        if(isTo){ c.strokeStyle='#d4af37'; c.lineWidth=2; c.strokeRect(xx2+1,y+1,colW-2,rowH-2); }
+        else { c.strokeStyle='#cbd5e1'; c.lineWidth=1; c.strokeRect(xx2+.5,y+.5,colW-1,rowH-1); }
+        var kel=grupKat21(map[tgl+'|'+sh.v]||[]);
+        var maxChip=3, cy=y+3.5;
+        for(var g2=0;g2<Math.min(kel.length,maxChip);g2++){
+          var g=kel[g2], wr=warnaKat21(g.kat==='(tanpa kategori)'?'':g.kat);
+          chipCv21(c, xx2+2.5, cy, colW-5, 14, wr.bg, wr.fg, kodeKatTampil21(g.kat)+(g.n>1?'\u00d7'+g.n:''), g.nopt, g.sls);
+          cy+=15.5;
+        }
+        if(kel.length>maxChip){
+          c.fillStyle='#475569'; c.font='bold 8.5px Arial'; c.textAlign='center';
+          c.fillText('+'+(kel.length-maxChip)+' lagi', xx2+colW/2, y+rowH-4.5); c.textAlign='left';
+        } else if(!kel.length){
+          c.fillStyle='#cbd5e1'; c.font='9px Arial'; c.textAlign='center';
+          c.fillText('\u00b7', xx2+colW/2, y+rowH/2+3); c.textAlign='left';
+        }
+      }
+      y+=rowH;
+    }
+    y+=gapB;
+  }
+  /* legenda */
+  c.font='bold 15px Arial'; c.fillStyle='#0f172a';
+  c.fillText('KETERANGAN WARNA KATEGORI', pad, y+14);
+  y+=legT;
+  var per=3, cw=(W-pad*2)/per;
+  for(var k3=0;k3<stats.length;k3++){
+    var st3=stats[k3], col3=k3%per, rw3=Math.floor(k3/per);
+    var wr3=warnaKat21(st3.kat==='(tanpa kategori)'?'':st3.kat);
+    var xx3=pad+cw*col3, yy3=y+rw3*legRow;
+    chipCv21(c, xx3, yy3, 34, 18, wr3.bg, wr3.fg, kodeKatTampil21(st3.kat), 0, 0);
+    c.fillStyle='#0f172a'; c.font='bold 11.5px Arial';
+    c.fillText((st3.kat==='(tanpa kategori)'?'Tanpa kategori':st3.kat)+' ('+st3.n+' tugas)', xx3+42, yy3+13);
+  }
+  y+=Math.ceil(stats.length/per)*legRow+6;
+  c.font='10.5px Arial'; c.fillStyle='#64748b';
+  c.fillText('Warna tetap: Genset = hijau tua (G) \u2022 AC = kuning (AC). Kategori lain: warna otomatis, selalu sama untuk kategori yang sama.', pad, y+14);
+  c.fillText('Kotak bercoret = jadwal batal \u2022 garis putih ganda = selesai \u2022 angka = jumlah unit/tugas (mis. AC\u00d73 = 3 unit AC, bisa beda lantai/room).', pad, y+31);
+  y+=catT;
+  c.textAlign='right'; c.font='10px Arial'; c.fillStyle='#94a3b8';
+  c.fillText('PM21 v2 \u2022 DOMINION LOUNGE & MASTERPIECE \u2022 rincian lengkap: unduh PDF / lihat halaman Jadwal PM', W-pad, H-12);
+  c.textAlign='left';
+  var nama=namaFileEkspor21('png');
+  if(cv.toBlob){
+    cv.toBlob(function(b){
+      if(b && unduhBlob21(b,nama)) statusEkspor21('Gambar matriks diunduh: '+nama);
+      else statusEkspor21('Gambar gagal dibuat.');
+    },'image/png');
+  } else {
+    var a=document.createElement('a'); a.href=cv.toDataURL('image/png'); a.download=nama;
+    document.body.appendChild(a); a.click(); a.remove();
+    statusEkspor21('Gambar matriks diunduh: '+nama);
+  }
+}
+
+/* ---------- PDF ---------- */
+function muatScript21(src){
+  return new Promise(function(res,rej){
+    var s=document.createElement('script');
+    s.src=src; s.async=true;
+    s.onload=function(){ res(); };
+    s.onerror=function(){ rej(new Error('gagal memuat '+src)); };
+    document.head.appendChild(s);
+  });
+}
+var PDF_SIAP21=null;
+function pastikanPDF21(){
+  if(PDF_SIAP21) return PDF_SIAP21;
+  PDF_SIAP21=(async function(){
+    var okJ=!!(window.jspdf && window.jspdf.jsPDF);
+    if(!okJ){
+      var cdnJ=[
+        'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+        'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
+        'https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js'
+      ];
+      for(var i=0;i<cdnJ.length;i++){
+        try{ await muatScript21(cdnJ[i]); okJ=!!(window.jspdf && window.jspdf.jsPDF); if(okJ) break; }catch(e){}
+      }
+      if(!okJ) throw new Error('Modul PDF (jsPDF) gagal dimuat - periksa internet');
+    }
+    var J=window.jspdf.jsPDF;
+    var okA=!!(J.API && typeof J.API.autoTable==='function');
+    if(!okA){
+      var cdnA=[
+        'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js',
+        'https://cdn.jsdelivr.net/npm/jspdf-autotable@3.5.31/dist/jspdf.plugin.autotable.min.js',
+        'https://unpkg.com/jspdf-autotable@3.5.31/dist/jspdf.plugin.autotable.min.js'
+      ];
+      for(var j=0;j<cdnA.length;j++){
+        try{
+          await muatScript21(cdnA[j]);
+          okA=!!(window.jspdf && window.jspdf.jsPDF.API && typeof window.jspdf.jsPDF.API.autoTable==='function');
+          if(okA) break;
+        }catch(e){}
+      }
+      if(!okA) throw new Error('Modul tabel PDF (autotable) gagal dimuat - periksa internet');
+    }
+    return window.jspdf.jsPDF;
+  })();
+  PDF_SIAP21['catch'](function(){ PDF_SIAP21=null; });
+  return PDF_SIAP21;
+}
+function chipPdf21(doc,x,y,w,h,bg,fg,txt,nopt,sls){
+  var b=hexRgb21(bg), f=hexRgb21(fg);
+  doc.setFillColor(b[0],b[1],b[2]);
+  doc.roundedRect(x,y,w,h,0.5,0.5,'F');
+  doc.setTextColor(f[0],f[1],f[2]);
+  doc.setFont('helvetica','bold'); doc.setFontSize(4.4);
+  doc.text(txt, x+w/2, y+h/2+0.55, {align:'center'});
+  if(sls){ doc.setDrawColor(255,255,255); doc.setLineWidth(0.2); doc.roundedRect(x+0.3,y+0.3,w-0.6,h-0.6,0.3,0.3,'S'); }
+  if(nopt){ doc.setDrawColor(f[0],f[1],f[2]); doc.setLineWidth(0.22); doc.line(x+0.6,y+h/2,x+w-0.6,y+h/2); }
+  doc.setTextColor(15,23,42);
+}
+function kopPDF21(doc,W,M){
+  doc.setFont('helvetica','bold'); doc.setFontSize(14.5); doc.setTextColor(15,23,42);
+  doc.text('MIDPOINT SQUARE Building.', W/2, 13.5, {align:'center'});
+  doc.setFontSize(11.5);
+  doc.text('MATRIKS & JADWAL PREVENTIVE MAINTENANCE', W/2, 19.5, {align:'center'});
+  doc.setFont('helvetica','normal'); doc.setFontSize(8.8); doc.setTextColor(71,85,105);
+  doc.text(teksPeriodeEkspor21().replace('\u2022','\u00b7').replace('\u2022','\u00b7'), W/2, 25, {align:'center'});
+  doc.setFontSize(8);
+  doc.text('Departemen Engineering', M, 11.5);
+  var k=new Date();
+  doc.text('No. Dok: PM/MATRIKS/'+pad2(k.getDate())+'/'+pad2(k.getMonth()+1)+'/'+k.getFullYear(), W-M, 11.5, {align:'right'});
+  doc.text('Dicetak: '+stempelWaktu21(), W-M, 15.7, {align:'right'});
+  doc.setDrawColor(15,23,42); doc.setLineWidth(0.5);
+  doc.line(M, 27.5, W-M, 27.5);
+  doc.setTextColor(15,23,42);
+}
+async function eksporPDF21(){
+  var tugas=tugasView21();
+  if(!tugas.length){ statusEkspor21('Tidak ada tugas PM pada periode ini - tidak ada yang diunduh.'); return; }
+  try{
+    statusEkspor21('Menyiapkan PDF (matriks + keterangan + rincian)...');
+    var J=await pastikanPDF21();
+    var doc=new J({orientation:'landscape',unit:'mm',format:'a4'});
+    var W=doc.internal.pageSize.getWidth(), H=doc.internal.pageSize.getHeight();
+    var M=10, labW=20, bl=rentangView21(), stats=katStats21(tugas);
+    var maxD=0; for(var b=0;b<bl.length;b++) maxD=Math.max(maxD,bl[b].jml);
+    var colW=(W-M*2-labW)/maxD;
+    kopPDF21(doc,W,M);
+    var map=selMap21(DATA21.rows), todayISO=keISO(new Date());
+    var warnaShift={Morning:[245,158,11],Middle:[59,130,246],Night:[99,102,241]};
+    var y=33;
+    for(var mb=0;mb<bl.length;mb++){
+      var B=bl[mb], thH=8, rowH=12;
+      if(y+3+thH+3*rowH > H-16){ doc.addPage(); y=14; }
+      var totB=0; for(var dd=1;dd<=B.jml;dd++){ var t=B.y+'-'+pad2(B.m+1)+'-'+pad2(dd); totB+=(map[t+'|Morning']||[]).length+(map[t+'|Middle']||[]).length+(map[t+'|Night']||[]).length; }
+      doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(15,23,42);
+      doc.text(B.label+'  ('+totB+' tugas PM)', M, y+2.4);
+      y+=4.4;
+      var x0=M, tw=labW+B.jml*colW;
+      /* kepala kolom */
+      doc.setFillColor(15,23,42); doc.rect(x0,y,tw,thH,'F');
+      doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(6.4);
+      doc.text('SHIFT', x0+labW/2, y+thH/2+0.8, {align:'center'});
+      for(var d=1;d<=B.jml;d++){
+        var dt=new Date(B.y,B.m,d), dow=dt.getDay(), xx=x0+labW+(d-1)*colW;
+        doc.setTextColor(dow===0?252:255, dow===0?165:255, dow===0?165:255);
+        doc.setFontSize(6.2); doc.text(String(d), xx+colW/2, y+3.4, {align:'center'});
+        doc.setTextColor(dow===0?252:203, dow===0?165:213, dow===0?165:225);
+        doc.setFontSize(3.6); doc.text(HARI_PENDEK[dow], xx+colW/2, y+6.6, {align:'center'});
+      }
+      y+=thH;
+      /* baris shift */
+      for(var s=0;s<SHIFTS21.length;s++){
+        var sh=SHIFTS21[s];
+        doc.setFillColor(248,250,252); doc.rect(x0,y,labW,rowH,'F');
+        var wc=warnaShift[sh.v];
+        doc.setFillColor(wc[0],wc[1],wc[2]); doc.circle(x0+3.4,y+rowH/2-1.4,0.9,'F');
+        doc.setTextColor(15,23,42); doc.setFont('helvetica','bold'); doc.setFontSize(6.8);
+        doc.text(sh.v, x0+5.6, y+4.6);
+        doc.setFont('helvetica','normal'); doc.setFontSize(4.6); doc.setTextColor(100,116,139);
+        doc.text(sh.id+' \u00b7 '+sh.tit, x0+5.6, y+8.4);
+        for(var d2=1;d2<=B.jml;d2++){
+          var tgl=B.y+'-'+pad2(B.m+1)+'-'+pad2(d2), dow2=new Date(B.y,B.m,d2).getDay();
+          var xx2=x0+labW+(d2-1)*colW;
+          var isWk=(dow2===0||dow2===6), isTo=todayISO===tgl;
+          if(isTo){ doc.setFillColor(255,251,235); doc.rect(xx2,y,colW,rowH,'F'); }
+          else if(isWk){ doc.setFillColor(241,245,249); doc.rect(xx2,y,colW,rowH,'F'); }
+          doc.setDrawColor(203,213,225); doc.setLineWidth(0.15); doc.rect(xx2,y,colW,rowH,'S');
+          if(isTo){ doc.setDrawColor(212,175,55); doc.setLineWidth(0.5); doc.rect(xx2+0.5,y+0.5,colW-1,rowH-1,'S'); }
+          var kel=grupKat21(map[tgl+'|'+sh.v]||[]);
+          var maxC=3, cy=y+1.1;
+          for(var g=0;g<Math.min(kel.length,maxC);g++){
+            var gg=kel[g], wr=warnaKat21(gg.kat==='(tanpa kategori)'?'':gg.kat);
+            chipPdf21(doc, xx2+0.8, cy, colW-1.6, 2.9, wr.bg, wr.fg, kodeKatTampil21(gg.kat)+(gg.n>1?'\u00d7'+gg.n:''), gg.nopt, gg.sls);
+            cy+=3.2;
+          }
+          if(kel.length>maxC){
+            doc.setFont('helvetica','bold'); doc.setFontSize(3.8); doc.setTextColor(71,85,105);
+            doc.text('+'+(kel.length-maxC), xx2+colW/2, y+rowH-1.5, {align:'center'});
+          }
+        }
+        y+=rowH;
+      }
+      y+=5;
+    }
+    /* keterangan warna kategori */
+    if(y+14+Math.ceil(stats.length/3)*5.4 > H-16){ doc.addPage(); y=14; }
+    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(15,23,42);
+    doc.text('KETERANGAN WARNA KATEGORI', M, y+2.4); y+=6;
+    for(var k=0;k<stats.length;k++){
+      var st=stats[k], col=k%3, rw=Math.floor(k/3);
+      var wr2=warnaKat21(st.kat==='(tanpa kategori)'?'':st.kat), b2=hexRgb21(wr2.bg);
+      var xx3=M+col*((W-M*2)/3), yy=y+rw*5.4;
+      doc.setFillColor(b2[0],b2[1],b2[2]); doc.roundedRect(xx3,yy-2.9,7,3.8,0.6,0.6,'F');
+      doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(5);
+      doc.text(kodeKatTampil21(st.kat), xx3+3.5, yy-0.2, {align:'center'});
+      doc.setTextColor(15,23,42); doc.setFont('helvetica','normal'); doc.setFontSize(7.6);
+      doc.text((st.kat==='(tanpa kategori)'?'Tanpa kategori':st.kat)+' ('+st.n+' tugas)', xx3+9, yy);
+    }
+    y+=Math.ceil(stats.length/3)*5.4+2;
+    doc.setFont('helvetica','normal'); doc.setFontSize(6.6); doc.setTextColor(100,116,139);
+    doc.text('Warna tetap: Genset = hijau tua (G) \u00b7 AC = kuning (AC). Kotak bercoret = batal \u00b7 garis putih ganda = selesai \u00b7 angka pada kotak = jumlah unit/tugas (mis. AC\u00d73 = 3 unit AC, bisa beda lantai/room - lihat rincian di bawah).', M, y+2, {maxWidth:W-M*2});
+    y+=8;
+    /* rincian jadwal PM */
+    if(y+30 > H-16){ doc.addPage(); y=14; }
+    doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(15,23,42);
+    doc.text('JADWAL PREVENTIVE MAINTENANCE (RINCIAN)', M, y+3); y+=7;
+    var HEAD=['No','Tanggal','Hari','Shift','Kategori','Peralatan','Lokasi / Room','Status','Petugas','Paraf SIC','Catatan'];
+    var LBR=[7,17,13,14,20,36,30,16,24,18,80];
+    var body=[];
+    for(var i2=0;i2<tugas.length;i2++){
+      var r2=tugas[i2], dt2=dariISO(r2.tanggal);
+      body.push([
+        String(i2+1),
+        fmtTgl21(r2.tanggal),
+        dt2?HARI_PENUH[dt2.getDay()]:'',
+        teks(r2.shift),
+        teks(r2.kategori)||'-',
+        judulAlat21(r2),
+        [teks(r2.lokasi),teks(r2.room)].filter(Boolean).join(' - ')||'-',
+        teks(r2.status)||'Terjadwal',
+        teks(r2.petugas),
+        '',
+        teks(r2.catatan)
+      ]);
+    }
+    doc.autoTable({
+      startY: y,
+      head:[HEAD],
+      body: body,
+      styles:{fontSize:7.6, cellPadding:1.5, textColor:[15,23,42], lineColor:[148,163,184], lineWidth:0.15, minCellHeight:8, valign:'middle', overflow:'linebreak'},
+      headStyles:{fillColor:[15,23,42], textColor:255, fontSize:7.8, fontStyle:'bold', halign:'center', valign:'middle', minCellHeight:7},
+      alternateRowStyles:{fillColor:[248,250,252]},
+      columnStyles:{
+        0:{cellWidth:LBR[0],halign:'center'},
+        1:{cellWidth:LBR[1],halign:'center'},
+        2:{cellWidth:LBR[2],halign:'center'},
+        3:{cellWidth:LBR[3],halign:'center'},
+        4:{cellWidth:LBR[4]},
+        5:{cellWidth:LBR[5]},
+        6:{cellWidth:LBR[6]},
+        7:{cellWidth:LBR[7],halign:'center'},
+        8:{cellWidth:LBR[8]},
+        9:{cellWidth:LBR[9],halign:'center'},
+        10:{cellWidth:LBR[10]}
+      },
+      margin:{left:M,right:M}
+    });
+    /* tanda tangan */
+    var y0=(doc.lastAutoTable?doc.lastAutoTable.finalY:y)+10;
+    if(y0+56>H-12){ doc.addPage(); y0=18; }
+    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(15,23,42);
+    doc.text('Disusun oleh,', 55, y0, {align:'center'});
+    doc.text('Paraf SIC,', 148.5, y0, {align:'center'});
+    doc.text('Paraf SIC,', 242, y0, {align:'center'});
+    doc.setFont('helvetica','normal'); doc.setFontSize(9);
+    doc.text('( ....................................... )', 55, y0+21, {align:'center'});
+    doc.text('( ....................................... )', 148.5, y0+21, {align:'center'});
+    doc.text('( ....................................... )', 242, y0+21, {align:'center'});
+    doc.setFontSize(8.5); doc.setTextColor(71,85,105);
+    doc.text('Head Teknisi', 55, y0+27, {align:'center'});
+    doc.text('SIC Dominion Lounge', 148.5, y0+27, {align:'center'});
+    doc.text('SIC Masterpiece', 242, y0+27, {align:'center'});
+    doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(15,23,42);
+    doc.text('Tembusan:', 16, y0+38);
+    doc.setFont('helvetica','normal');
+    doc.text('1. General Manager;', 16, y0+43.5);
+    doc.text('2. Director.', 16, y0+49);
+    /* footer tiap halaman */
+    var total=doc.internal.getNumberOfPages();
+    for(var p=1;p<=total;p++){
+      doc.setPage(p);
+      doc.setFontSize(7.5); doc.setTextColor(120);
+      doc.text('MIDPOINT SQUARE Building. - Matriks & Jadwal PM', M, H-6);
+      doc.text('Halaman '+p+' / '+total, W-M, H-6, {align:'right'});
+    }
+    var nama=namaFileEkspor21('pdf');
+    doc.save(nama);
+    statusEkspor21('PDF diunduh: '+nama+' (matriks + keterangan + '+tugas.length+' jadwal)');
+  }catch(e){ statusEkspor21('PDF gagal - '+String(e&&e.message||e)+' (coba Unduh Gambar)'); }
+}
+
+/* ---------- EXCEL (.xls - HTML table, sel matriks ikut berwarna) ---------- */
+function eksporXls21(){
+  var tugas=tugasView21();
+  if(!tugas.length){ statusEkspor21('Tidak ada tugas PM pada periode ini - tidak ada yang diunduh.'); return; }
+  var bl=rentangView21(), stats=katStats21(tugas);
+  var map=selMap21(DATA21.rows), todayISO=keISO(new Date());
+  function ex(s){ return teks(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  var h='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><style>'+
+    'table{border-collapse:collapse;margin-bottom:6px}'+
+    'td,th{border:1px solid #94a3b8;font-family:Arial;font-size:10pt;mso-number-format:"\\@";padding:3px 6px;vertical-align:top}'+
+    'th{background:#0f172a;color:#ffffff;font-weight:bold;text-align:center}'+
+    '.lab{background:#f8fafc;font-weight:bold;text-align:center}'+
+    '.wk{background:#f1f5f9}'+
+    '.jdul{background:#0f172a;color:#f5c518;font-size:15pt;font-weight:bold;text-align:center;border:none}'+
+    '.subjdul{background:#0f172a;color:#ffffff;font-size:11pt;text-align:center;border:none}'+
+    '.ket{color:#475569;font-size:9pt;text-align:center;border:none}'+
+    '.judulp{font-weight:bold;font-size:12pt;border:none}'+
+    '.note{color:#475569;font-size:9pt;border:none}'+
+    '.chip{font-weight:bold;text-align:center;font-size:8pt}'+
+    '</style></head><body>';
+  h+='<table><tr><td class="jdul">MATRIKS JADWAL PM</td></tr>'+
+     '<tr><td class="subjdul">DOMINION LOUNGE &amp; MASTERPIECE</td></tr>'+
+     '<tr><td class="ket">'+ex(teksPeriodeEkspor21())+' &#8226; Dicetak: '+ex(stempelWaktu21())+' &#8226; Departemen Engineering</td></tr></table>';
+  var warnaShift={Morning:'#f59e0b',Middle:'#3b82f6',Night:'#6366f1'};
+  for(var mb=0;mb<bl.length;mb++){
+    var B=bl[mb];
+    h+='<table><tr><td class="judulp" colspan="'+(B.jml+1)+'">'+ex(B.label)+'</td></tr>';
+    h+='<tr><th>SHIFT</th>';
+    for(var d=1;d<=B.jml;d++){ var dow=new Date(B.y,B.m,d).getDay(); h+='<th'+(dow===0?' style="color:#fca5a5"':'')+'>'+d+'&nbsp;'+HARI_PENDEK[dow]+'</th>'; }
+    h+='</tr>';
+    for(var s=0;s<SHIFTS21.length;s++){
+      var sh=SHIFTS21[s];
+      h+='<tr><td class="lab" style="border-left:4px solid '+warnaShift[sh.v]+'">'+sh.v+' ('+sh.id+' \u00b7 '+sh.tit+')</td>';
+      for(var d2=1;d2<=B.jml;d2++){
+        var tgl=B.y+'-'+pad2(B.m+1)+'-'+pad2(d2), dow2=new Date(B.y,B.m,d2).getDay();
+        var kel=grupKat21(map[tgl+'|'+sh.v]||[]);
+        var cls=(dow2===0||dow2===6)?' class="wk"':'';
+        if(!kel.length){ h+='<td'+cls+' style="text-align:center;color:#cbd5e1">&middot;</td>'; continue; }
+        var wr=warnaKat21(kel[0].kat==='(tanpa kategori)'?'':kel[0].kat);
+        var isi2=[], gi;
+        for(gi=0;gi<kel.length;gi++) isi2.push(kodeKatTampil21(kel[gi].kat)+(kel[gi].n>1?'\u00d7'+kel[gi].n:''));
+        h+='<td'+cls+' class="chip" style="background:'+wr.bg+';color:'+wr.fg+'" title="'+ex(kel[0].kat)+'">'+ex(isi2.join(' / '))+'</td>';
+      }
+      h+='</tr>';
+    }
+    h+='</table>';
+  }
+  h+='<table><tr><td class="judulp">KETERANGAN WARNA KATEGORI</td></tr>';
+  for(var k=0;k<stats.length;k++){
+    var st=stats[k], wr2=warnaKat21(st.kat==='(tanpa kategori)'?'':st.kat);
+    h+='<tr><td class="chip" style="background:'+wr2.bg+';color:'+wr2.fg+';width:70px">'+ex(kodeKatTampil21(st.kat))+'</td>'+
+       '<td>'+ex(st.kat==='(tanpa kategori)'?'Tanpa kategori':st.kat)+'</td>'+
+       '<td style="text-align:center">'+st.n+' tugas</td></tr>';
+  }
+  h+='<tr><td class="note" colspan="3">Warna tetap: Genset = hijau tua (G) &#8226; AC = kuning (AC). Warna sel matriks = kategori pertama pada kotak itu; bila ada 2+ kategori, kode lain ditulis di belakang (mis. EF\u00d72 / AC\u00d73). Kotak coret = batal, garis ganda = selesai (lihat kolom Status di rincian). Rincian per unit/room: lihat tabel di bawah atau unduh PDF.</td></tr></table>';
+  h+='<table><tr><td class="judulp">JADWAL PREVENTIVE MAINTENANCE (RINCIAN)</td></tr>';
+  h+='<tr><th>No</th><th>Tanggal</th><th>Hari</th><th>Shift</th><th>Kategori</th><th>Peralatan</th><th>Lokasi / Room</th><th>Status</th><th>Petugas</th><th>Paraf SIC</th><th>Catatan</th></tr>';
+  for(var i2=0;i2<tugas.length;i2++){
+    var r=tugas[i2], dt=dariISO(r.tanggal);
+    h+='<tr><td style="text-align:center">'+(i2+1)+'</td>'+
+       '<td style="text-align:center">'+ex(fmtTgl21(r.tanggal))+'</td>'+
+       '<td style="text-align:center">'+(dt?HARI_PENUH[dt.getDay()]:'')+'</td>'+
+       '<td style="text-align:center">'+ex(r.shift)+'</td>'+
+       '<td>'+ex(r.kategori||'-')+'</td>'+
+       '<td>'+ex(judulAlat21(r))+'</td>'+
+       '<td>'+ex([r.lokasi,r.room].filter(Boolean).join(' - ')||'-')+'</td>'+
+       '<td style="text-align:center">'+ex(r.status||'Terjadwal')+'</td>'+
+       '<td>'+ex(r.petugas)+'</td><td></td><td>'+ex(r.catatan)+'</td></tr>';
+  }
+  h+='</table></body></html>';
+  var nama=namaFileEkspor21('xls');
+  var ok=unduhBlob21(new Blob(['\ufeff'+h],{type:'application/vnd.ms-excel'}),nama);
+  statusEkspor21(ok?('Excel diunduh: '+nama+' (matriks + keterangan + '+tugas.length+' jadwal)'):'Excel gagal dibuat.');
+}
+
+/* ================= overlay matriks ================= */
+function bulanAwalDefault(){ var d=new Date(); return {y:d.getFullYear(),m:d.getMonth()}; }
+function buka21(){
+  tutupSheet21();
+  if(!HAL21) HAL21=bangunHal21();
+  if(!BULAN0) BULAN0=bulanAwalDefault();
+  if(MODE21==='mandiri' && DATA21.status==='awal') DATA21={rows:demoRows21(),status:'ok',pesan:'',net:null,saat:'',demo:true};
+  HAL21.classList.add('pm21on');
+  HAL21.scrollTop=0;
+  render21(false);
+  if(MODE21==='app') muatData21(function(){ render21(false); });
+}
+function tutup21(){ tutupSheet21(); if(HAL21) HAL21.classList.remove('pm21on'); }
+function render21(fresh){
+  var isi=document.getElementById('pm21Isi');
+  if(!isi) return;
+  var bulan=TAMPIL21[LAMA21]||1;
+  var todayISO=keISO(new Date());
+  var html='', rows=DATA21.rows, total=rows.length;
+  for(var i=0;i<bulan;i++){
+    var m0=BULAN0.m+i, y=BULAN0.y+Math.floor(m0/12), m=m0%12;
+    html+=barisBulan21(y,m,rows,todayISO);
+  }
+  var lab=document.getElementById('pm21LabelBulan');
+  if(lab){
+    var mAkhir=BULAN0.m+bulan-1, yA=BULAN0.y+Math.floor(mAkhir/12), mA=mAkhir%12;
+    lab.textContent=NAMA_BULAN[BULAN0.m]+' '+BULAN0.y+(bulan>1? ' s/d '+NAMA_BULAN[mA]+' '+yA:'');
+  }
+  var st=document.getElementById('pm21StatusNet');
+  if(st){
+    if(DATA21.status==='ok'){
+      st.className='pm21hijau';
+      st.textContent=(DATA21.demo?'Contoh demo':'Tersambung'+(DATA21.net&&DATA21.net.sumber?' ('+DATA21.net.sumber+')':''))+' \u2022 '+total+' jadwal dimuat'+(DATA21.saat?' \u2022 '+DATA21.saat:'')+(LAMA21>1?' \u2022 '+bulan+' bulan':'');
+    } else if(DATA21.status==='awal'){ st.className=''; st.textContent='Memuat jadwal...'; }
+    else { st.className='pm21merah'; st.textContent=DATA21.pesan||'Belum tersambung.'; }
+  }
+  var ban=document.getElementById('pm21Banner');
+  if(ban){
+    if(DATA21.status==='ok'||DATA21.status==='awal'){ ban.className=''; ban.innerHTML=''; }
+    else{
+      ban.className='pm21on '+(DATA21.status==='ditolak'||DATA21.status==='gagal'?'pm21merah':'pm21emas');
+      ban.innerHTML=esc(DATA21.pesan||'');
+      if(DATA21.rows.length) ban.innerHTML+='<br><small>Jadwal di HP ini tetap ditampilkan ('+DATA21.rows.length+').</small>';
+    }
+  }
+  var wrap=document.getElementById('pm21Grid');
+  if(wrap) wrap.innerHTML=html+(legenda21(rows));
+}
+
+var TAMPIL21={1:1,2:2,3:3,6:6};
+function bangunHal21(){
+  if(!document.getElementById('pm21Css')){
+    var st=document.createElement('style'); st.id='pm21Css'; st.textContent=CSS21; document.head.appendChild(st);
+  }
+  var hal=document.createElement('div'); hal.id='pm21Hal';
+  hal.innerHTML=
+    '<div id="pm21Kepala">'+
+      '<div><b>MATRIKS JADWAL PM</b><small>DOMINION LOUNGE &amp; MASTERPIECE \u2022 kotak warna per tanggal &amp; shift</small></div>'+
+      '<button type="button" id="pm21Tutup">\u2715 Tutup</button>'+
+    '</div>'+
+    '<div id="pm21Isi">'+
+      '<div id="pm21Banner"></div>'+
+      '<div class="pm21kartu"><div id="pm21Ctrl">'+
+        '<button type="button" class="pm21nav" id="pm21Prev" aria-label="Bulan sebelumnya">\u25c0</button>'+
+        '<span id="pm21LabelBulan">-</span>'+
+        '<button type="button" class="pm21nav" id="pm21Next" aria-label="Bulan berikutnya">\u25b6</button>'+
+        '<button type="button" id="pm21HariIni">Hari ini</button>'+
+        '<button type="button" class="pm21emas" id="pm21MuatUlang">\u21bb Muat ulang</button>'+
+        '<label for="pm21Lama">Lama tampil</label>'+
+        '<select id="pm21Lama"><option value="1">1 bulan</option><option value="2">2 bulan</option><option value="3">3 bulan</option><option value="6">6 bulan</option></select>'+
+        '<div id="pm21DlRow">'+
+          '<label>Unduh periode ini:</label>'+
+          '<button type="button" id="pm21DlGambar">\u2b07 Gambar (PNG)</button>'+
+          '<button type="button" class="pm21dlEmas" id="pm21DlPdf">\u2b07 PDF (Matriks + Rincian)</button>'+
+          '<button type="button" id="pm21DlXls">\u2b07 Excel (.xls)</button>'+
+          '<span id="pm21StatusNet"></span>'+
+        '</div>'+
+      '</div></div>'+
+      '<div id="pm21Grid"></div>'+
+    '</div>'+
+    '<div id="pm21Sheet"><div class="pm21shKepala"><div><b>-</b><small>-</small></div><button type="button" id="pm21shTutup">\u2715</button></div><div class="pm21shIsi"></div></div>';
+  document.body.appendChild(hal);
+  /* event */
+  document.getElementById('pm21Tutup').addEventListener('click',tutup21);
+  document.getElementById('pm21Prev').addEventListener('click',function(){
+    var m0=BULAN0.y*12+BULAN0.m-1; BULAN0={y:Math.floor(m0/12),m:((m0%12)+12)%12}; render21(false);
+  });
+  document.getElementById('pm21Next').addEventListener('click',function(){
+    var m0=BULAN0.y*12+BULAN0.m+1; BULAN0={y:Math.floor(m0/12),m:m0%12}; render21(false);
+  });
+  document.getElementById('pm21HariIni').addEventListener('click',function(){ BULAN0=bulanAwalDefault(); render21(false); });
+  document.getElementById('pm21MuatUlang').addEventListener('click',function(){
+    var b=this; b.textContent='\u21bb Memuat...';
+    muatData21(function(){ render21(false); b.textContent='\u21bb Muat ulang'; });
+  });
+  document.getElementById('pm21Lama').addEventListener('change',function(){ LAMA21=Number(this.value)||1; render21(false); });
+  document.getElementById('pm21DlGambar').addEventListener('click',function(){ tombolSibuk21(this,function(){ eksporGambar21(); }); });
+  document.getElementById('pm21DlXls').addEventListener('click',function(){ tombolSibuk21(this,function(){ eksporXls21(); }); });
+  document.getElementById('pm21DlPdf').addEventListener('click',function(){
+    var b=this; if(b.disabled) return;
+    var lama=b.textContent; b.disabled=true; b.textContent='\u23f3 Menyiapkan...';
+    eksporPDF21().then(function(){ b.disabled=false; b.textContent=lama; },function(){ b.disabled=false; b.textContent=lama; });
+  });
+  document.getElementById('pm21shTutup').addEventListener('click',tutupSheet21);
+  var sheetEl=document.getElementById('pm21Sheet');
+  sheetEl.addEventListener('click',function(ev){
+    var t=ev.target;
+    var tab=t.closest ? t.closest('.pm21shTab') : null;
+    if(tab){ bukaSheet21(sheetEl.getAttribute('data-tg'),sheetEl.getAttribute('data-sh'),tab.getAttribute('data-kat')); return; }
+    if(t.id==='pm21btnDaftar'){ tutup21(); return; }
+    if(t.id==='pm21btnTutupSh'){ tutupSheet21(); return; }
+  });
+  /* delegasi: kotak & chip (chip = rincian kategori itu saja, kotak = semua tugas shift) */
+  hal.addEventListener('click',function(ev){
+    var chip=ev.target.closest ? ev.target.closest('.pm21chip') : null;
+    var sel=ev.target.closest ? ev.target.closest('td.pm21sel') : null;
+    if(chip && sel){ bukaSheet21(sel.getAttribute('data-tg'),sel.getAttribute('data-sh'),chip.getAttribute('data-kat')); return; }
+    if(sel){ bukaSheet21(sel.getAttribute('data-tg'),sel.getAttribute('data-sh'),''); return; }
+  });
+  /* tombol rincian -> daftar jadwal PM (dibuat saat sheet dibuka) */
+  var isiSh=sheetEl.querySelector('.pm21shIsi');
+  var tombolW=document.createElement('div'); tombolW.id='pm21shTombol';
+  tombolW.innerHTML='<button type="button" id="pm21btnDaftar">Lihat Daftar Jadwal PM</button><button type="button" id="pm21btnTutupSh">Tutup</button>';
+  isiSh.parentNode.insertBefore(tombolW,isiSh.nextSibling);
+  return hal;
+}
+
+/* ================= tombol di halaman Jadwal PM (PM16) ================= */
+function pasangTombol21(){
+  var isi=document.getElementById('pm16Isi');
+  if(!isi) return false;
+  if(document.getElementById('pm21TombolKartu') && isi.contains(document.getElementById('pm21TombolKartu'))) return true;
+  var lama=document.getElementById('pm21TombolKartu'); if(lama && lama.parentNode) lama.parentNode.removeChild(lama);
+  var b=document.createElement('button');
+  b.type='button'; b.id='pm21TombolKartu';
+  b.innerHTML='<span class="pm21ico">\uD83D\uDDFA\uFE0F</span><span class="pm21teks" style="flex:1;min-width:0;text-align:left"><b>MATRIKS PM</b><span>Kalender kotak warna tiap tanggal &amp; shift (pagi/siang/malam) - legenda kategori di bawahnya</span></span><span class="pm21panah">\u25b6</span>';
+  b.addEventListener('click',buka21);
+  isi.insertBefore(b,isi.firstChild);
+  return true;
+}
+
+/* ================= data demo (mandiri / belum ada data) ================= */
+function demoRows21(){
+  var d=new Date(), y=d.getFullYear(), m=d.getMonth();
+  function iso(bulanOffset,hari){ var mm=m+bulanOffset, yy=y+Math.floor(mm/12); mm=mm%12; var jml=new Date(yy,mm+1,0).getDate(); var hh=Math.min(hari,jml); return yy+'-'+pad2(mm+1)+'-'+pad2(hh); }
+  return [
+    {kode:'GEN-001',peralatan:'Genset Utama 200 kVA',kategori:'Genset',lokasi:'Masterpiece',room:'Rooftop',tanggal:iso(0,1),shift:'Morning',status:'Terjadwal',petugas:'',catatan:'cek level oli + test on load',sic:'SIC Masterpiece',interval_hari:30,ulang_sampai:''},
+    {kode:'HVAC-011',peralatan:'AC Split 1 PK',kategori:'AC',lokasi:'Masterpiece',room:'Lt.5 - 501',tanggal:iso(0,1),shift:'Middle',status:'Terjadwal',petugas:'Mawan',catatan:'cleaning filter',sic:'SIC Masterpiece',interval_hari:30,ulang_sampai:''},
+    {kode:'HVAC-012',peralatan:'AC Cassette 2 PK',kategori:'AC',lokasi:'Dominion Lounge',room:'Lt.1 - Lobby',tanggal:iso(0,1),shift:'Middle',status:'Terjadwal',petugas:'Edo',catatan:'cleaning filter + cek freon',sic:'SIC Dominion Lounge',interval_hari:0,ulang_sampai:''},
+    {kode:'PLM-002',peralatan:'Pompa Air Bersih',kategori:'Plumbing',lokasi:'Dominion Lounge',room:'G - Mes',tanggal:iso(0,3),shift:'Morning',status:'Terjadwal',petugas:'Mawan',catatan:'',sic:'',interval_hari:7,ulang_sampai:''},
+    {kode:'ELK-003',peralatan:'Panel Listrik Utama',kategori:'Elektrikal',lokasi:'Masterpiece',room:'G - Panel',tanggal:iso(0,4),shift:'Night',status:'Terjadwal',petugas:'Edo',catatan:'cek ampere + thermal',sic:'SIC Masterpiece',interval_hari:0,ulang_sampai:''},
+    {kode:'EFN-004',peralatan:'Exhaust Fan Dapur',kategori:'Exhaust Fan',lokasi:'Masterpiece',room:'Lt.2 - Mezzanine',tanggal:iso(0,7),shift:'Morning',status:'Terjadwal',petugas:'Mawan',catatan:'bersihkan blade',sic:'SIC Masterpiece',interval_hari:30,ulang_sampai:''},
+    {kode:'EFN-005',peralatan:'Exhaust Fan Toilet',kategori:'Exhaust Fan',lokasi:'Dominion Lounge',room:'Lt.5 - Rooftop',tanggal:iso(0,7),shift:'Morning',status:'Terjadwal',petugas:'Edo',catatan:'',sic:'SIC Dominion Lounge',interval_hari:30,ulang_sampai:''},
+    {kode:'HVAC-011',peralatan:'AC Split 1 PK',kategori:'AC',lokasi:'Masterpiece',room:'Lt.5 - 501',tanggal:iso(0,7),shift:'Night',status:'Terjadwal',petugas:'Mawan',catatan:'',sic:'SIC Masterpiece',interval_hari:30,ulang_sampai:''},
+    {kode:'HVAC-012',peralatan:'AC Cassette 2 PK',kategori:'AC',lokasi:'Dominion Lounge',room:'Lt.1 - Lobby',tanggal:iso(0,7),shift:'Night',status:'Terjadwal',petugas:'Edo',catatan:'',sic:'SIC Dominion Lounge',interval_hari:0,ulang_sampai:''},
+    {kode:'HVAC-014',peralatan:'AC Standing Floor',kategori:'AC',lokasi:'Masterpiece',room:'Lt.3 - 301',tanggal:iso(0,7),shift:'Night',status:'Terjadwal',petugas:'Edo',catatan:'',sic:'SIC Masterpiece',interval_hari:0,ulang_sampai:''},
+    {kode:'GEN-001',peralatan:'Genset Utama 200 kVA',kategori:'Genset',lokasi:'Masterpiece',room:'Rooftop',tanggal:iso(0,7),shift:'Morning',status:'Terjadwal',petugas:'',catatan:'',sic:'',interval_hari:30,ulang_sampai:''},
+    {kode:'CHL-001',peralatan:'Chiller 30 TR',kategori:'Chiller',lokasi:'Masterpiece',room:'Rooftop',tanggal:iso(0,14),shift:'Morning',status:'Terjadwal',petugas:'Mawan',catatan:'backwash + cek tekanan',sic:'SIC Masterpiece',interval_hari:30,ulang_sampai:''},
+    {kode:'GEN-001',peralatan:'Genset Utama 200 kVA',kategori:'Genset',lokasi:'Masterpiece',room:'Rooftop',tanggal:iso(0,15),shift:'Morning',status:'Terjadwal',petugas:'',catatan:'',sic:'',interval_hari:30,ulang_sampai:''},
+    {kode:'HVAC-011',peralatan:'AC Split 1 PK',kategori:'AC',lokasi:'Masterpiece',room:'Lt.5 - 501',tanggal:iso(0,21),shift:'Morning',status:'Terjadwal',petugas:'Mawan',catatan:'',sic:'',interval_hari:30,ulang_sampai:''},
+    {kode:'PLM-002',peralatan:'Pompa Air Bersih',kategori:'Plumbing',lokasi:'Dominion Lounge',room:'G - Mes',tanggal:iso(0,22),shift:'Night',status:'Terjadwal',petugas:'Edo',catatan:'',sic:'',interval_hari:7,ulang_sampai:''},
+    {kode:'GEN-001',peralatan:'Genset Utama 200 kVA',kategori:'Genset',lokasi:'Masterpiece',room:'Rooftop',tanggal:iso(1,1),shift:'Morning',status:'Terjadwal',petugas:'',catatan:'',sic:'',interval_hari:30,ulang_sampai:''},
+    {kode:'HVAC-011',peralatan:'AC Split 1 PK',kategori:'AC',lokasi:'Masterpiece',room:'Lt.5 - 501',tanggal:iso(1,5),shift:'Middle',status:'Terjadwal',petugas:'Mawan',catatan:'',sic:'',interval_hari:30,ulang_sampai:''},
+    {kode:'CHL-001',peralatan:'Chiller 30 TR',kategori:'Chiller',lokasi:'Masterpiece',room:'Rooftop',tanggal:iso(1,12),shift:'Morning',status:'Terjadwal',petugas:'Mawan',catatan:'',sic:'',interval_hari:30,ulang_sampai:''}
+  ].map(baris21);
+}
+
+/* ================= mode mandiri (file dibuka langsung) ================= */
+function pasangMandiri21(){
+  if(document.getElementById('pm21Mandiri')) return;
+  var p=document.createElement('div'); p.id='pm21Mandiri'; p.className='pm21on';
+  p.innerHTML='<b>PM21 v2 \u2022 MATRIKS JADWAL PM</b>'+
+    '<p>File ini dibuka langsung (di luar index.html), jadi halaman Jadwal PM belum ada. Setelah blok ini ditempel di index.html, tombol emas <b>MATRIKS PM</b> otomatis muncul di halaman Jadwal PM, isinya otomatis dari jadwal PM yang sudah dibuat, dan ada tombol <b>Unduh Gambar / PDF / Excel</b>.</p>'+
+    '<button type="button" id="pm21btnDemo">Lihat Contoh Matriks (demo)</button>'+
+    '<button type="button" id="pm21btnMdTutup">Tutup</button>';
+  document.body.appendChild(p);
+  document.getElementById('pm21btnDemo').addEventListener('click',function(){
+    p.classList.remove('pm21on');
+    DATA21={rows:[],status:'awal',pesan:'',net:null,saat:'',demo:false};
+    buka21();
+  });
+  document.getElementById('pm21btnMdTutup').addEventListener('click',function(){ p.classList.remove('pm21on'); });
+}
+
+/* ================= boot ================= */
+var BOOT21=0;
+function boot21(){
+  if(BOOT21) return; BOOT21=1;
+  try{
+    if(!document.getElementById('pm21Css')){
+      var st=document.createElement('style'); st.id='pm21Css'; st.textContent=CSS21; document.head.appendChild(st);
+    }
+  }catch(e){}
+  function jalankan21(){
+    if(document.getElementById('pm16Isi')){
+      if(pasangTombol21()) MODE21='app';
+      return;
+    }
+    if(!window.__PM16_BUKA){
+      MODE21='mandiri';
+      if(!document.getElementById('pm21Mandiri')) pasangMandiri21();
+    }
+  }
+  setTimeout(jalankan21, CEPAT?250:1300);
+  setInterval(jalankan21, CEPAT?600:2000);
+  /* PENTING: jangan pakai nama __PM21_STATUS/__PM21_CEK - sudah dipakai alias PM20 v2.
+     API PM21 v2: __PM21_BUKA + __PM21_MSTATUS (matriks) */
+  try{ window.__PM21_MSTATUS=function(){ return {versi:window.__PM21_V2||window.__PM21_VERSI,mode:MODE21,status:DATA21.status,jumlah:DATA21.rows.length,net:DATA21.net,lama:LAMA21,bulan0:BULAN0,tombol:!!document.getElementById('pm21TombolKartu'),overlay:!!(HAL21&&HAL21.classList.contains('pm21on'))}; }; }catch(e){}
+}
+if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded',boot21); } else { boot21(); }
+window.__PM21_BUKA=function(){ buka21(); };
+})();
+</script>
+<!-- AKHIR PM21 v2 - MATRIKS JADWAL PM -->
 </body>
 </html>
