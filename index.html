@@ -34556,5 +34556,1809 @@ else{ boot24(); }
 
 </script>
 <!-- ============ AKHIR PM24 v1 ============ -->
+
+<!-- =====================================================================
+  PM25 v2 - JADWAL PM SINKRON PERALATAN TERDAFTAR + MATRIKS KALENDER
+  (Midpoint Square Building - permintaan Head Billy, 9 Nov 2026)
+  ---------------------------------------------------------------------
+  1. Peralatan terdaftar di menu Peralatan PM SELALU muncul di dropdown
+     Jadwal PM (Kategori -> Lokasi -> Peralatan), datanya selalu segar.
+  2. Jadwal tersimpan tanpa kendala ke Daftar Jadwal & OTOMATIS tampill
+     di Matriks Kalender PM (pengulangan dipecah per tanggal, maks 104).
+  3. BARU: tulisan kotak matriks kalender DITEBALKAN & diperbesar
+     (sebelumnya 9px) supaya jelas terbaca di HP.
+  4. Pencocokan toleran: "Lt. 7" = "Lt.7" = "lt 7" = "Lantai 7".
+  5. Server gagal -> jadwal aman di HP ini, terkirim otomatis nanti.
+  PASANG: hapus dulu blok PM25 v1 (bila terlanjur) & blok PM24 v2 (bila
+  ada), lalu tempel blok ini PALING BAWAH, tepat sebelum </body>.
+  Tanpa SQL. Cek console: __PM25_CEK() - segar paksa: __PM25_SEGAR()
+===================================================================== -->
+
+<script>
+(function(){
+'use strict';
+if(window.__PM25_VERSI==='v2'){ try{ console.log('[PM25] v2 sudah terpasang - lewati'); }catch(e){} return; }
+var PM25_V1_ADA=(window.__PM25_VERSI==='v1');
+if(PM25_V1_ADA){ try{ console.log('[PM25] v1 terdeteksi - v2 mode terbatas (tebal matriks saja); hapus blok PM25 v1 lalu muat ulang'); }catch(e){} }
+window.__PM25_VERSI='v2';
+var TAG='[PM25]';
+function log(){ try{ console.log.apply(console,[TAG].concat([].slice.call(arguments))); }catch(e){} }
+function teks(s){ return String(s==null?'':s).replace(/\s+/g,' ').trim(); }
+function escT(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escA(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function el25(id){ return document.getElementById(id); }
+function fmtTgl25(d){ try{ return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear(); }catch(e){ return ''; } }
+function keISO25(d){ try{ return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }catch(e){ return ''; } }
+function dariISO25(s){ try{ var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(teks(s)); if(!m) return null; var d=new Date(Number(m[1]),Number(m[2])-1,Number(m[3])); return isNaN(d.getTime())?null:d; }catch(e){ return null; } }
+function tambahHari25(d,n){ var x=new Date(d.getTime()); x.setDate(x.getDate()+n); return x; }
+function labelInterval25(n){ n=Number(n||0);
+  if(n===7) return 'Setiap 7 hari (mingguan)';
+  if(n===30) return 'Setiap 1 bulan (30 hari)';
+  if(n===60) return 'Setiap 2 bulan (60 hari)';
+  if(n===90) return 'Setiap 3 bulan (90 hari)';
+  if(n===120) return 'Setiap 4 bulan (120 hari)';
+  if(n===180) return 'Setiap 6 bulan (180 hari)';
+  return n>0? ('Setiap '+n+' hari') : 'Tidak diulang'; }
+function namaUser25(){ try{ var u=window.currentUser; return teks(u&&(u.nama||u.name||u.email||u.username))||'Head'; }catch(e){ return 'Head'; } }
+var RE_KODE25=/\b[A-Z]{2,6}-\d{1,4}\b/;
+
+/* ===================== KREDENSIAL (pm18net dulu - terbukti hidup) */
+var NET25={u:'',k:'',sumber:''}, PASANGAN25=[];
+function kandidatNet25(){
+  var out=[], ada={};
+  function taruh(u,k,sumber){
+    u=teks(u); k=teks(k);
+    if(!u || !k) return;
+    var m=String(u).match(/^(https?:\/\/[^\/]+)\/rest\/v1$/i); if(m) u=m[1]+'/rest/v1';
+    if(!/\/rest\/v1$/i.test(u)) return;
+    var kunci=u+'|'+k; if(ada[kunci]) return; ada[kunci]=1;
+    out.push({u:u,k:k,sumber:sumber});
+  }
+  try{ var r=JSON.parse(localStorage.getItem('pm18net')||'null'); if(r) taruh(r.u,r.k,'pm18net'); }catch(e){}
+  try{ var c=window.__PM20_CONF; if(c) taruh(c.u||c.url||c.base,c.k||c.key||c.apikey,'__PM20_CONF'); }catch(e){}
+  var urut=['pm19net','pm16net','pm15net','pm14net','pm13net','pm12net'];
+  for(var i=0;i<urut.length;i++){
+    try{ var r2=JSON.parse(localStorage.getItem(urut[i])||'null'); if(r2) taruh(r2.u,r2.k,urut[i]); }catch(e){}
+  }
+  return out;
+}
+function muatNet25(){
+  PASANGAN25=kandidatNet25();
+  if(NET25.u && NET25.k) return;
+  if(PASANGAN25.length){ NET25={u:PASANGAN25[0].u,k:PASANGAN25[0].k,sumber:PASANGAN25[0].sumber}; }
+}
+function sembuhkanNet25(){
+  /* tulis kredensial yang TERBUKA berhasil ke storage blok lama */
+  try{
+    if(!NET25.u || !NET25.k) return;
+    var isian=JSON.stringify({u:NET25.u,k:NET25.k});
+    var sama=function(key){ try{ var r=JSON.parse(localStorage.getItem(key)||'null'); return !!(r && r.u===NET25.u && r.k===NET25.k); }catch(e){ return false; } };
+    if(!sama('pm18net')) localStorage.setItem('pm18net',isian);
+    if(!sama('pm19net')) localStorage.setItem('pm19net',isian);
+    if(!sama('pm16net')) localStorage.setItem('pm16net',isian);
+  }catch(e){}
+}
+
+/* ===================== DATA PERALATAN (selalu segar) ===================== */
+var TBL_ALAT25=['preventive_equipments','peralatan_pm','preventive_equipment','equipments'];
+var DATA25=[], AMBIL25=0, JALAN25=false, TABEL25='', SUMBER25='';
+function normalAlat25(row){
+  if(!row || typeof row!=='object') return null;
+  var ambil=function(){ for(var i=0;i<arguments.length;i++){ var v=row[arguments[i]]; if(v!=null && teks(v)!=='') return teks(v); } return ''; };
+  var kode=ambil('kode','code','kode_alat','kode_peralatan','kode_equipment','equipment_code').toUpperCase();
+  var nama=ambil('equipment_name','nama_peralatan','nama_alat','nama','name','peralatan','equipment');
+  if(!kode && !nama) return null;
+  if(!kode){ var m=nama.match(RE_KODE25); if(m) kode=m[0].toUpperCase(); }
+  return {kode:kode, nama:nama||kode,
+    kategori:ambil('kategori','category','jenis','kategori_alat','grup'),
+    lokasi:ambil('lokasi','location','area','venue','gedung','building','tower'),
+    room:ambil('room','ruang','ruangan','no_room','room_no','no_ruangan'),
+    jumlah:ambil('jumlah','jumlah_alat','unit_no','qty','quantity','unit')};
+}
+function bacaCache25(){
+  try{
+    var r=JSON.parse(localStorage.getItem('pm25alat')||'null');
+    if(r && Array.isArray(r.alat) && r.alat.length){ DATA25=r.alat; TABEL25=r.tabel||''; }
+  }catch(e){}
+}
+function simpanCache25(){
+  try{ localStorage.setItem('pm25alat', JSON.stringify({t:Date.now(), tabel:TABEL25, alat:DATA25.slice(0,800)})); }catch(e){}
+}
+async function restCoba25(pasangan,tbl){
+  var op={method:'GET',headers:{apikey:pasangan.k,Authorization:'Bearer '+pasangan.k}};
+  var to=null;
+  if(typeof AbortController==='function'){
+    var ctl=new AbortController(); op.signal=ctl.signal;
+    to=setTimeout(function(){ try{ ctl.abort(); }catch(e){} },9000);
+  }
+  try{
+    var r=await window.fetch(pasangan.u+'/'+tbl+'?select=*&limit=800',op);
+    if(!r) return {status:0};
+    if(r.status===404) return {status:404};
+    if(!r.ok) return {status:r.status||1};
+    var d=await r.json();
+    return {status:200,data:Array.isArray(d)?d:[]};
+  }catch(e){ return {status:1}; }
+  finally{ if(to) clearTimeout(to); }
+}
+async function muatAlat25(paksa){
+  try{
+    if(JALAN25) return DATA25;
+    if(!paksa && DATA25.length && Date.now()-AMBIL25<20000) return DATA25;
+    muatNet25();
+    if(!PASANGAN25.length){ log('belum ada kredensial - buka menu lain dulu lalu kembali'); return DATA25; }
+    JALAN25=true;
+    for(var t=0;t<TBL_ALAT25.length;t++){
+      for(var p=0;p<PASANGAN25.length;p++){
+        var r=await restCoba25(PASANGAN25[p],TBL_ALAT25[t]);
+        if(r.status===200 && r.data.length){
+          var out=[], seen={};
+          for(var j=0;j<r.data.length;j++){
+            var a=normalAlat25(r.data[j]);
+            if(a){ var kunci=(a.kode||'')+'|'+(a.nama||''); if(!seen[kunci]){ seen[kunci]=1; out.push(a); } }
+          }
+          if(out.length){
+            var berubah=(out.length!==DATA25.length);
+            DATA25=out; AMBIL25=Date.now(); TABEL25=TBL_ALAT25[t];
+            NET25={u:PASANGAN25[p].u,k:PASANGAN25[p].k,sumber:PASANGAN25[p].sumber};
+            SUMBER25=PASANGAN25[p].sumber;
+            PASANGAN25=[PASANGAN25[p]].concat(PASANGAN25.slice(0,p).concat(PASANGAN25.slice(p+1))); /* yg berhasil di depan */
+            simpanCache25(); sembuhkanNet25();
+            log('daftar peralatan segar: '+out.length+' dr '+TABEL25+' ('+SUMBER25+')');
+            JALAN25=false;
+            jaga25();
+            alirKat25();   /* Bangun ulang bertingkat (pengaman sinyal: hanya yang berubah) + validasi ulang pilihan */
+            return DATA25;
+          }
+        }
+      }
+    }
+    log('ambil data gagal (server/koneksi) - pakai data terakhir, dicoba lagi otomatis');
+  }catch(e){ log('muatAlat25: '+(e&&e.message||e)); }
+  JALAN25=false;
+  return DATA25;
+}
+function nilaiAlat25(a){ return a.kode? (a.kode+' \u2014 '+a.nama) : a.nama; }
+function cariAlat25DariNilai(v){
+  v=teks(v); if(!v) return null;
+  var vl=v.toLowerCase();
+  for(var i=0;i<DATA25.length;i++){ if(teks(DATA25[i].nama).toLowerCase()===vl) return DATA25[i]; }
+  var m=v.match(RE_KODE25), mk=m?m[0].toUpperCase():'';
+  if(mk){ for(var j=0;j<DATA25.length;j++){ if(DATA25[j].kode===mk) return DATA25[j]; } }
+  var ix=v.indexOf(' \u2014 ');
+  if(ix>0){
+    var kd=teks(v.slice(0,ix)).toUpperCase();
+    for(var k=0;k<DATA25.length;k++){ if(DATA25[k].kode===kd) return DATA25[k]; }
+  }
+  for(var x=0;x<DATA25.length;x++){ if(DATA25[x].nama && vl.length>3 && DATA25[x].nama.toLowerCase().indexOf(vl)>=0) return DATA25[x]; }
+  return null;
+}
+
+/* ===================== PENCOCOKAN TOLERAN ===================== */
+var TANPA_KAT25='__pm25tanpakat__', TANPA_LOK25='__pm25tanpalok__', LAIN25='__pm25lain__';
+var LANTAI25=['Basement','Lt. 1','Lt. 2','Lt. 3','Lt. 5','Lt. 6','Lt. 7','Lt. 8','Lt. B-8','Lt. 1 & 8'];
+function normKat25(s){ return teks(s).toLowerCase().replace(/[\s.]+/g,''); }
+function normLok25(s){ return teks(s).toLowerCase().replace(/[\s.]+/g,''); }
+function ltDigit25(s){ var m=/^lt(\d+)$/.exec(normLok25(s)); return m?m[1]:''; }
+function cocokKat25(a){
+  if(K25.manual) return true;
+  if(!K25.v) return false;
+  if(K25.v===TANPA_KAT25) return !teks(a.kategori);
+  return normKat25(a.kategori)===normKat25(K25.v);
+}
+function cocokLok25(a){
+  if(!L25.v) return false;
+  if(L25.v===TANPA_LOK25) return !teks(a.lokasi);
+  if(normLok25(a.lokasi)===normLok25(L25.v)) return true;
+  var d1=ltDigit25(a.lokasi), d2=ltDigit25(L25.v);
+  return !!(d1 && d2 && d1===d2);
+}
+
+/* ===================== KASKADE PM25 (Kategori -> Lokasi -> Peralatan) */
+var K25={v:'',manual:false}, L25={v:''}, A25={v:'',obj:null};
+var SIG25={kat:'',lok:'',alat:''};
+function halTerbuka25(){ var h=el25('pm16Hal'); return !!(h && h.style.display!=='none' && h.isConnected); }
+function unikKat25(){
+  var ada={}, out=[], tanpa=false;
+  for(var i=0;i<DATA25.length;i++){
+    var k=teks(DATA25[i].kategori);
+    if(k){ if(!ada[normKat25(k)]){ ada[normKat25(k)]=1; out.push(k); } }
+    else tanpa=true;
+  }
+  out.sort(function(x,y){ return normKat25(x)<normKat25(y)?-1:1; });
+  return {senarai:out, tanpa:tanpa};
+}
+function unikLok25(){
+  var ada={}, out=[], tanpa=false, adaLantai={};
+  for(var l=0;l<LANTAI25.length;l++) adaLantai[normLok25(LANTAI25[l])]=1;
+  for(var i=0;i<DATA25.length;i++){
+    var a=DATA25[i];
+    if(!cocokKat25(a)) continue;
+    var l2=teks(a.lokasi);
+    if(l2){
+      var nl=normLok25(l2);
+      if(!adaLantai[nl] && !ada[nl]){ ada[nl]=1; out.push(l2); }
+    } else tanpa=true;
+  }
+  out.sort(function(x,y){ return normLok25(x)<normLok25(y)?-1:1; });
+  return {senarai:out, tanpa:tanpa};
+}
+function saringAlat25(){
+  var out=[];
+  for(var i=0;i<DATA25.length;i++){ var a=DATA25[i]; if(cocokKat25(a) && cocokLok25(a)) out.push(a); }
+  return out;
+}
+function saringAlatKategori25(){
+  var out=[];
+  for(var i=0;i<DATA25.length;i++){ var a=DATA25[i]; if(cocokKat25(a)) out.push(a); }
+  return out;
+}
+function urutkanAlat25(arr){
+  arr.sort(function(x,y){
+    var kx=x.kode||'\uFFFF', ky=y.kode||'\uFFFF';
+    if(kx!==ky) return kx<ky?-1:1;
+    return (x.nama||'').toLowerCase()<(y.nama||'').toLowerCase()?-1:1;
+  });
+  var ada={}, fin=[];
+  for(var i=0;i<arr.length;i++){ var v=nilaiAlat25(arr[i]); if(!ada[v]){ ada[v]=1; fin.push(arr[i]); } }
+  return fin;
+}
+function tulisNilai25(id,v){
+  try{
+    var n=el25(id); if(!n) return;
+    if(n.tagName==='SELECT'){
+      var ada=false;
+      for(var i=0;i<n.options.length;i++){ if(n.options[i].value===v){ ada=true; break; } }
+      if(!ada && v){ var o=document.createElement('option'); o.value=v; o.textContent=v; n.appendChild(o); }
+      n.value=v;
+    } else { n.value=v; }
+  }catch(e){}
+}
+function lokasiEfektif25(){
+  /* lokasi yg tersimpan: lokasi ASLI peralatan terpilih (fallback lantai
+     lain ikut pindah), kalau tidak ada baru pilihan dropdown */
+  try{
+    if(A25.obj && teks(A25.obj.lokasi)) return teks(A25.obj.lokasi);
+  }catch(e){}
+  return L25.v===TANPA_LOK25? '' : L25.v;
+}
+function sinkronKolom25(){
+  /* tulis nilai ke kolom asli PM16 (yg dipakai saat Simpan) + input mati PM19 */
+  try{
+    tulisNilai25('pm16Kategori', K25.manual? (teks(el25('pm25Kategori')&&el25('pm25Kategori').value)) : (K25.v===TANPA_KAT25?'':K25.v));
+    tulisNilai25('pm16Lokasi', lokasiEfektif25());
+    tulisNilai25('pm16Alat', A25.obj? teks(A25.obj.nama) : '');
+    tulisNilai25('pm19Kategori', el25('pm16Kategori')?el25('pm16Kategori').value:'');
+    tulisNilai25('pm19Lokasi', el25('pm16Lokasi')?el25('pm16Lokasi').value:'');
+    tulisNilai25('pm19Alat', A25.obj? nilaiAlat25(A25.obj):'');
+  }catch(e){}
+}
+function pastikanLabel25(dari,ke){
+  try{
+    var hal=el25('pm16Hal'); if(!hal) return;
+    var lb=hal.querySelector('label[for="'+dari+'"]');
+    if(lb) lb.setAttribute('for',ke);
+  }catch(e){}
+}
+function alirKat25(){
+  try{
+    var sel=el25('pm25Kategori');
+    if(!sel || sel.tagName!=='SELECT') return;   /* mode ketik manual: biarkan */
+    var K=unikKat25();
+    var sig=JSON.stringify(K);
+    if(sig!==SIG25.kat){
+      SIG25.kat=sig;
+      var h='<option value="">\u2014 Pilih kategori dulu \u2014</option>';
+      for(var i=0;i<K.senarai.length;i++) h+='<option value="'+escA(K.senarai[i])+'">'+escT(K.senarai[i])+'</option>';
+      if(K.tanpa) h+='<option value="'+TANPA_KAT25+'">\u2014 Tanpa kategori \u2014</option>';
+      h+='<option value="'+LAIN25+'">\u270D Ketik kategori lain\u2026</option>';
+      sel.innerHTML=h;
+    }
+    if(K25.v && K25.v!==LAIN25){
+      var ada=false;
+      for(var j=0;j<sel.options.length;j++){ if(sel.options[j].value===K25.v){ ada=true; break; } }
+      if(!ada){ K25.v=''; }
+    }
+    sel.value=K25.v||'';
+    var nyata=[];
+    for(var x=0;x<sel.options.length;x++){ var vv=sel.options[x].value; if(vv && vv.indexOf('__pm25')!==0) nyata.push(vv); }
+    if(nyata.length===1 && sel.value===''){ sel.value=nyata[0]; terapkanKat25(nyata[0]); return; }
+    alirLok25();
+  }catch(e){}
+}
+function alirLok25(){
+  try{
+    var sel=el25('pm25Lokasi'); if(!sel) return;
+    var alatSel=el25('pm25Alat');
+    var adaKat=K25.manual || !!(K25.v && K25.v!=='');
+    if(!adaKat){
+      sel.disabled=true;
+      if(sel.options.length!==1 || sel.options[0].textContent!=='\u2014 Pilih kategori dulu \u2014')
+        sel.innerHTML='<option value="">\u2014 Pilih kategori dulu \u2014</option>';
+      SIG25.lok='';
+      if(alatSel){
+        alatSel.disabled=true;
+        if(alatSel.options.length!==1 || alatSel.options[0].textContent!=='\u2014 Pilih kategori & lokasi dulu \u2014')
+          alatSel.innerHTML='<option value="">\u2014 Pilih kategori & lokasi dulu \u2014</option>';
+      }
+      SIG25.alat='';
+      return;
+    }
+    sel.disabled=false;
+    var L=unikLok25();
+    var sig=JSON.stringify(L);
+    if(sig!==SIG25.lok){
+      SIG25.lok=sig;
+      var h='<option value="">\u2014 Pilih lokasi \u2014</option>';
+      for(var i=0;i<LANTAI25.length;i++) h+='<option value="'+escA(LANTAI25[i])+'">'+escT(LANTAI25[i])+'</option>';
+      for(var j=0;j<L.senarai.length;j++) h+='<option value="'+escA(L.senarai[j])+'">'+escT(L.senarai[j])+'</option>';
+      if(L.tanpa) h+='<option value="'+TANPA_LOK25+'">\u2014 Tanpa lokasi \u2014</option>';
+      sel.innerHTML=h;
+    }
+    if(L25.v){
+      var ada=false;
+      for(var k=0;k<sel.options.length;k++){ if(sel.options[k].value===L25.v){ ada=true; break; } }
+      if(!ada){ L25.v=''; A25={v:'',obj:null}; }
+    }
+    sel.value=L25.v||'';
+    alirAlat25();
+  }catch(e){}
+}
+function alirAlat25(){
+  try{
+    var sel=el25('pm25Alat'); if(!sel) return;
+    var adaLok=!!(L25.v && L25.v!=='');
+    if(!adaLok){
+      sel.disabled=true;
+      var ph=K25.v||K25.manual? '\u2014 Pilih lokasi dulu \u2014' : '\u2014 Pilih kategori & lokasi dulu \u2014';
+      if(sel.options.length!==1 || sel.options[0].textContent!==ph)
+        sel.innerHTML='<option value="">'+escT(ph)+'</option>';
+      SIG25.alat='';
+      if(A25.v || A25.obj){ A25={v:'',obj:null}; sinkronKolom25(); }
+      return;
+    }
+    sel.disabled=false;
+    var A=urutkanAlat25(saringAlat25());
+    var cadangan=(A.length===0)? urutkanAlat25(saringAlatKategori25()) : [];
+    var sig=JSON.stringify([A,cadangan]);
+    if(sig!==SIG25.alat){
+      SIG25.alat=sig;
+      var katLabel=(K25.v && K25.v!==TANPA_KAT25)? K25.v : 'kategori ini';
+      var h;
+      if(A.length) h='<option value="">\u2014 Pilih peralatan terdaftar \u2014</option>';
+      else if(cadangan.length) h='<option value="">(tidak ada peralatan persis di lokasi ini \u2014 ini daftar '+escT(katLabel)+' di lokasi lain)</option>';
+      else h='<option value="">(belum ada peralatan utk kategori & lokasi ini)</option>';
+      for(var i=0;i<A.length;i++){ var v=nilaiAlat25(A[i]); h+='<option value="'+escA(v)+'">'+escT(v)+'</option>'; }
+      for(var j2=0;j2<cadangan.length;j2++){ var v2=nilaiAlat25(cadangan[j2]); h+='<option value="'+escA(v2)+'">'+escT(v2)+'</option>'; }
+      sel.innerHTML=h;
+    }
+    if(A25.v){
+      var ada=false;
+      for(var k=0;k<sel.options.length;k++){ if(sel.options[k].value===A25.v){ ada=true; break; } }
+      if(!ada){ A25={v:'',obj:null}; }
+    }
+    sel.value=A25.v||'';
+    var nyata=0;
+    for(var x=0;x<sel.options.length;x++){ var vx=sel.options[x].value; if(vx && vx.indexOf('__pm25')!==0) nyata++; }
+    if(nyata===1 && sel.value===''){ sel.value=sel.options[sel.options.length-1].value; terapkanAlat25(sel.value); return; }
+    sinkronKolom25();
+  }catch(e){}
+}
+function terapkanKat25(v){
+  try{
+    if(v===LAIN25){ jadiManualKat25(); return; }
+    K25.v=v; K25.manual=false;
+    L25={v:''}; A25={v:'',obj:null};
+    try{ el25('pm16Alat').value=''; el25('pm16Room').value=''; }catch(e0){}
+    alirLok25();
+    sinkronKolom25();
+  }catch(e){}
+}
+function terapkanLok25(v){
+  try{
+    L25.v=v; A25={v:'',obj:null};
+    try{ el25('pm16Alat').value=''; el25('pm16Room').value=''; }catch(e0){}
+    alirAlat25();
+    sinkronKolom25();
+  }catch(e){}
+}
+function terapkanAlat25(v){
+  try{
+    var a=cariAlat25DariNilai(v);
+    A25={v:teks(v),obj:a||null};
+    if(a){
+      if(!teks(el25('pm16Room').value) && a.room) el25('pm16Room').value=a.room;
+      /* fallback lantai lain: pilihan lokasi ikut pindah ke lantai asli
+         peralatan supaya yg terlihat = yg tersimpan */
+      if(L25.v!==TANPA_LOK25 && teks(a.lokasi) && normLok25(a.lokasi)!==normLok25(L25.v)){
+        L25.v=teks(a.lokasi);
+        var ls=el25('pm25Lokasi');
+        if(ls){ tulisNilai25('pm25Lokasi',L25.v); ls.value=L25.v; }
+        alirAlat25();
+      }
+    }
+    sinkronKolom25();
+  }catch(e){}
+}
+function teguhkan25(){
+  /* teguhkan tulisan kolom tersembunyi beberapa saat setelah pilihan -
+     melawan rebuild opsi PM16/PM19 yg kadang datang belakangan */
+  setTimeout(function(){ try{ jaga25(); }catch(e){} },60);
+  setTimeout(function(){ try{ jaga25(); }catch(e){} },420);
+}
+function saatKat25(){ var s=el25('pm25Kategori'); if(s){ terapkanKat25(s.value); teguhkan25(); } }
+function saatLok25(){ var s=el25('pm25Lokasi'); if(s){ terapkanLok25(s.value); teguhkan25(); } }
+function saatAlat25(){ var s=el25('pm25Alat'); if(s){ terapkanAlat25(s.value); teguhkan25(); } }
+function jadiManualKat25(){
+  try{
+    var sel=el25('pm25Kategori'); if(!sel) return;
+    var inp=document.createElement('input');
+    inp.id='pm25Kategori';
+    inp.setAttribute('list','pm16dlKat');
+    inp.setAttribute('placeholder','cth: AC, Elektrikal, Plumbing');
+    inp.setAttribute('autocomplete','off');
+    inp.setAttribute('data-pm25manual','1');
+    K25.manual=true; K25.v='__manual__'; L25={v:''}; A25={v:'',obj:null};
+    sel.parentNode.replaceChild(inp,sel);
+    inp.addEventListener('input',function(){ try{ tulisNilai25('pm16Kategori',teks(inp.value)); tulisNilai25('pm19Kategori',teks(inp.value)); }catch(e){} });
+    alirLok25();
+    sinkronKolom25();
+    setTimeout(function(){ try{ inp.focus(); }catch(e){} },60);
+    log('kategori manual diaktifkan');
+  }catch(e){}
+}
+function resetKaskade25(){
+  try{
+    K25={v:'',manual:false}; L25={v:''}; A25={v:'',obj:null};
+    SIG25.lok=''; SIG25.alat='';
+    var k=el25('pm25Kategori');
+    if(k && k.tagName==='INPUT'){
+      var sel=document.createElement('select');
+      sel.id='pm25Kategori'; sel.setAttribute('aria-label','Kategori');
+      k.parentNode.replaceChild(sel,k);
+      sel.addEventListener('change',saatKat25);
+    }
+    SIG25.kat='';
+    alirKat25(); alirLok25(); alirAlat25();
+    sinkronKolom25();
+  }catch(e){}
+}
+
+/* ===================== PEMASANGAN UI ===================== */
+function matikanSelect25(id){
+  var n=el25(id);
+  if(!n) return;
+  if(n.tagName==='SELECT'){
+    var inp=document.createElement('input');
+    inp.id=id; inp.type='text';
+    inp.setAttribute('data-pm25mati','1');
+    inp.setAttribute('aria-hidden','true');
+    inp.tabIndex=-1;
+    inp.style.display='none';
+    n.parentNode.replaceChild(inp,n);
+  } else if(n.tagName==='INPUT'){
+    if(!n.getAttribute('data-pm25mati')) n.setAttribute('data-pm25mati','1');
+    if(n.style.display!=='none') n.style.display='none';
+    n.tabIndex=-1;
+  }
+}
+function pasangCss25(){
+  try{
+    if(el25('pm25Css') || !document.head) return;
+    var st=document.createElement('style');
+    st.id='pm25Css';
+    st.textContent='#pm16Hal select:disabled{opacity:.55;background:#f1f5f9;color:#64748b}'+
+      '#pm16Hal input[data-pm25mati]{display:none!important}'+
+      '#pm25Toast{position:fixed;left:12px;right:12px;bottom:18px;z-index:2147483400;'+
+      'background:linear-gradient(135deg,#0f172a,#1e293b);color:#f5c518;border:1px solid #d4af37;'+
+      'border-radius:14px;padding:11px 14px;font:600 12.5px/1.45 Arial,Helvetica,sans-serif;'+
+      'box-shadow:0 8px 24px rgba(15,23,42,.35);opacity:0;transform:translateY(8px);'+
+      'transition:opacity .25s,transform .25s;pointer-events:none}';
+    document.head.appendChild(st);
+  }catch(e){}
+}
+function pasangKaskade25(){
+  try{
+    var hal=el25('pm16Hal');
+    if(!hal || !hal.isConnected) return false;
+    var a16=el25('pm16Alat'), k16=el25('pm16Kategori'), l16=el25('pm16Lokasi');
+    if(!a16 || !k16 || !l16) return false;
+    if(!DATA25.length) return false;
+    /* kolom asli PM16 disembunyikan (nilai tetap ditulis diam-diam) */
+    if(a16.style.display!=='none') a16.style.display='none';
+    if(k16.style.display!=='none') k16.style.display='none';
+    if(l16.style.display!=='none') l16.style.display='none';
+    /* dropdown bayangan PM19 dimatikan supaya tidak saling menimpa */
+    matikanSelect25('pm19Kategori');
+    matikanSelect25('pm19Lokasi');
+    matikanSelect25('pm19Alat');
+    /* wadah peralatan (milik PM19 dulu - dipakai ulang) */
+    var wadah=el25('pm19WadahAlat');
+    if(!wadah || !wadah.isConnected){
+      wadah=document.createElement('div');
+      wadah.id='pm19WadahAlat';
+      wadah.innerHTML='<label class="pm16lab" for="pm25Alat">Peralatan terdaftar *</label>';
+      var barisLok=l16.closest?(l16.closest('.pm16baris2')||l16.parentNode):l16.parentNode;
+      barisLok.parentNode.insertBefore(wadah,barisLok.nextSibling);
+    }
+    /* select PM25: kategori */
+    var k25=el25('pm25Kategori');
+    if(!k25 || !k25.isConnected){
+      k25=document.createElement('select');
+      k25.id='pm25Kategori'; k25.setAttribute('aria-label','Kategori');
+      var jangkarK=el25('pm19Kategori')||k16;
+      jangkarK.parentNode.insertBefore(k25,jangkarK.nextSibling);
+      k25.addEventListener('change',saatKat25);
+    }
+    /* select PM25: lokasi (data-pm22lok supaya PM22 tidak menimpa) */
+    var l25=el25('pm25Lokasi');
+    if(!l25 || !l25.isConnected){
+      l25=document.createElement('select');
+      l25.id='pm25Lokasi'; l25.setAttribute('aria-label','Lokasi');
+      l25.setAttribute('data-pm22lok','1');
+      var jangkarL=el25('pm19Lokasi')||l16;
+      jangkarL.parentNode.insertBefore(l25,jangkarL.nextSibling);
+      l25.addEventListener('change',saatLok25);
+    }
+    /* select PM25: peralatan */
+    var a25=el25('pm25Alat');
+    if(!a25 || !a25.isConnected){
+      a25=document.createElement('select');
+      a25.id='pm25Alat'; a25.setAttribute('aria-label','Peralatan terdaftar');
+      wadah.appendChild(a25);
+      a25.addEventListener('change',saatAlat25);
+    }
+    pastikanLabel25('pm16Kategori','pm25Kategori');
+    pastikanLabel25('pm16Lokasi','pm25Lokasi');
+    try{
+      var lbA=wadah.querySelector('label');
+      if(lbA) lbA.setAttribute('for','pm25Alat');
+    }catch(e0){}
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ===================== JAGA-JAGA (sweep) ===================== */
+var NOTIF_BERSIH25=0;
+function bersihNotif25(){
+  try{
+    var semua=document.querySelectorAll('[data-pm22]');
+    for(var i=0;i<semua.length;i++){ try{ semua[i].parentNode.removeChild(semua[i]); NOTIF_BERSIH25++; }catch(e){} }
+    var divs=document.querySelectorAll('body > div');
+    for(var j=0;j<divs.length;j++){
+      var d=divs[j];
+      if(d.id==='pm25Toast' || d.getAttribute('data-pm25') || d.id==='pm16Hal') continue;
+      if(d.style && d.style.position==='fixed'){
+        var t=teks(d.textContent);
+        if(t && t.length<=60 && /aktif/i.test(t) && /^PM\s?\d/i.test(t)){
+          try{ d.parentNode.removeChild(d); NOTIF_BERSIH25++; }catch(e){}
+        }
+      }
+    }
+  }catch(e){}
+}
+var OBS25_T=0;
+function jaga25(){
+  try{
+    try{ pasangCssMatriks25(); }catch(eC25){}
+    if(!el25('pm16Hal')) return;
+    var berubah=pasangKaskade25();
+    pastikanLabel25('pm16Kategori','pm25Kategori');
+    pastikanLabel25('pm16Lokasi','pm25Lokasi');
+    /* kolom asli tetap tersembunyi; nilai terpilih tetap tertulis */
+    try{
+      var a16=el25('pm16Alat');
+      if(a16){
+        if(a16.style.display!=='none') a16.style.display='none';
+        var namaA=A25.obj? teks(A25.obj.nama):'';
+        if(namaA && a16.value!==namaA) tulisNilai25('pm16Alat',namaA);
+      }
+      var k16=el25('pm16Kategori');
+      if(k16){
+        if(k16.style.display!=='none') k16.style.display='none';
+        var katA=K25.manual? teks(el25('pm25Kategori')&&el25('pm25Kategori').value) : (K25.v===TANPA_KAT25?'':K25.v);
+        if(katA && k16.value!==katA) tulisNilai25('pm16Kategori',katA);
+      }
+      var l16=el25('pm16Lokasi');
+      if(l16){
+        if(l16.style.display!=='none') l16.style.display='none';
+        var lokA=lokasiEfektif25();
+        if(lokA && l16.value!==lokA) tulisNilai25('pm16Lokasi',lokA);
+      }
+    }catch(e0){}
+    /* PM16 sukses simpan / Kosongkan -> semua kolom kosong -> kaskade direset */
+    try{
+      var a2=el25('pm16Alat'), k2=el25('pm16Kategori'), l2=el25('pm16Lokasi');
+      var kosong= a2 && !teks(a2.value) && k2 && !teks(k2.value) && l2 && !teks(l2.value);
+      var adaPilihan= K25.v || K25.manual || L25.v || A25.v;
+      if(kosong && adaPilihan) resetKaskade25();
+      else if(berubah){ alirKat25(); }
+    }catch(e1){}
+  }catch(e){}
+}
+function jadwalkan25(){
+  try{
+    var kini=Date.now();
+    if(kini-OBS25_T<140) return;
+    OBS25_T=kini;
+    jaga25();
+  }catch(e){}
+}
+
+/* ===================== TOAST PM25 ===================== */
+var TOAST25=null;
+function toast25(pesan){
+  try{
+    if(TOAST25 && TOAST25.parentNode){ try{ TOAST25.parentNode.removeChild(TOAST25); }catch(e){} }
+    var d=document.createElement('div');
+    d.id='pm25Toast';
+    d.setAttribute('data-pm25','1');
+    d.textContent=pesan;
+    document.body.appendChild(d);
+    TOAST25=d;
+    setTimeout(function(){ try{ if(TOAST25===d) d.style.opacity='1'; d.style.transform='translateY(0)'; }catch(e){} },60);
+    setTimeout(function(){
+      try{
+        if(d && d.parentNode){ d.style.opacity='0'; d.style.transform='translateY(8px)'; }
+        setTimeout(function(){ try{ if(d && d.parentNode) d.parentNode.removeChild(d); }catch(e){} if(TOAST25===d) TOAST25=null; },300);
+      }catch(e){}
+    },4200);
+  }catch(e){}
+}
+
+/* ===================== SIMPAN JADWAL (milik PM25) =====================
+   PM16 memanggil fetch lewat referensi lama (diambil sebelum blok ini
+   terpasang) sehingga POST-nya tidak bisa diperbaiki dari luar; dan
+   pencocok nama PM16 selalu mengambil baris pertama untuk nama yang
+   sama (16 AC "AC Split 1 PK" akan tercatat kode sama). Karena itu
+   PM25 yang menyimpan: kode PENUH dari data, nama bersih, lokasi/room/
+   kategori persis pilihan. Kolom baru gagal (400) -> kolom lama.
+   Server gagal -> disimpan di HP ini (pm16lokal) & terkirim nanti. */
+function nilaiShift25(){
+  try{
+    var on=document.querySelector('#pm16ShiftBox button.pm16on');
+    return (on && on.getAttribute('data-v'))||'Morning';
+  }catch(e){ return 'Morning'; }
+}
+function barisForm25(tgl,sampai,int25,a){
+  var vAlat=teks(el25('pm16Alat') && el25('pm16Alat').value);
+  return {
+    kode: a? teks(a.kode) : (function(){ var m=vAlat.match(RE_KODE25); return m?m[0].toUpperCase():''; })(),
+    peralatan: a? teks(a.nama) : vAlat,
+    lokasi: teks(el25('pm16Lokasi') && el25('pm16Lokasi').value),
+    room: teks(el25('pm16Room') && el25('pm16Room').value),
+    kategori: teks(el25('pm16Kategori') && el25('pm16Kategori').value),
+    sic: teks(el25('pm16Sic') && el25('pm16Sic').value),
+    tanggal: tgl,
+    shift: nilaiShift25(),
+    petugas: teks(el25('pm16Petugas') && el25('pm16Petugas').value),
+    catatan: teks(el25('pm16Catatan') && el25('pm16Catatan').value),
+    status:'Terjadwal',
+    dibuat_oleh: namaUser25(),
+    interval_hari: int25||0,
+    ulang_sampai: sampai||''
+  };
+}
+function barisServer25(x){
+  return {kode:x.kode||'',peralatan:x.peralatan||'',lokasi:x.lokasi||'',room:x.room||'',
+    kategori:x.kategori||'',sic:x.sic||'',tanggal:x.tanggal,shift:x.shift||'Morning',
+    petugas:x.petugas||'',catatan:x.catatan||'',status:x.status||'Terjadwal',dibuat_oleh:x.dibuat_oleh||'',
+    interval_hari:Number(x.interval_hari||0),ulang_sampai:(x.ulang_sampai||null)};
+}
+function barisServerLama25(x){
+  return {kode:x.kode||'',peralatan:x.peralatan||'',lokasi:x.lokasi||'',room:x.room||'',
+    tanggal:x.tanggal,shift:x.shift||'Morning',petugas:x.petugas||'',catatan:x.catatan||'',
+    status:x.status||'Terjadwal',dibuat_oleh:x.dibuat_oleh||''};
+}
+function bacaLokal25(){
+  try{ var r=JSON.parse(localStorage.getItem('pm16lokal')||'[]'); return Array.isArray(r)?r:[]; }catch(e){ return []; }
+}
+function simpanLokal25(arr){
+  try{
+    if(arr.length>400) arr=arr.slice(-400);
+    localStorage.setItem('pm16lokal',JSON.stringify(arr));
+  }catch(e){}
+}
+async function rest25(met,path,body){
+  try{
+    if(!NET25.u || !NET25.k){ muatNet25(); }
+    if(!NET25.u || !NET25.k) return {ok:false,status:0};
+    var op={method:met,headers:{apikey:NET25.k,Authorization:'Bearer '+NET25.k,'Content-Type':'application/json'}};
+    if(body!=null) op.body=JSON.stringify(body);
+    var to=null;
+    if(typeof AbortController==='function'){
+      var ctl=new AbortController(); op.signal=ctl.signal;
+      to=setTimeout(function(){ try{ ctl.abort(); }catch(e){} },10000);
+    }
+    try{
+      var r=await window.fetch(NET25.u+'/'+path,op);
+      return {ok:!!(r && r.ok),status:r?r.status:0};
+    } finally { if(to) clearTimeout(to); }
+  }catch(e){ return {ok:false,status:1}; }
+}
+function resync25(){
+  try{
+    var d=el25('pm16Dari'), s=el25('pm16Sampai');
+    var sd=d?d.value:'', ss=s?s.value:'';
+    var menu=document.querySelector('[data-pm16menu]');
+    if(menu && menu.isConnected){ menu.click(); }   /* bukaHal16 -> PM16 memuat ulang data sendiri */
+    setTimeout(function(){
+      try{
+        if(d){ d.value=sd; try{ d.dispatchEvent(new Event('change')); }catch(e1){} }
+        if(s){ s.value=ss; try{ s.dispatchEvent(new Event('change')); }catch(e2){} }
+      }catch(e){}
+    },1200);
+  }catch(e){}
+}
+var SIBAK25=false;
+async function simpanBaru25(){
+  if(SIBAK25) return;
+  try{
+    var a=A25.obj || cariAlat25DariNilai(el25('pm16Alat') && el25('pm16Alat').value);
+    var vAlat=teks(el25('pm16Alat') && el25('pm16Alat').value);
+    var tgl=teks(el25('pm16Tgl') && el25('pm16Tgl').value);
+    if(!vAlat && !a){ toast25('PM25: pilih dulu peralatan terdaftarnya'); return; }
+    if(!tgl){ toast25('PM25: isi dulu tanggal timesheet'); return; }
+    var d=dariISO25(tgl);
+    if(!d){ toast25('PM25: tanggal timesheet tidak valid'); return; }
+    SIBAK25=true;
+    var c=document.querySelector('input[name="pm16int"]:checked');
+    var int25=c?(parseInt(c.value,10)||0):0;
+    var sampai=teks(el25('pm16UlangiSampai') && el25('pm16UlangiSampai').value);
+    var ds=null;
+    if(int25>0){
+      ds=dariISO25(sampai);
+      if(!ds){ ds=tambahHari25(d,364); sampai=keISO25(ds); try{ el25('pm16UlangiSampai').value=sampai; }catch(e0){} }
+      if(ds<d){ SIBAK25=false; toast25('PM25: tanggal "Ulangi sampai" harus sama/lebih besar dari tanggal timesheet'); return; }
+    } else { sampai=''; ds=null; }
+    var baris=[barisForm25(tgl,sampai,int25,a)];
+    if(int25>0){
+      for(var k=1;k<=400;k++){
+        var nxt=tambahHari25(d,k*int25);
+        if(nxt>ds) break;
+        if(baris.length>=104){ toast25('PM25: maksimal 104 jadwal per pengulangan - sisanya dipotong'); break; }
+        baris.push(barisForm25(keISO25(nxt),sampai,int25,a));
+      }
+    }
+    var n=baris.length;
+    try{ var bb=el25('pm16Bersih'); if(bb) bb.click(); }catch(e1){}   /* nilai sudah tertangkap -> form dikosongkan */
+    resetKaskade25();                                                 /* kaskade PM25 ikut kosong seketika */
+    var keLokal=function(){
+      var lok=bacaLokal25();
+      for(var i=0;i<baris.length;i++){ baris[i]._t=Date.now()+i; lok.push(baris[i]); }
+      simpanLokal25(lok);
+    };
+    var terkirim=false, catatan='';
+    var kirim=baris.map(barisServer25);
+    var h=await rest25('POST','pm_jadwal',kirim);
+    if(h.ok || h.status===201){ terkirim=true; }
+    else if(h.status===400){
+      var h2=await rest25('POST','pm_jadwal',baris.map(barisServerLama25));
+      if(h2.ok || h2.status===201){ terkirim=true; catatan=' (kolom Kategori/SIC belum ada - jalankan SQL PM16)'; }
+    }
+    if(terkirim){
+      toast25('\u2705 '+(n>1? n+' jadwal':'Jadwal')+' tersimpan'+(int25>0? ' ('+labelInterval25(int25).toLowerCase()+')':'')+catatan);
+    } else {
+      keLokal();
+      toast25((n>1? n+' jadwal':'Jadwal')+' tersimpan di HP ini, otomatis dikirim begitu server bisa');
+    }
+    SIBAK25=false;
+    try{ segarkanMatriks25(); }catch(eS25){}
+    resync25();
+  }catch(e){ SIBAK25=false; toast25('PM25: gagal simpan - '+String(e&&e.message||e)); }
+}
+
+/* ===================== KLIK: SIMPAN PM25 + SEMPAK SIMPAN PM18 ===================== */
+var PM18_TUNGGU25=false;
+function pasangKlik25(){
+  try{
+    document.addEventListener('click',function(e){
+      try{
+        var t=e.target;
+        if(!t || !t.closest) return;
+        if(t.closest('#pm16Simpan')){
+          e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+          simpanBaru25();
+          return;
+        }
+        if(t.closest('#pm18fA_Simpan') && !PM18_TUNGGU25){
+          /* simpan di Peralatan PM -> data kaskade langsung disegarkan */
+          PM18_TUNGGU25=true;
+          var n=0;
+          var poll=setInterval(function(){
+            n++;
+            var sheet=el25('pm18SheetAlat');
+            var tutup=!sheet || !sheet.isConnected || sheet.style.display==='none' ||
+                      (sheet.classList && !sheet.classList.contains('pm18buka'));
+            if((tutup && n>2) || n>32){
+              clearInterval(poll); PM18_TUNGGU25=false;
+              muatAlat25(true);
+            }
+          },250);
+        }
+      }catch(e2){}
+    },true);
+  }catch(e){}
+}
+
+/* ===================== MATRIKS KALENDER: TEKS TEBAL & JELAS =====================
+   Keluhan Head: tulisan di kotak matriks kalender kecil sekali (9px &
+   7.5px) sampai susah dibaca di HP. PM25 v2 menebalkan + membesarkannya.
+   Selektor diberi awalan "body " supaya PASTI menang dari CSS PM21. */
+function pasangCssMatriks25(){
+  try{
+    if(el25('pm25CssMatriks') || !document.head) return false;
+    var st=document.createElement('style');
+    st.id='pm25CssMatriks';
+    st.textContent=
+      'body .pm21tbl thead th{font-size:11px}'+
+      'body .pm21tbl thead th b{font-size:12.5px}'+
+      'body .pm21tbl thead th small{font-size:9.5px}'+
+      'body .pm21tbl td.pm21lab b{font-size:12.5px}'+
+      'body .pm21tbl td.pm21lab small{font-size:10px}'+
+      'body .pm21tbl td.pm21sel{height:64px}'+
+      'body .pm21chip{font-size:11.5px;letter-spacing:.3px;line-height:1.12}'+
+      'body .pm21chip small{font-size:9.5px;font-weight:bold;opacity:1;max-width:58px}'+
+      'body .pm21lebih{font-size:10px;min-width:19px;height:19px}';
+    document.head.appendChild(st);
+    return true;
+  }catch(e){ return false; }
+}
+function segarkanMatriks25(){
+  /* kalau matriks kebetulan sedang terbuka, muat ulang datanya seketika
+     supaya jadwal yg baru disimpan langsung terlihat */
+  try{
+    var s=window.__PM21_MSTATUS? window.__PM21_MSTATUS():null;
+    if(s && s.overlay){
+      var b=el25('pm21MuatUlang');
+      if(b){ b.click(); return true; }
+    }
+  }catch(e){}
+  return false;
+}
+
+/* ===================== BOOT + DIAGNOSTA ===================== */
+function boot25(){
+  try{ pasangCssMatriks25(); }catch(eM0){}
+  if(PM25_V1_ADA){
+    try{ toast25('PM25 v2: blok PM25 v1 masih ada - hapus blok v1, sisakan v2 saja, lalu muat ulang'); }catch(eM1){}
+    log('mode terbatas (v1 masih ada): hanya tebal matriks yg aktif');
+    return;
+  }
+  try{ bacaCache25(); }catch(e0){}
+  try{ pasangCss25(); }catch(e1){}
+  try{ pasangKlik25(); }catch(e2){}
+  try{ jaga25(); }catch(e3){}
+  try{ muatAlat25(true); }catch(e4){}
+  try{
+    if(typeof MutationObserver==='function'){
+      var mo=new MutationObserver(jadwalkan25);
+      mo.observe(document.documentElement,{childList:true,subtree:true});
+    }
+  }catch(e5){}
+  setInterval(function(){ try{ jaga25(); }catch(e6){} },1000);
+  setInterval(function(){ try{ bersihNotif25(); }catch(e7){} },1500);
+  setInterval(function(){
+    try{
+      var buka=halTerbuka25();
+      var umur=Date.now()-AMBIL25;
+      if(!JALAN25 && DATA25.length && umur>(buka?20000:120000)) muatAlat25();
+      if(!JALAN25 && !DATA25.length && buka && PASANGAN25.length) muatAlat25(true);
+    }catch(e8){}
+  },4000);
+  log('v2 aktif - jadwal sinkron peralatan terdaftar + matriks kalender otomatis + teks matriks tebal; cek __PM25_CEK()');
+}
+if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded',boot25); }
+else{ boot25(); }
+
+window.__PM25_CEK=function(){
+  var tag=function(id){ var n=el25(id); return n? n.tagName:'tidak ada'; };
+  var mati=function(id){ var n=el25(id); return n? (n.tagName+(n.getAttribute('data-pm25mati')?'(mati)':'(HIDUP!)')):'tidak ada'; };
+  var sembunyi=function(id){ var n=el25(id); return n? (n.style.display==='none'?'tersembunyi':'TERLIHAT!'):'tidak ada'; };
+  return {
+    versi:window.__PM25_VERSI||'?',
+    matriks:(function(){ try{ var s=window.__PM21_MSTATUS? window.__PM21_MSTATUS():null; return {teksTebal:!!el25('pm25CssMatriks'), versi:s?(s.versi||'-'):'-', status:s?s.status:'-', tugas:(s&&typeof s.jumlah==='number')?s.jumlah:-1}; }catch(e){ return {teksTebal:!!el25('pm25CssMatriks')}; } })(),
+    sumberNet:SUMBER25||NET25.sumber||'-',
+    server:NET25.u||'-',
+    tabel:TABEL25||'-',
+    alat:DATA25.length,
+    umurDetik:AMBIL25? Math.round((Date.now()-AMBIL25)/1000):-1,
+    kaskade:{kategori:tag('pm25Kategori'),lokasi:tag('pm25Lokasi'),alat:tag('pm25Alat')},
+    bayanganPM19:{kategori:mati('pm19Kategori'),lokasi:mati('pm19Lokasi'),alat:mati('pm19Alat')},
+    kolomAsli:{kategori:sembunyi('pm16Kategori'),lokasi:sembunyi('pm16Lokasi'),alat:sembunyi('pm16Alat')},
+    pilihan:{kategori:(K25.manual?'(manual) ':'')+(K25.v||''),lokasi:L25.v||'',
+      peralatan:A25.obj? (A25.obj.kode+' \u2014 '+A25.obj.nama):(A25.v||'')},
+    pemulihanKredensial:(function(){
+      try{ var r19=JSON.parse(localStorage.getItem('pm19net')||'null'); return !!(r19 && r19.u===NET25.u && r19.k===NET25.k && !!NET25.u); }catch(e){ return false; }
+    })(),
+    notifLamaDibersihkan:NOTIF_BERSIH25,
+    pm23:window.__PM23_VERSI||'-',
+    pm24v1:window.__PM24_VERSI||'-',
+    pm24v2Terpasang:(function(){ try{ return String(window.__PM24_VERSI||'')==='v2'; }catch(e){ return false; } })()
+  };
+};
+window.__PM25_SEGAR=function(){ return muatAlat25(true); };
+})();
+
+</script>
+<!-- ============ AKHIR PM25 v2 ============ -->
+<!-- ==================================================================
+  PM28 — PANEL SERVER v4   (pengganti PM27 v3 yang error 401)
+  Midpoint Square Building — Preventive Maintenance
+
+  PERBAIKAN UTAMA:
+  Setiap permintaan ke Supabase sekarang SELALU membawa kunci API
+  (header "apikey" + juga parameter URL "?apikey="), jadi server tidak
+  lagi menjawab 401 "No API key found in request".
+  Koneksi (URL + tabel + kunci) otomatis DISALIN dari Matriks PM21 yang
+  sudah bekerja, jadi tidak perlu mengetik apa pun.
+
+  FITUR:
+  1. Daftar tugas 100% dari SERVER Supabase (bukan localStorage HP).
+  2. Keterangan warna + jumlah per kategori BISA DIKLIK -> buka daftar
+     tugas kategori itu, tiap baris ada tombol Edit & Hapus.
+  3. Riwayat Peralatan (peralatan + tanggal), tiap baris Edit & Hapus.
+  4. Tombol MERAH "HAPUS SEMUA TUGAS" (global & per kategori) dengan
+     konfirmasi ketik HAPUS. Setelah sukses: pm16lokal dibersihkan,
+     matriks + legenda + daftar otomatis di-refresh.
+
+  CARA PASANG:
+  1. Buka index.html -> HAPUS seluruh blok lama PM27 v3
+     (dari komentar pembuka blok itu sampai tag penutup script
+     milik blok itu).
+  2. Paste SELURUH isi file ini tepat sebelum </body>.
+  3. Simpan -> buka halaman -> klik tombol Refresh/Segar sekali.
+  4. Panel PM28 muncul di bawah matriks. Kalau bermasalah,
+     jalankan pemeriksaan: javascript:__PM28_CEK()
+=================================================================== -->
+<script>
+(function(){
+'use strict';
+if(window.__PM28_AKTIF){console.warn('[PM28] Blok PM28 terpasang dua kali — hapus salah satunya.');return;}
+window.__PM28_AKTIF=true;
+
+var VERSI='PM28 v4';
+var DATA=[];
+var FILTER='*', CARI='', DAFTAR_TAMPIL=150, EXPAND_TAMPIL=100;
+var KAT_TERBUKA=null, RIWAYAT_BUKA={};
+var SEDANG_MUAT=false, TABEL_TERKUNCI=false;
+var KOLOM={id:null,tanggal:null,shift:null,kategori:null,peralatan:null,uraian:null,lokasi:null,status:null};
+var CURINGAN={url:null,kunci:null,tabel:null,sumber:null};
+var KANDIDAT_TABEL=['matriks','jadwal','jadwal_pm','pm_jadwal','jadwal_maintenance','jadwalpm','preventive','preventif','pm_schedule','schedule','schedules','tugas','tasks','pm_tugas'];
+
+/* ================= 1. UTIL ================= */
+function $(id){return document.getElementById(id);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function uri(v){return encodeURIComponent(String(v==null?'':v));}
+function potong(s,n){s=String(s==null?'':s);n=n||160;return s.length>n?s.slice(0,n)+'…':s;}
+function status(t){var el=$('pm28-status');if(el)el.textContent=t;try{console.log('[PM28]',t);}catch(e){}}
+function toast(t){
+  var el=document.createElement('div');
+  el.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#0f172a;color:#fff;padding:10px 16px;border-radius:999px;font-size:13px;z-index:100000;box-shadow:0 6px 18px rgba(0,0,0,.3);max-width:86vw;text-align:center;';
+  el.textContent=t;document.body.appendChild(el);
+  setTimeout(function(){if(el&&el.remove)el.remove();},3000);
+}
+function tglIndo(s){
+  if(!s)return '-';
+  var d=String(s).slice(0,10).split('-');
+  return d.length===3?d[2]+'/'+d[1]+'/'+d[0]:String(s);
+}
+function jumlahLokal(){
+  try{var s=localStorage.getItem('pm16lokal');if(!s)return 0;var a=JSON.parse(s);return Array.isArray(a)?a.length:0;}catch(e){return 0;}
+}
+
+/* ================= 2. PENCURI KONEKSI =================
+   Mencatat setiap permintaan supabase yang dilakukan halaman ini
+   (termasuk Matriks PM21 yang sudah bekerja) supaya URL + tabel +
+   kunci yang dipakai PM28 PERSIS sama dengan matriks. */
+function ambilTabelDariUrl(u){
+  var m=String(u).match(/\/rest\/v1\/([A-Za-z0-9_\-]+)/);
+  if(!m)return null;
+  var t=m[1];
+  if(t==='rpc'||t==='openapi')return null;
+  return t;
+}
+function normHeader(h){
+  if(!h)return null;
+  try{
+    if(typeof Headers!=='undefined'&&h instanceof Headers){var o={};h.forEach(function(v,k){o[k]=v;});return o;}
+    if(Array.isArray(h)){var o2={};h.forEach(function(p){if(p&&p[0])o2[p[0]]=p[1];});return o2;}
+    return h;
+  }catch(e){return h;}
+}
+function kunciDari(u,hdr){
+  try{
+    var h=normHeader(hdr);
+    if(h){
+      if(h.apikey)return h.apikey;
+      if(h.Authorization||h.authorization){var a=String(h.Authorization||h.authorization).match(/^Bearer\s+(.+)$/i);if(a)return a[1];}
+    }
+    var q=new URL(String(u),location.href);
+    return q.searchParams.get('apikey')||null;
+  }catch(e){return null;}
+}
+function catatKoneksi(u,hdr){
+  try{
+    if(!u||String(u).indexOf('supabase.co')<0)return;
+    var m=String(u).match(/https:\/\/[a-z0-9\-]+\.supabase\.co/i);
+    if(!m)return;
+    var baru=false;
+    if(!CURINGAN.url){CURINGAN.url=m[0]+'/rest/v1';baru=true;}
+    if(!CURINGAN.kunci){var k=kunciDari(u,hdr);if(k){CURINGAN.kunci=k;baru=true;}}
+    if(!TABEL_TERKUNCI){var t=ambilTabelDariUrl(u);if(t&&CURINGAN.tabel!==t){CURINGAN.tabel=t;baru=true;}}
+    if(CURINGAN.url&&CURINGAN.kunci){
+      CURINGAN.sumber=CURINGAN.sumber||'curingan-matriks';
+      simpanKoneksi();
+      if(baru&&window.__PM28_SIAP){pilihTabel(function(ok){if(ok)muatSemua();});}
+    }
+  }catch(e){}
+}
+(function pasangPencuri(){
+  if(window.__PM28_PENCIURI)return;
+  window.__PM28_PENCIURI=true;
+  try{
+    var _f=window.fetch;
+    window.fetch=function(input,init){
+      try{
+        var u=(typeof input==='string')?input:(input&&input.url)||'';
+        var h=(init&&init.headers)||(input&&input.headers)||null;
+        catatKoneksi(u,h);
+      }catch(e){}
+      return _f.apply(this,arguments);
+    };
+  }catch(e){}
+  try{
+    var _o=XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open=function(met,u){
+      try{this.__pm28u=u;catatKoneksi(u,null);}catch(e){}
+      return _o.apply(this,arguments);
+    };
+    var _h=XMLHttpRequest.prototype.setRequestHeader;
+    XMLHttpRequest.prototype.setRequestHeader=function(k,v){
+      try{
+        if(/^apikey$|^authorization$/i.test(k)&&this.__pm28u){
+          var o={};o[k]=v;catatKoneksi(this.__pm28u,o);
+        }
+      }catch(e){}
+      return _h.apply(this,arguments);
+    };
+  }catch(e){}
+})();
+
+/* ================= 3. KREDENSIAL DARI PENYIMPANAN ================= */
+function pindaiPenyimpanan(){
+  var url=null,kunci=null;
+  function cek(v){
+    if(!v||typeof v!=='string')return;
+    if(!url){var m=v.match(/https:\/\/[a-z0-9\-]+\.supabase\.co/i);if(m)url=m[0]+'/rest/v1';}
+    if(!kunci){
+      if(/^eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+$/.test(v))kunci=v;
+      else if(/^sb_[A-Za-z0-9_]{30,}$/.test(v))kunci=v;
+    }
+    if(v.charAt(0)==='{'){
+      try{
+        var o=JSON.parse(v);
+        if(o&&typeof o==='object'){
+          var u2=o.url||o.server||o.supabaseUrl||o.SUPABASE_URL||o.pm20url||o.pm20_server;
+          if(u2&&!url){var m2=String(u2).match(/https:\/\/[a-z0-9\-]+\.supabase\.co/i);if(m2)url=m2[0]+'/rest/v1';}
+          var k2=o.kunci||o.key||o.apikey||o.anonKey||o.anon||o.KUNCI||o.pm20kunci||o.pm20_key;
+          if(k2&&!kunci&&String(k2).length>=30)kunci=String(k2);
+        }
+      }catch(e){}
+    }
+  }
+  try{for(var i=0;i<localStorage.length;i++){cek(localStorage.getItem(localStorage.key(i)));if(url&&kunci)break;}}catch(e){}
+  if(!(url&&kunci)){try{for(var j=0;j<sessionStorage.length;j++){cek(sessionStorage.getItem(sessionStorage.key(j)));if(url&&kunci)break;}}catch(e){}}
+  if(url&&kunci&&!CURINGAN.url){CURINGAN.url=url;CURINGAN.kunci=kunci;CURINGAN.sumber='penyimpanan-HP';return true;}
+  return !!(CURINGAN.url&&CURINGAN.kunci);
+}
+function simpanKoneksi(){
+  try{localStorage.setItem('pm28koneksi',JSON.stringify({url:CURINGAN.url,kunci:CURINGAN.kunci,tabel:CURINGAN.tabel,sumber:CURINGAN.sumber}));}catch(e){}
+}
+function koneksiTersimpan(){
+  try{
+    var s=localStorage.getItem('pm28koneksi');
+    if(!s)return false;
+    var o=JSON.parse(s);
+    if(o&&o.url&&o.kunci){
+      CURINGAN.url=o.url;CURINGAN.kunci=o.kunci;CURINGAN.tabel=o.tabel||null;CURINGAN.sumber=o.sumber||'tersimpan';
+      if(CURINGAN.tabel)TABEL_TERKUNCI=true;
+      return true;
+    }
+  }catch(e){}
+  return false;
+}
+function siapkanKoneksi(){
+  if(koneksiTersimpan())return true;
+  if(pindaiPenyimpanan())return true;
+  return !!(CURINGAN.url&&CURINGAN.kunci);
+}
+
+/* ================= 4. HTTP — SELALU BAWA KUNCI ================= */
+function req(met,u,body,cb,cbErr){
+  if(!CURINGAN.url||!CURINGAN.kunci){if(cbErr)cbErr('Koneksi belum lengkap (URL/kunci kosong).');return;}
+  var u2=u;
+  try{
+    var q=new URL(u,location.href);
+    if(!q.searchParams.get('apikey'))q.searchParams.set('apikey',CURINGAN.kunci);
+    u2=q.toString();
+  }catch(e){u2=u+(u.indexOf('?')<0?'?':'&')+'apikey='+uri(CURINGAN.kunci);}
+  var h={'apikey':CURINGAN.kunci,'Authorization':'Bearer '+CURINGAN.kunci,'Accept':'application/json'};
+  if(body)h['Content-Type']='application/json';
+  var opt={method:met,headers:h};
+  if(body)opt.body=JSON.stringify(body);
+  fetch(u2,opt).then(function(r){
+    return r.text().then(function(t){cb(r.status,t);});
+  }).catch(function(e){if(cbErr)cbErr((e&&e.message)||String(e));});
+}
+
+/* ================= 5. CARI TABEL ================= */
+function ujiTabel(t,cb){
+  req('GET',CURINGAN.url+'/'+t+'?select=*&limit=1',null,function(st,tx){
+    var ok=false;
+    if(st===200){try{var a=JSON.parse(tx);ok=Array.isArray(a);}catch(e){}}
+    if(ok){CURINGAN.tabel=t;TABEL_TERKUNCI=true;CURINGAN.sumber=CURINGAN.sumber||'ditemukan';simpanKoneksi();status('Tabel ketemu: '+t);}
+    cb(ok);
+  },function(){cb(false);});
+}
+function pilihTabel(cb){
+  if(CURINGAN.tabel&&TABEL_TERKUNCI)return cb(true);
+  if(CURINGAN.tabel){
+    ujiTabel(CURINGAN.tabel,function(ok){
+      if(ok)return cb(true);
+      CURINGAN.tabel=null;cariTabel(cb);
+    });
+    return;
+  }
+  cariTabel(cb);
+}
+function cariTabel(cb){
+  req('GET',CURINGAN.url+'/',null,function(st,tx){
+    var nama=[];
+    if(st===200){
+      try{
+        var sp=JSON.parse(tx);
+        var d=(sp&&sp.definitions)||(sp&&sp.components&&sp.components.schemas)||{};
+        nama=Object.keys(d);
+      }catch(e){}
+    }
+    if(nama.length){
+      var pri=nama.filter(function(n){return /matrik|jadwal|schedul|tugas|task|preventi|pm_/i.test(n);});
+      var lain=nama.filter(function(n){return pri.indexOf(n)<0;});
+      var urut=pri.concat(lain),i=0;
+      (function coba(){
+        if(i>=urut.length)return cobaKandidat(cb);
+        ujiTabel(urut[i++],function(ok){if(ok)cb(true);else coba();});
+      })();
+    }else cobaKandidat(cb);
+  },function(){cobaKandidat(cb);});
+}
+function cobaKandidat(cb){
+  var i=0;
+  (function coba(){
+    if(i>=KANDIDAT_TABEL.length)return cb(false);
+    ujiTabel(KANDIDAT_TABEL[i++],function(ok){if(ok)cb(true);else coba();});
+  })();
+}
+
+/* ================= 6. MUAT DATA (paginasi, urut tanggal+shift) ================= */
+function deteksiKolom(b){
+  var keys=Object.keys(b);
+  function c(p){for(var i=0;i<keys.length;i++){if(p.test(keys[i]))return keys[i];}return null;}
+  KOLOM.id=KOLOM.id||c(/^(id|uuid|_id)$/i)||((keys.indexOf('id')>-1)?'id':null);
+  KOLOM.tanggal=KOLOM.tanggal||c(/tanggal|^tgl$|^tgl_|date|mulai/i);
+  KOLOM.shift=KOLOM.shift||c(/shift|sesi/i);
+  KOLOM.kategori=KOLOM.kategori||c(/kategori|category|jenis|kelompok|^tipe|type/i);
+  KOLOM.peralatan=KOLOM.peralatan||c(/peralatan|equipment|nama_alat|namaalat|^alat$|alat_|unit|aset|device/i);
+  KOLOM.uraian=KOLOM.uraian||c(/uraian|deskripsi|pekerjaan|aktivitas|^item$|keterangan|desc/i);
+  KOLOM.lokasi=KOLOM.lokasi||c(/lokasi|location|^area$|ruang|lantai|zona/i);
+  KOLOM.status=KOLOM.status||c(/status|kondisi|progres/i);
+}
+function nilaiShift(v){
+  var s=String(v||'').toLowerCase();
+  if(s.indexOf('pagi')>-1)return 1;
+  if(s.indexOf('siang')>-1)return 2;
+  if(s.indexOf('sore')>-1)return 2.5;
+  if(s.indexOf('malam')>-1)return 3;
+  var n=parseFloat(s);
+  return isNaN(n)?9:n;
+}
+function urutkan(){
+  if(!KOLOM.tanggal)return;
+  DATA.sort(function(a,b){
+    var d=String(a[KOLOM.tanggal]||'').localeCompare(String(b[KOLOM.tanggal]||''));
+    if(d!==0)return d;
+    return nilaiShift(a[KOLOM.shift])-nilaiShift(b[KOLOM.shift]);
+  });
+}
+function muatSemua(cb){
+  if(!CURINGAN.url||!CURINGAN.kunci){status('Belum terhubung — klik tombol "Sambung dari Matriks".');return;}
+  if(SEDANG_MUAT)return;
+  SEDANG_MUAT=true;
+  status('Mengambil data dari server…');
+  pilihTabel(function(ok){
+    if(!ok){SEDANG_MUAT=false;status('Tabel data belum ketemu — klik "Sambung dari Matriks" lalu klik Segar di Matriks.');return;}
+    var limit=1000,off=0,semua=[];
+    (function hal(){
+      var u=CURINGAN.url+'/'+CURINGAN.tabel+'?select=*&limit='+limit+'&offset='+off;
+      req('GET',u,null,function(st,tx){
+        if(st!==200){SEDANG_MUAT=false;status('Server menjawab HTTP '+st+' — '+potong(tx));return;}
+        var a;try{a=JSON.parse(tx);}catch(e){a=null;}
+        if(!Array.isArray(a)){SEDANG_MUAT=false;status('Balasan server tidak bisa dibaca — '+potong(tx));return;}
+        semua=semua.concat(a);
+        if(a.length===limit){off+=limit;hal();return;}
+        DATA=semua;window.__PM28_DATA=DATA;
+        if(DATA[0])deteksiKolom(DATA[0]);
+        urutkan();
+        window.__PM28_SIAP_DATA=true;SEDANG_MUAT=false;
+        gambarSemua();
+        status('Terhubung — '+DATA.length+' tugas dari server (tabel "'+CURINGAN.tabel+'").');
+        if(cb)cb(DATA);
+      },function(e){SEDANG_MUAT=false;status('Gagal mengambil data: '+e);});
+    })();
+  });
+}
+
+/* ================= 7. KATEGORI & PERALATAN ================= */
+function namaKat(r){
+  var v=KOLOM.kategori?r[KOLOM.kategori]:null;
+  var s=String(v==null?'':v).trim();
+  return s||'(tanpa kategori)';
+}
+function daftarKategori(){
+  var m=Object.create(null);
+  DATA.forEach(function(r){var k=namaKat(r);m[k]=(m[k]||0)+1;});
+  return Object.keys(m).sort().map(function(k){return{nama:k,jml:m[k]};});
+}
+function hitungKat(kat){var n=0;DATA.forEach(function(r){if(namaKat(r)===kat)n++;});return n;}
+function namaPeralatan(r){
+  var v=KOLOM.peralatan?r[KOLOM.peralatan]:(KOLOM.uraian?r[KOLOM.uraian]:null);
+  var s=String(v==null?'':v).trim();
+  return s||'(tanpa nama peralatan)';
+}
+var WARNA_KAT=Object.create(null);
+function warnaKat(k){
+  if(WARNA_KAT[k])return WARNA_KAT[k];
+  try{
+    var els=document.querySelectorAll('span,i,div,b,button');
+    for(var i=0;i<els.length&&i<1800;i++){
+      var el=els[i];
+      if(el.id&&String(el.id).indexOf('pm28')===0)continue;
+      var t=(el.textContent||'').trim();
+      if(t===k){
+        var cs=getComputedStyle(el);
+        if(cs.backgroundColor&&cs.backgroundColor!=='rgba(0, 0, 0, 0)'){WARNA_KAT[k]=cs.backgroundColor;return cs.backgroundColor;}
+      }
+    }
+  }catch(e){}
+  var PAL=['#e53935','#fb8c00','#fdd835','#43a047','#1e88e5','#8e24aa','#00acc1','#6d4c41','#546e7a','#d81b60','#7cb342','#f4511e'];
+  var h=0;k=String(k);for(var j=0;j<k.length;j++)h=(h*31+k.charCodeAt(j))>>>0;
+  WARNA_KAT[k]=PAL[h%PAL.length];
+  return WARNA_KAT[k];
+}
+
+/* ================= 8. PANEL UI ================= */
+function pasangCss(){
+  if($('pm28-style'))return;
+  var st=document.createElement('style');
+  st.id='pm28-style';
+  st.textContent='#pm28-panel{font-family:inherit;}'
+    +'#pm28-panel .pm28-judul{font-weight:800;font-size:13px;margin:16px 0 8px;color:#0f172a;border-left:4px solid #1e88e5;padding-left:8px;}'
+    +'#pm28-panel .pm28-hint{font-weight:400;font-size:11px;color:#64748b;}'
+    +'#pm28-panel .pm28-chip{display:inline-flex;align-items:center;gap:6px;margin:0 8px 8px 0;padding:6px 10px;border:1px solid #e2e8f0;border-radius:999px;background:#f8fafc;font-size:12px;cursor:pointer;}'
+    +'#pm28-panel .pm28-dot{width:10px;height:10px;border-radius:50%;display:inline-block;flex:0 0 auto;}'
+    +'#pm28-panel .pm28-baris{display:flex;align-items:center;gap:8px;padding:7px 8px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:6px;background:#fff;flex-wrap:wrap;}'
+    +'#pm28-panel .pm28-tgl{font-weight:700;font-size:12px;color:#0f172a;}'
+    +'#pm28-panel .pm28-tag{font-size:11px;padding:2px 8px;border-radius:999px;color:#fff;white-space:nowrap;}'
+    +'#pm28-panel .pm28-alat{font-size:12px;color:#334155;font-weight:600;}'
+    +'#pm28-panel .pm28-lok{font-size:11px;color:#64748b;}'
+    +'#pm28-panel .pm28-btn{border:0;border-radius:6px;padding:5px 9px;font-size:12px;cursor:pointer;font-weight:600;flex:0 0 auto;}'
+    +'#pm28-panel .pm28-edit{background:#1e88e5;color:#fff;}'
+    +'#pm28-panel .pm28-hapus{background:#ef4444;color:#fff;}'
+    +'#pm28-panel .pm28-grp{display:block;width:100%;text-align:left;border:1px solid #cbd5e1;background:#f1f5f9;border-radius:8px;padding:8px 10px;font-weight:700;font-size:12px;cursor:pointer;margin-bottom:6px;}'
+    +'#pm28-panel .pm28-isigrp{padding:2px 4px 8px;}'
+    +'#pm28-panel .pm28-merah{background:#dc2626;color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:800;cursor:pointer;}';
+  document.head.appendChild(st);
+}
+function bangunPanel(){
+  if($('pm28-panel'))return;
+  pasangCss();
+  var panel=document.createElement('section');
+  panel.id='pm28-panel';
+  panel.innerHTML=
+    '<div id="pm28-kepala" style="cursor:pointer;background:#0f172a;color:#fff;padding:10px 14px;border-radius:10px 10px 0 0;font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px;">'
+    +'<span>🛠️ PANEL SERVER PM28 v4 — data langsung dari Supabase</span>'
+    +'<span style="font-weight:400;font-size:11px;opacity:.8">klik untuk buka/tutup</span></div>'
+    +'<div id="pm28-isi" style="background:#fff;border:1px solid #cbd5e1;border-top:0;border-radius:0 0 10px 10px;padding:12px;">'
+    +'<div id="pm28-status" style="font-size:13px;color:#334155;margin-bottom:10px;">Menyiapkan…</div>'
+    +'<div id="pm28-tombol" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px;">'
+    +'<button id="pm28-sambung" style="background:#1e88e5;color:#fff;border:0;border-radius:8px;padding:8px 12px;font-weight:700;font-size:12px;cursor:pointer;">🔌 Sambung dari Matriks</button>'
+    +'<button id="pm28-segar" style="background:#334155;color:#fff;border:0;border-radius:8px;padding:8px 12px;font-weight:700;font-size:12px;cursor:pointer;">↻ Segar</button>'
+    +'<button id="pm28-cek" style="background:#0f766e;color:#fff;border:0;border-radius:8px;padding:8px 12px;font-weight:700;font-size:12px;cursor:pointer;">🧪 CEK</button>'
+    +'<button id="pm28-hapussemua" style="background:#dc2626;color:#fff;border:0;border-radius:8px;padding:8px 12px;font-weight:800;font-size:12px;cursor:pointer;">🗑️ HAPUS SEMUA TUGAS</button>'
+    +'</div>'
+    +'<div class="pm28-judul">🎨 KETERANGAN WARNA & JUMLAH <span class="pm28-hint">— klik satu warna untuk buka daftar + tombol hapus</span></div>'
+    +'<div id="pm28-legend"></div>'
+    +'<div id="pm28-expand" style="display:none"></div>'
+    +'<div class="pm28-judul">🕘 RIWAYAT PERALATAN <span class="pm28-hint">— klik nama alat untuk buka/tutup</span></div>'
+    +'<div id="pm28-riwayat"></div>'
+    +'<div class="pm28-judul">📋 DAFTAR TUGAS SERVER <span class="pm28-hint">— sumber: Supabase (bukan HP)</span></div>'
+    +'<div id="pm28-filterbar" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;">'
+    +'<select id="pm28-filter" style="padding:7px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;"></select>'
+    +'<input id="pm28-cari" type="text" placeholder="Cari alamat / kategori…" style="flex:1;min-width:140px;padding:7px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;">'
+    +'</div>'
+    +'<div id="pm28-daftar"></div>'
+    +'</div>';
+  document.body.appendChild(panel);
+
+  $('pm28-kepala').addEventListener('click',function(){
+    var isi=$('pm28-isi');
+    isi.style.display=(isi.style.display==='none')?'block':'none';
+  });
+  $('pm28-sambung').addEventListener('click',function(){
+    TABEL_TERKUNCI=false;
+    if(!CURINGAN.url||!CURINGAN.kunci){CURINGAN.tabel=null;pindaiPenyimpanan();}
+    if(CURINGAN.url&&CURINGAN.kunci){
+      status('Memastikan tabel… Kalau tidak jalan, klik ↻ Segar di Matriks — koneksi direkam otomatis.');
+      pilihTabel(function(ok){
+        if(ok)muatSemua();
+        else status('Tabel belum ketemu — sekarang klik tombol ↻ Segar pada Matriks, tunggu angka tugas muncul lagi.');
+      });
+      setTimeout(function(){if(!window.__PM28_SIAP_DATA)segarkanMatriks();},3000);
+    }else{
+      status('Koneksi belum terekam. Sekarang klik tombol ↻ Segar pada Matriks — URL/tabel/kunci akan direkam otomatis…');
+      setTimeout(function(){if(!window.__PM28_SIAP_DATA)segarkanMatriks();},1200);
+    }
+  });
+  $('pm28-segar').addEventListener('click',function(){muatSemua();});
+  $('pm28-cek').addEventListener('click',function(){__PM28_CEK();});
+  $('pm28-hapussemua').addEventListener('click',function(){konfirmasiHapusSemua(null);});
+  $('pm28-filter').addEventListener('change',function(){FILTER=this.value;DAFTAR_TAMPIL=150;gambarDaftar();});
+  $('pm28-cari').addEventListener('input',function(){CARI=this.value;DAFTAR_TAMPIL=150;gambarDaftar();});
+
+  $('pm28-isi').addEventListener('click',function(ev){
+    var el=ev.target&&ev.target.closest?ev.target.closest('[data-kat],[data-hapuskat],[data-grp],[data-aksi],[data-more]'):null;
+    if(!el)return;
+    if(el.hasAttribute('data-kat')){
+      KAT_TERBUKA=el.getAttribute('data-kat');EXPAND_TAMPIL=100;
+      gambarExpand();
+      $('pm28-expand').style.display='block';
+      try{$('pm28-expand').scrollIntoView({behavior:'smooth',block:'nearest'});}catch(e){}
+      return;
+    }
+    if(el.hasAttribute('data-hapuskat')){konfirmasiHapusSemua(el.getAttribute('data-hapuskat'));return;}
+    if(el.hasAttribute('data-grp')){
+      var g=el.getAttribute('data-grp');
+      RIWAYAT_BUKA[g]=!RIWAYAT_BUKA[g];
+      gambarRiwayat();
+      return;
+    }
+    if(el.hasAttribute('data-aksi')){
+      var i=parseInt(el.getAttribute('data-i'),10);
+      if(el.getAttribute('data-aksi')==='edit')bukaEditor(i);
+      else konfirmasiHapusBaris(i);
+      return;
+    }
+    if(el.hasAttribute('data-more')){EXPAND_TAMPIL+=100;gambarExpand();return;}
+  });
+
+  var fab=document.createElement('button');
+  fab.id='pm28-fab';
+  fab.textContent='🛠️ PM28';
+  fab.style.cssText='position:fixed;right:14px;bottom:14px;z-index:99998;background:#0f172a;color:#fff;border:0;border-radius:999px;padding:10px 14px;font-size:13px;font-weight:700;box-shadow:0 6px 16px rgba(0,0,0,.35);cursor:pointer;';
+  fab.addEventListener('click',function(){
+    var isi=$('pm28-isi');
+    if(!isi)return;
+    isi.style.display='block';
+    try{$('pm28-panel').scrollIntoView({behavior:'smooth'});}catch(e){}
+  });
+  document.body.appendChild(fab);
+}
+
+/* ================= 9. GAMBAR ISI PANEL ================= */
+function chipTugas(b){
+  var html='';
+  html+='<span class="pm28-tgl">'+esc(tglIndo(b[KOLOM.tanggal]))+'</span>';
+  if(b[KOLOM.shift]!=null&&b[KOLOM.shift]!=='')html+='<span class="pm28-tag" style="background:#475569;">'+esc(b[KOLOM.shift])+'</span>';
+  html+='<span class="pm28-tag" style="background:'+warnaKat(namaKat(b))+';">'+esc(namaKat(b))+'</span>';
+  html+='<span class="pm28-alat">'+esc(namaPeralatan(b))+'</span>';
+  if(b[KOLOM.lokasi]!=null&&b[KOLOM.lokasi]!=='')html+='<span class="pm28-lok">'+esc(b[KOLOM.lokasi])+'</span>';
+  if(b[KOLOM.status]!=null&&b[KOLOM.status]!=='')html+='<span class="pm28-lok">• '+esc(b[KOLOM.status])+'</span>';
+  return html;
+}
+function tombolBaris(i){
+  return '<span style="flex:0 0 auto;display:flex;gap:6px;">'
+    +'<button class="pm28-btn pm28-edit" data-aksi="edit" data-i="'+i+'">✏️ Edit</button>'
+    +'<button class="pm28-btn pm28-hapus" data-aksi="hapus" data-i="'+i+'">🗑️ Hapus</button>'
+    +'</span>';
+}
+function gambarLegend(){
+  var el=$('pm28-legend');
+  if(!el)return;
+  var kats=daftarKategori();
+  if(!kats.length){el.innerHTML='<div style="font-size:12px;color:#64748b;">Belum ada data dari server.</div>';return;}
+  var html='';
+  kats.forEach(function(k){
+    var c=warnaKat(k.nama);
+    html+='<button class="pm28-chip" data-kat="'+esc(k.nama)+'" style="border-color:'+c+';">'
+      +'<span class="pm28-dot" style="background:'+c+';"></span>'
+      +'<b>'+esc(k.nama)+'</b> — '+k.jml+' tugas</button>';
+  });
+  el.innerHTML=html;
+}
+function gambarExpand(){
+  var el=$('pm28-expand');
+  if(!el)return;
+  if(!KAT_TERBUKA){el.style.display='none';el.innerHTML='';return;}
+  var idxs=[];
+  DATA.forEach(function(r,i){if(namaKat(r)===KAT_TERBUKA)idxs.push(i);});
+  var html='<div style="border:2px solid '+warnaKat(KAT_TERBUKA)+';border-radius:10px;padding:10px;background:#f8fafc;">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">'
+    +'<b style="font-size:13px;">📂 '+esc(KAT_TERBUKA)+' — '+idxs.length+' tugas</b>'
+    +'<button class="pm28-merah" data-hapuskat="'+esc(KAT_TERBUKA)+'">🗑️ Hapus semua kategori ini ('+idxs.length+')</button>'
+    +'</div>';
+  if(!idxs.length)html+='<div style="font-size:12px;color:#64748b;">Tidak ada tugas.</div>';
+  idxs.slice(0,EXPAND_TAMPIL).forEach(function(i){
+    html+='<div class="pm28-baris">'+chipTugas(DATA[i])+tombolBaris(i)+'</div>';
+  });
+  if(idxs.length>EXPAND_TAMPIL){
+    html+='<button class="pm28-grp" data-more="1" style="text-align:center;">Tampilkan lebih banyak (sisa '+(idxs.length-EXPAND_TAMPIL)+')</button>';
+  }
+  html+='</div>';
+  el.innerHTML=html;
+}
+function gambarRiwayat(){
+  var el=$('pm28-riwayat');
+  if(!el)return;
+  if(!DATA.length){el.innerHTML='<div style="font-size:12px;color:#64748b;">Belum ada data dari server.</div>';return;}
+  var kel=Object.create(null);
+  DATA.forEach(function(r,i){
+    var nm=namaPeralatan(r);
+    if(!kel[nm])kel[nm]=[];
+    kel[nm].push(i);
+  });
+  var nama=Object.keys(kel).sort();
+  var html='';
+  nama.forEach(function(nm){
+    var idxs=kel[nm];
+    var terakhir='';
+    if(KOLOM.tanggal){
+      var maks='';
+      idxs.forEach(function(i){var v=String(DATA[i][KOLOM.tanggal]||'');if(v>maks)maks=v;});
+      terakhir=tglIndo(maks);
+    }
+    html+='<button class="pm28-grp" data-grp="'+esc(nm)+'">🔌 '+esc(nm)+' — '+idxs.length+' tugas'+(terakhir?' • terakhir '+terakhir:'')+' '+(RIWAYAT_BUKA[nm]?'▲':'▼')+'</button>';
+    if(RIWAYAT_BUKA[nm]){
+      html+='<div class="pm28-isigrp">';
+      idxs.slice(0,50).forEach(function(i){
+        html+='<div class="pm28-baris">'+chipTugas(DATA[i])+tombolBaris(i)+'</div>';
+      });
+      if(idxs.length>50)html+='<div style="font-size:11px;color:#64748b;padding:2px 4px 6px;">Menampilkan 50 dari '+idxs.length+'.</div>';
+      html+='</div>';
+    }
+  });
+  if(!KOLOM.peralatan)html+='<div style="font-size:11px;color:#b45309;margin-top:6px;">Catatan: kolom peralatan tidak dikenali di tabel server — memakai kolom uraian sebagai nama alat.</div>';
+  el.innerHTML=html;
+}
+function gambarDaftar(){
+  var el=$('pm28-daftar'),sel=$('pm28-filter');
+  if(!el)return;
+  var kats=daftarKategori();
+  var opt='<option value="*">Semua kategori</option>';
+  kats.forEach(function(k){
+    opt+='<option value="'+esc(k.nama)+'"'+(FILTER===k.nama?' selected':'')+'>'+esc(k.nama)+' ('+k.jml+')</option>';
+  });
+  sel.innerHTML=opt;
+  var idxs=[];
+  var q=CARI.toLowerCase();
+  DATA.forEach(function(r,i){
+    if(FILTER!=='*'&&namaKat(r)!==FILTER)return;
+    if(q){
+      var teks='';
+      Object.keys(r).forEach(function(k){teks+=String(r[k]==null?'':r[k])+' ';});
+      if(teks.toLowerCase().indexOf(q)<0)return;
+    }
+    idxs.push(i);
+  });
+  var html='';
+  if(!idxs.length){
+    html='<div style="font-size:12px;color:#64748b;">Tidak ada tugas yang cocok.</div>';
+  }else{
+    idxs.slice(0,DAFTAR_TAMPIL).forEach(function(i){
+      html+='<div class="pm28-baris">'+chipTugas(DATA[i])+tombolBaris(i)+'</div>';
+    });
+    if(idxs.length>DAFTAR_TAMPIL){
+      html+='<div style="font-size:12px;color:#475569;padding:6px;">Menampilkan '+DAFTAR_TAMPIL+' dari '+idxs.length+' — ketik di pencarian / pilih kategori untuk memperkecil.</div>';
+    }
+  }
+  el.innerHTML=html;
+}
+function gambarSemua(){
+  gambarLegend();
+  if(KAT_TERBUKA)gambarExpand();else{var el=$('pm28-expand');if(el){el.style.display='none';el.innerHTML='';}}
+  gambarRiwayat();
+  gambarDaftar();
+}
+
+/* ================= 10. EDIT & HAPUS ================= */
+function kunciFilter(b){
+  if(KOLOM.id&&b[KOLOM.id]!=null)return '?'+uri(KOLOM.id)+'=eq.'+uri(b[KOLOM.id]);
+  var parts=[];
+  Object.keys(b).forEach(function(k){
+    var v=b[k];
+    if(v===null||v===undefined)parts.push(uri(k)+'=is.null');
+    else parts.push(uri(k)+'=eq.'+uri(v));
+  });
+  return parts.length?'?'+parts.join('&'):'';
+}
+function bukaEditor(i){
+  var b=DATA[i];
+  if(!b){toast('Baris tidak ditemukan.');return;}
+  var fields=[['tanggal',KOLOM.tanggal],['shift',KOLOM.shift],['kategori',KOLOM.kategori],['peralatan',KOLOM.peralatan],['lokasi',KOLOM.lokasi],['status',KOLOM.status],['uraian',KOLOM.uraian]];
+  var dlKat=daftarKategori().map(function(k){return '<option value="'+esc(k.nama)+'">';}).join('');
+  var alat=Object.create(null);
+  DATA.forEach(function(r){var s=namaPeralatan(r);if(s&&s.charAt(0)!=='(')alat[s]=1;});
+  var dlAlat=Object.keys(alat).sort().slice(0,500).map(function(s){return '<option value="'+esc(s)+'">';}).join('');
+  var st=Object.create(null);
+  DATA.forEach(function(r){if(KOLOM.status&&r[KOLOM.status]!=null)st[String(r[KOLOM.status])]=1;});
+  var dlSt=Object.keys(st).sort().slice(0,100).map(function(s){return '<option value="'+esc(s)+'">';}).join('');
+
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:100001;display:flex;align-items:center;justify-content:center;padding:16px;';
+  var html='<div style="background:#fff;border-radius:14px;padding:16px;width:100%;max-width:430px;max-height:86vh;overflow:auto;">'
+    +'<div style="font-weight:800;font-size:15px;margin-bottom:4px;">✏️ Edit Tugas</div>'
+    +'<div style="font-size:11px;color:#64748b;margin-bottom:8px;">Perubahan langsung disimpan ke server Supabase.</div>';
+  var n=0;
+  fields.forEach(function(f,fi){
+    if(!f[1])return;
+    var val=b[f[1]];
+    if(f[0]==='tanggal'&&val)val=String(val).slice(0,10);
+    var dl='';
+    if(f[0]==='kategori')dl=' list="pm28-dl-kat"';
+    if(f[0]==='peralatan')dl=' list="pm28-dl-alat"';
+    if(f[0]==='status')dl=' list="pm28-dl-st"';
+    html+='<label style="display:block;font-size:12px;color:#475569;margin:8px 0 3px;font-weight:600;">'+esc(f[0])+'</label>'
+      +'<input id="pm28-ed-'+fi+'" data-kol="'+esc(f[1])+'" type="'+(f[0]==='tanggal'?'date':'text')+'"'+dl+' value="'+esc(val)+'" '
+      +'style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;">';
+    n++;
+  });
+  html+='<datalist id="pm28-dl-kat">'+dlKat+'</datalist>'
+    +'<datalist id="pm28-dl-alat">'+dlAlat+'</datalist>'
+    +'<datalist id="pm28-dl-st">'+dlSt+'</datalist>'
+    +'<div style="display:flex;gap:8px;margin-top:14px;">'
+    +'<button id="pm28-ed-batal" style="flex:1;background:#e2e8f0;color:#0f172a;border:0;border-radius:8px;padding:10px;font-weight:700;cursor:pointer;">BATAL</button>'
+    +'<button id="pm28-ed-simpan" style="flex:1;background:#1e88e5;color:#fff;border:0;border-radius:8px;padding:10px;font-weight:800;cursor:pointer;">SIMPAN KE SERVER</button>'
+    +'</div></div>';
+  ov.innerHTML=html;
+  document.body.appendChild(ov);
+  $('pm28-ed-batal').addEventListener('click',function(){ov.remove();});
+  $('pm28-ed-simpan').addEventListener('click',function(){
+    var body={},ubah=0;
+    fields.forEach(function(f,fi){
+      if(!f[1])return;
+      var inp=$('pm28-ed-'+fi);
+      if(!inp)return;
+      var v=inp.value;
+      var asli=b[f[1]];
+      if(f[0]==='tanggal')asli=String(asli==null?'':asli).slice(0,10);
+      if(String(asli==null?'':asli)!==v){body[f[1]]=v;ubah++;}
+    });
+    if(!ubah){toast('Tidak ada perubahan.');ov.remove();return;}
+    var target=DATA[i];
+    var kf=kunciFilter(target);
+    status('Menyimpan ke server…');
+    req('PATCH',CURINGAN.url+'/'+CURINGAN.tabel+kf,body,function(st2,tx){
+      if(st2>=200&&st2<300){
+        Object.keys(body).forEach(function(k){target[k]=body[k];});
+        urutkan();gambarSemua();segarkanMatriks();
+        toast('Tersimpan di server ✔');
+        ov.remove();status('Perubahan tersimpan di server.');
+      }else{
+        status('Simpan gagal HTTP '+st2+' — '+potong(tx));
+        toast('Simpan gagal: '+potong(tx,120));
+      }
+    },function(e){toast('Simpan gagal: '+e);});
+  });
+}
+function konfirmasiHapusBaris(i){
+  var b=DATA[i];
+  if(!b)return;
+  var pesan='Hapus tugas ini dari server?\n'+tglIndo(b[KOLOM.tanggal])+' • '+namaKat(b)+' • '+namaPeralatan(b);
+  if(!window.confirm(pesan))return;
+  var kf=kunciFilter(b);
+  status('Menghapus 1 tugas di server…');
+  req('DELETE',CURINGAN.url+'/'+CURINGAN.tabel+kf,null,function(st,tx){
+    if(st>=200&&st<300){
+      DATA.splice(i,1);window.__PM28_DATA=DATA;
+      gambarSemua();
+      toast('Tugas dihapus dari server ✔');
+      status('Tugas dihapus (sisa '+DATA.length+').');
+    }else{
+      status('Hapus gagal HTTP '+st+' — '+potong(tx));
+      toast('Hapus gagal: '+potong(tx,120));
+    }
+  },function(e){toast('Hapus gagal: '+e);});
+}
+function konfirmasiHapusSemua(kat){
+  var total=kat?hitungKat(kat):DATA.length;
+  if(!total){toast('Tidak ada tugas untuk dihapus.');return;}
+  var label=kat?('kategori "'+kat+'" — '+total+' tugas'):('SEMUA kategori — '+total+' tugas');
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.65);z-index:100002;display:flex;align-items:center;justify-content:center;padding:16px;';
+  ov.innerHTML='<div style="background:#fff;border:3px solid #dc2626;border-radius:14px;padding:18px;width:100%;max-width:430px;">'
+    +'<div style="font-weight:900;font-size:16px;color:#dc2626;margin-bottom:8px;">⚠️ HAPUS PERMANEN</div>'
+    +'<div style="font-size:13px;color:#334155;margin-bottom:10px;">Tindakan ini menghapus <b>'+esc(label)+'</b> langsung dari SERVER Supabase dan tidak bisa dikembalikan.</div>'
+    +'<label style="display:block;font-size:12px;color:#475569;margin-bottom:4px;font-weight:600;">Ketik HAPUS untuk melanjutkan:</label>'
+    +'<input id="pm28-hs-input" type="text" autocomplete="off" style="width:100%;box-sizing:border-box;padding:9px;border:2px solid #cbd5e1;border-radius:8px;font-size:15px;font-weight:700;">'
+    +'<div style="font-size:11px;color:#64748b;margin-top:8px;">Setelah sukses: penyimpanan lokal pm16lokal dibersihkan, matriks + legenda + daftar di-refresh otomatis. Kalau server menolak (HTTP 401/403), berarti kunci ini tidak punya izin hapus — jalankan ulang blok PM20 dengan kunci yang punya izin tulis.</div>'
+    +'<div style="display:flex;gap:8px;margin-top:14px;">'
+    +'<button id="pm28-hs-batal" style="flex:1;background:#e2e8f0;color:#0f172a;border:0;border-radius:8px;padding:10px;font-weight:700;cursor:pointer;">BATAL</button>'
+    +'<button id="pm28-hs-ya" disabled style="flex:1;background:#dc2626;color:#fff;border:0;border-radius:8px;padding:10px;font-weight:900;cursor:pointer;opacity:.5;">HAPUS PERMANEN</button>'
+    +'</div></div>';
+  document.body.appendChild(ov);
+  var inp=$('pm28-hs-input'),btn=$('pm28-hs-ya');
+  inp.addEventListener('input',function(){
+    var ok=(inp.value==='HAPUS');
+    btn.disabled=!ok;
+    btn.style.opacity=ok?'1':'.5';
+  });
+  $('pm28-hs-batal').addEventListener('click',function(){ov.remove();});
+  btn.addEventListener('click',function(){
+    if(inp.value!=='HAPUS')return;
+    ov.remove();
+    jalankanHapusSemua(kat);
+  });
+}
+function hapusByIds(ids,selesai){
+  var i=0,pot=50;
+  (function nxt(){
+    if(i>=ids.length)return selesai(true);
+    var bag=ids.slice(i,i+pot);
+    i+=pot;
+    var u=CURINGAN.url+'/'+CURINGAN.tabel+'?'+uri(KOLOM.id)+'=in.('+bag.map(uri).join(',')+')';
+    req('DELETE',u,null,function(st){
+      if(st<200||st>=300){status('Hapus gagal HTTP '+st);return selesai(false);}
+      nxt();
+    },function(){selesai(false);});
+  })();
+}
+function jalankanHapusSemua(kat){
+  status('Menghapus di server…');
+  toast('Menghapus '+(kat?hitungKat(kat)+' tugas kategori '+kat:DATA.length+' tugas')+' di server…');
+  var selesaiOK=function(){
+    try{localStorage.removeItem('pm16lokal');}catch(e){}
+    if(kat){
+      DATA=DATA.filter(function(r){return namaKat(r)!==kat;});
+      if(KAT_TERBUKA===kat)KAT_TERBUKA=null;
+    }else{
+      DATA=[];
+    }
+    window.__PM28_DATA=DATA;
+    gambarSemua();
+    var klik=segarkanMatriks();
+    toast('Selesai ✔ server dibersihkan & pm16lokal dihapus. Matriks di-refresh'+(klik?'':' (klik manual ↻ Segar di Matriks)')+'.');
+    status('Hapus selesai. Sisa data server: '+DATA.length+' tugas.');
+  };
+  if(kat&&KOLOM.kategori){
+    var u=CURINGAN.url+'/'+CURINGAN.tabel+'?'+uri(KOLOM.kategori)+'=eq.'+uri(kat);
+    req('DELETE',u,null,function(st,tx){
+      if(st>=200&&st<300)return selesaiOK();
+      status('Hapus gagal HTTP '+st+' — '+potong(tx));
+      toast('Hapus gagal: '+potong(tx,140));
+    },function(e){toast('Hapus gagal: '+e);});
+    return;
+  }
+  if(kat&&!KOLOM.kategori){
+    if(!KOLOM.id){toast('Tidak bisa hapus per kategori (kolom kategori/id tidak dikenali).');return;}
+    var ids=[];
+    DATA.forEach(function(r){if(namaKat(r)===kat&&r[KOLOM.id]!=null)ids.push(r[KOLOM.id]);});
+    hapusByIds(ids,function(ok){if(ok)selesaiOK();else toast('Hapus gagal — cek pesan status.');});
+    return;
+  }
+  req('DELETE',CURINGAN.url+'/'+CURINGAN.tabel,null,function(st,tx){
+    if(st>=200&&st<300)return selesaiOK();
+    status('Hapus gagal HTTP '+st+' — '+potong(tx));
+    toast('Hapus gagal: '+potong(tx,140));
+  },function(e){toast('Hapus gagal: '+e);});
+}
+function segarkanMatriks(){
+  try{
+    var bs=document.querySelectorAll('button,[role="button"]');
+    for(var i=0;i<bs.length;i++){
+      var b=bs[i];
+      var p=$('pm28-panel');
+      if(p&&p.contains(b))continue;
+      if(b.id&&String(b.id).indexOf('pm28')===0)continue;
+      var t=(b.textContent||'').toLowerCase();
+      if(/segar|muat ulang|refresh|tarik ulang|perbarui/.test(t)){b.click();return true;}
+    }
+  }catch(e){}
+  return false;
+}
+
+/* ================= 11. DIAGNOSTIK ================= */
+function tampilCek(teks){
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.65);z-index:100003;display:flex;align-items:center;justify-content:center;padding:16px;';
+  ov.innerHTML='<div style="background:#fff;border-radius:14px;padding:16px;width:100%;max-width:480px;max-height:86vh;display:flex;flex-direction:column;">'
+    +'<div style="font-weight:800;margin-bottom:8px;">🧪 Hasil CEK '+VERSI+'</div>'
+    +'<pre id="pm28-cek-teks" style="white-space:pre-wrap;font-size:12px;background:#0f172a;color:#e2e8f0;border-radius:8px;padding:10px;overflow:auto;flex:1;">'+esc(teks)+'</pre>'
+    +'<div style="display:flex;gap:8px;margin-top:10px;">'
+    +'<button id="pm28-cek-salin" style="flex:1;background:#1e88e5;color:#fff;border:0;border-radius:8px;padding:10px;font-weight:700;cursor:pointer;">SALIN</button>'
+    +'<button id="pm28-cek-tutup" style="flex:1;background:#e2e8f0;color:#0f172a;border:0;border-radius:8px;padding:10px;font-weight:700;cursor:pointer;">TUTUP</button>'
+    +'</div></div>';
+  document.body.appendChild(ov);
+  $('pm28-cek-tutup').addEventListener('click',function(){ov.remove();});
+  $('pm28-cek-salin').addEventListener('click',function(){
+    try{
+      navigator.clipboard.writeText(teks).then(function(){toast('Hasil CEK disalin ✔ kirim ke asisten.');},function(){toast('Tidak bisa menyalin — screenshot saja.');});
+    }catch(e){toast('Tidak bisa menyalin — screenshot saja.');}
+  });
+}
+function __PM28_CEK(){
+  var garis=[];
+  garis.push('Waktu        : '+new Date().toLocaleString());
+  garis.push('Blok         : '+VERSI);
+  garis.push('Halaman      : '+location.protocol+'//'+(location.host||'(file lokal)'));
+  garis.push('Server       : '+(CURINGAN.url||'-'));
+  garis.push('Kunci API    : '+(CURINGAN.kunci?'ada (rahasia, tidak dicetak)':'TIDAK ADA'));
+  garis.push('Sumber       : '+(CURINGAN.sumber||'-'));
+  garis.push('Tabel        : '+(CURINGAN.tabel||'-')+(TABEL_TERKUNCI?' • terkunci':''));
+  garis.push('Kolom        : tanggal='+(KOLOM.tanggal||'-')+' shift='+(KOLOM.shift||'-')+' kategori='+(KOLOM.kategori||'-')+' peralatan='+(KOLOM.peralatan||'-'));
+  garis.push('Data server  : '+DATA.length+' tugas');
+  garis.push('pm16lokal    : '+jumlahLokal());
+  garis.push('Panel        : '+($('pm28-panel')?'terpasang':'TIDAK ADA')+' • '+(window.__PM28_SIAP_DATA?'data siap':'belum ada data'));
+  garis.push('Menguji ambil 1 baris (apikey dikirim di header + URL)…');
+  var u=(CURINGAN.tabel?CURINGAN.url+'/'+CURINGAN.tabel:CURINGAN.url+'/')+'?select=*&limit=1';
+  var selesai=function(s){
+    garis.push('KESIMPULAN   : '+s);
+    window.__PM28_HASIL_CEK={teks:garis.join('\n'),simpulan:s};
+    try{console.log(garis.join('\n'));}catch(e){}
+    tampilCek(garis.join('\n'));
+    return garis.join('\n');
+  };
+  if(!CURINGAN.url||!CURINGAN.kunci){
+    return selesai('Koneksi belum lengkap — klik "Sambung dari Matriks" lalu klik ↻ Segar di Matriks, lalu CEK lagi.');
+  }
+  req('GET',u,null,function(st,tx){
+    garis.push('Uji ambil    : HTTP '+st+' • '+potong(tx,140));
+    var s;
+    if(st===200)s='Kunci DITERIMA server ✔ — kalau daftar masih kosong, klik ↻ Segar pada Panel PM28.';
+    else if(st===401&&/no api key/i.test(tx))s='Kunci masih TIDAK TERKIRIM — kemungkinan blok lama masih menimpa. Hapus blok PM27 v3 lama, sisakan PM28 saja, lalu ↻ Segar.';
+    else if(st===401||st===403)s='Server MENOLAK kunci ini — jalankan ulang blok PM20 (SAMBUNG MANUAL), lalu ↻ Segar.';
+    else if(st===404)s='Tabel tidak ketemu — klik "Sambung dari Matriks" lalu klik ↻ Segar di Matriks.';
+    else s='Server menjawab '+st+' — '+potong(tx,120);
+    selesai(s);
+  },function(e){
+    garis.push('Uji ambil    : GAGAL — '+e);
+    var s=(location.protocol==='file:')
+      ?'Halaman dibuka lewat file:// — buka lewat http(s)/server internal supaya data bisa diambil.'
+      :'Jaringan/CORS menolak — pastikan halaman dibuka lewat http(s) dan internet aktif.';
+    selesai(s);
+  });
+  return 'PM28 CEK: menguji… hasil akan tampil di layar.';
+}
+
+/* ================= 12. MULAI ================= */
+function init(){
+  bangunPanel();
+  window.__PM28_SIAP=true;
+  var ada=siapkanKoneksi();
+  if(ada&&CURINGAN.kunci){
+    status('Koneksi ditemukan ('+CURINGAN.sumber+'). Mencari tabel data…');
+    pilihTabel(function(ok){
+      if(ok)muatSemua();
+      else status('Kunci ada tapi tabel belum ketemu — klik "Sambung dari Matriks" lalu ↻ Segar di Matriks.');
+    });
+  }else{
+    status('Belum terhubung. Klik tombol 🔌 "Sambung dari Matriks", lalu klik ↻ Segar di Matriks.');
+  }
+}
+window.__PM28_CEK=__PM28_CEK;
+window.__PM28_SEGAR=function(){muatSemua();segarkanMatriks();return 'PM28: menyegarkan…';};
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',init);}
+else{setTimeout(init,0);}
+})();
+</script>
 </body>
 </html>
