@@ -32918,42 +32918,50 @@ window.__PM21_BUKA=function(){ buka21(); };
 })();
 </script>
 <!-- AKHIR PM21 v8 - MATRIKS JADWAL PM (Departemen Teknisi + Tanggal Pelaksanaan kosong utk tulis tangan) -->
-
 <!-- =====================================================================
-  [PM22] v2 - LOKASI JADI DROPDOWN 10 LANTAI di SEMUA MENU (PERBAIKAN
-         "Buat Rencana PM masih pakai lokasi lama") - Head Billy, 9 Nov 2026
+  [PM22] v3 - LOKASI DROPDOWN 10 LANTAI di SEMUA MENU + LINDUNGI
+         DROPDOWN "KEBUTUHAN UNTUK" (Stock Request) - 11 Nov 2026
   ---------------------------------------------------------------------
-  Keluhan Head (SS 03:51): form "Buat Rencana PM" masih menampilkan
-  Pilih Lokasi / Dominion Lounge / Masterpiece / Midpoint Square.
-  Blok PM22 lama hanya menyasar menu Preventive Maintenance (PM18).
-  Yang dilakukan PM22 v2 (patch global, tanpa SQL, tanpa takeover):
-  1. SEMUA dropdown Lokasi di semua menu diganti pilihan tetap:
-     Basement, Lt. 1, Lt. 2, Lt. 3, Lt. 5, Lt. 6, Lt. 7, Lt. 8,
-     Lt. B-8, Lt. 1 & 8
-     - termasuk form "Buat Rencana PM" (aplikasi inti), field Lokasi
-       tersembunyi milik Jadwal PM, form & filter Preventive Maintenance.
-  2. Jadwal PM: pilihan lantai tampil DI ATAS, lokasi lama milik
-     peralatan yang sudah terdaftar tetap bisa dipilih di bawahnya
-     (kaskade kategori -> lokasi -> peralatan tetap jalan).
-  3. Data lama aman: nilai lama (mis. "Masterpiece") yang sedang diedit
-     otomatis ditambahkan sebagai pilihan tambahan - tidak pernah hilang.
-  4. Self-heal: menu di-render ulang / dropdown diisi ulang oleh aplikasi
-     -> pemasangan diulang otomatis (MutationObserver + interval 1,5 dtk).
-  5. Dropdown lain (Kategori, SIC, Shift, Peralatan, Room) TIDAK disentuh;
-     teks riwayat/data lama tidak diubah.
-  PASANG: HAPUS blok PM22 lama (komentar "[PM22] LOKASI JADI DROPDOWN
-  PILIHAN LANTAI" s/d </script> penutupnya), lalu tempel blok ini PALING
-  BAWAH index.html tepat sebelum </body> (di bawah blok PM21 v8).
-  Kalau blok lama lupa dihapus: tetap aman, v2 otomatis mengambil alih.
-  Cek di console: __PM22_CEK()  (versi harus 'v2', formBenar: true)
+  KELUHAN (SS 12:34): dropdown "Kebutuhan Untuk" di form Pengajuan
+  Stock Request yang tadinya berisi Dominion Lounge / Masterpiece /
+  Midpoint Square Building / Keduanya tiba-tiba berisi Lt. Basement
+  s/d Lt. 8 (pilihan lain hilang), dan menu kedip-kedip saat diklik.
+
+  PENYEBAB (terkonfirmasi): PM22 v2 mengenali #stockLocation sebagai
+  dropdown Lokasi (id mengandung kata "location" + opsi memuat
+  "Dominion Lounge"), lalu mengganti isinya dengan daftar 10 lantai
+  dan mengulanginya tiap 1,5 detik. Blok SR10 menambahkan lagi opsi
+  "Midpoint Square Building" -> dua blok berebut menulis dropdown
+  yang sama = kedip-kedip. "Dominion Lounge"/"Midpoint Square
+  Building" yang nyangkut adalah sisa opsi tambahan PM22 v2.
+
+  YANG DILAKUKAN PM22 v3 (fitur v2 untuk menu PM TIDAK berubah):
+  1. SEMUA dropdown Lokasi di menu PM tetap diganti 10 lantai,
+     persis perilaku v2 (Buat Rencana PM, Jadwal PM, filter PM, dst).
+  2. Dropdown "Kebutuhan Untuk" (#stockLocation dan seluruh select
+     milik modul Stock Request) DIKECUALIKAN - tidak pernah disentuh.
+  3. PEMULIHAN OTOMATIS: opsi lantai yang pernah disuntik PM22 lama
+     dibuang, 4 opsi benar dipasang kembali:
+     Dominion Lounge / Masterpiece / Midpoint Square Building / Keduanya.
+  4. PENJAGA: dropdown dipantau; kalau blok lama masih mencoba
+     menulis ulang, langsung dipulihkan dalam hitungan milidetik.
+  5. Kalau blok PM22 v1/v2 lama lupa dihapus, v3 menetralisir efeknya
+     pada dropdown Kebutuhan Untuk (menu PM tetap dikelola).
+
+  PASANG (WAJIB BERURUTAN):
+  1. HAPUS blok lama "[PM22] v2 - LOKASI JADI DROPDOWN..." (v1 juga
+     kalau masih ada) sampai </script> penutupnya.
+  2. Tempel blok ini di posisi yang sama, PALING BAWAH index.html
+     tepat sebelum </body>.
+  3. Muat ulang halaman. Cek console: __PM22_CEK()  -> versi:'v3'.
 ===================================================================== -->
 <script>
 (function(){
 'use strict';
-/* Guard: versi sama -> lewati; versi lama (v1) -> diambil alih (aman) */
-if(window.__PM22_VERSI==='v2'){ try{ console.log('[PM22] v2 sudah terpasang - lewati'); }catch(e){} return; }
-if(window.__PM22_VERSI){ try{ console.log('[PM22] v2 aktif - blok PM22 lama (v1) tidak masalah, tetap berjalan'); }catch(e){} }
-window.__PM22_VERSI='v2';
+/* Guard: versi sama -> lewati; versi lama -> diambil alih (aman) */
+if(window.__PM22_VERSI==='v3'){ try{ console.log('[PM22] v3 sudah terpasang - lewati'); }catch(e){} return; }
+if(window.__PM22_VERSI){ try{ console.log('[PM22] v3 aktif - blok lama ('+window.__PM22_VERSI+') masih ada; dropdown Kebutuhan Untuk sudah dilindungi v3, sebaiknya blok lama tetap dihapus'); }catch(e){} }
+window.__PM22_VERSI='v3';
 var TAG22='[PM22]';
 function log22(){ try{ console.log.apply(console,[TAG22].concat([].slice.call(arguments))); }catch(e){} }
 
@@ -32961,6 +32969,9 @@ function log22(){ try{ console.log.apply(console,[TAG22].concat([].slice.call(ar
 var LANTAI=['Basement','Lt. 1','Lt. 2','Lt. 3','Lt. 5','Lt. 6','Lt. 7','Lt. 8','Lt. B-8','Lt. 1 & 8'];
 var PENANDA_LAMA=['dominion lounge','masterpiece','midpoint square'];
 var TEKS_PILIH='\u2014 Pilih lokasi \u2014';
+
+/* Opsi benar dropdown "Kebutuhan Untuk" (Stock Request) */
+var KEBUTUHAN_OPSI=['Dominion Lounge','Masterpiece','Midpoint Square Building','Keduanya'];
 
 function teks22(s){ return String(s==null?'':s).replace(/\s+/g,' ').trim(); }
 function lw22(s){ return teks22(s).toLowerCase(); }
@@ -32981,6 +32992,101 @@ function daftarOpsi22(sel){
     out.push({ v:sel.options[i].value, t:teks22(sel.options[i].text) });
   }
   return out;
+}
+
+/* ============ A0. PELINDUNG DROPDOWN "KEBUTUHAN UNTUK" ============ */
+function adalahKebutuhan22(sel){
+  try{
+    var idn=lw22((sel.id||'')+' '+(sel.name||''));
+    if(idn.indexOf('stocklocation')!==-1) return true;
+    if(idn.indexOf('kebutuhan')!==-1) return true;
+    var lab=sel.closest?sel.closest('label'):null;
+    if(lab && /kebutuhan/i.test(teks22(lab.textContent))) return true;
+    var sbl=sel.previousElementSibling;
+    if(sbl && /^(label|b|strong|span|div|p|h[1-6])$/i.test(sbl.tagName)){
+      if(/kebutuhan/i.test(teks22(sbl.textContent)) && teks22(sbl.textContent).length<=40) return true;
+    }
+    var p=sel.parentElement;
+    if(p && p.querySelectorAll('select').length===1){
+      var lab2=p.querySelector('label');
+      if(lab2 && /kebutuhan/i.test(teks22(lab2.textContent))) return true;
+    }
+  }catch(e){}
+  return false;
+}
+
+/* Pulihkan #stockLocation: buang opsi lantai suntikan PM22 lama,
+   pasang 4 opsi benar, lepas "jaga nilai" milik v2, pasang tanda
+   data-pm22lok agar blok v1/v2 lama tidak menyentuhnya lagi. */
+function pulihkanKebutuhan22(){
+  var sel=null;
+  try{ sel=document.getElementById('stockLocation'); }catch(e){ return false; }
+  if(!sel || sel.tagName!=='SELECT') return false;
+  var berubah=false, i, j;
+
+  /* 1. lepas properti 'value' hasil defineProperty PM22 v2 (kalau ada) */
+  try{
+    var dv=Object.getOwnPropertyDescriptor(sel,'value');
+    if(dv && dv.set){ delete sel.value; berubah=true; log22('jaga nilai v2 dilepas dari #stockLocation'); }
+  }catch(e){}
+
+  /* 2. tanda perlindungan (dikenali blok PM22 v1/v2 sebagai "jangan sentuh") */
+  try{
+    if(sel.getAttribute('data-pm22lok')!=='1'){ sel.setAttribute('data-pm22lok','1'); berubah=true; }
+    if(sel.getAttribute('data-pm22gen')){ sel.removeAttribute('data-pm22gen'); berubah=true; }
+  }catch(e){}
+
+  /* 3. periksa kondisi opsi */
+  var adaLantai=false, punya={};
+  for(i=0;i<sel.options.length;i++){
+    var t=teks22(sel.options[i].text), v=teks22(sel.options[i].value);
+    if(LANTAI.indexOf(t)>=0 || LANTAI.indexOf(v)>=0) adaLantai=true;
+    for(j=0;j<KEBUTUHAN_OPSI.length;j++){ if(lw22(t)===lw22(KEBUTUHAN_OPSI[j])) punya[KEBUTUHAN_OPSI[j]]=1; }
+  }
+  var hilang=0;
+  for(j=0;j<KEBUTUHAN_OPSI.length;j++){ if(!punya[KEBUTUHAN_OPSI[j]]) hilang++; }
+
+  if(adaLantai || hilang>=2){
+    /* daftar kacau (suntikan PM22 lama) -> bangun ulang rapi */
+    var cur=teks22(sel.value);
+    var curBenar=false;
+    for(j=0;j<KEBUTUHAN_OPSI.length;j++){ if(lw22(cur)===lw22(KEBUTUHAN_OPSI[j])) curBenar=true; }
+    var lantaiCur=LANTAI.indexOf(cur)>=0;
+    var first=sel.options.length?sel.options[0]:null;
+    var ph=(first && (teks22(first.value)==='' || /pilih/i.test(teks22(first.text))))?{v:teks22(first.value),t:teks22(first.text)}:null;
+    var nilaiLain=[];
+    for(i=0;i<sel.options.length;i++){
+      var ot=teks22(sel.options[i].text), ov=teks22(sel.options[i].value);
+      var floorOp=(LANTAI.indexOf(ot)>=0 || LANTAI.indexOf(ov)>=0);
+      var benarOp=false;
+      for(j=0;j<KEBUTUHAN_OPSI.length;j++){ if(lw22(ot)===lw22(KEBUTUHAN_OPSI[j])) benarOp=true; }
+      var phOp=(ph && lw22(ot)===lw22(ph.t));
+      if(!floorOp && !benarOp && !phOp && ot){ nilaiLain.push({v:ov||ot,t:ot}); }
+    }
+    while(sel.firstChild) sel.removeChild(sel.firstChild);
+    if(ph){ var po=document.createElement('option'); po.value=ph.v; po.textContent=ph.t; sel.appendChild(po); }
+    for(j=0;j<KEBUTUHAN_OPSI.length;j++){
+      var ob=document.createElement('option'); ob.value=KEBUTUHAN_OPSI[j]; ob.textContent=KEBUTUHAN_OPSI[j]; sel.appendChild(ob);
+    }
+    for(j=0;j<nilaiLain.length;j++){
+      var ol=document.createElement('option'); ol.value=nilaiLain[j].v; ol.textContent=nilaiLain[j].t; sel.appendChild(ol);
+    }
+    try{
+      if(curBenar){ sel.value=cur; }
+      else { sel.value=(ph?ph.v:KEBUTUHAN_OPSI[0]); }
+    }catch(e){ try{ sel.value=KEBUTUHAN_OPSI[0]; }catch(e2){} }
+    log22('#stockLocation dipulihkan: opsi lantai dibuang, 4 opsi benar dipasang');
+    berubah=true;
+  } else if(hilang===1){
+    /* hanya satu opsi kurang (mis. SR10 belum jalan) -> tambah pelan */
+    for(j=0;j<KEBUTUHAN_OPSI.length;j++){
+      if(!punya[KEBUTUHAN_OPSI[j]]){
+        var ox=document.createElement('option'); ox.value=KEBUTUHAN_OPSI[j]; ox.textContent=KEBUTUHAN_OPSI[j];
+        sel.appendChild(ox); log22('opsi kebutuhan ditambahkan: '+KEBUTUHAN_OPSI[j]); berubah=true;
+      }
+    }
+  }
+  return berubah;
 }
 
 /* ============ A. PEMINDAI SELECT LOKASI (SEMUA MENU) ============ */
@@ -33006,6 +33112,8 @@ function labelSebutLokasi22(sel){
    tetap bisa dipilih di bawah) atau 'umum' (form/f lain: lantai saja). */
 function jenisLokasi22(sel){
   var idn=lw22((sel.id||'')+' '+(sel.name||'')), i, d;
+  /* BARU v3: dropdown Kebutuhan Untuk / modul Stock Request -> JANGAN disentuh */
+  try{ if(adalahKebutuhan22(sel)) return null; }catch(e){}
   /* dikelola kode khusus PM22 / blok lain -> jangan disentuh di sini */
   if(sel.getAttribute && sel.getAttribute('data-pm22lok')) return null;
   if(idn.indexOf('pm18')!==-1) return null;
@@ -33015,7 +33123,9 @@ function jenisLokasi22(sel){
   var bukanLok = idn.indexOf('peralatan')!==-1 || idn.indexOf('kategori')!==-1 ||
                  idn.indexOf('alat')!==-1 || idn.indexOf('room')!==-1 ||
                  idn.indexOf('shift')!==-1 || idn.indexOf('sic')!==-1 ||
-                 idn.indexOf('petugas')!==-1 || idn.indexOf('teknisi')!==-1;
+                 idn.indexOf('petugas')!==-1 || idn.indexOf('teknisi')!==-1 ||
+                 idn.indexOf('stock')!==-1 || idn.indexOf('kebutuhan')!==-1 ||
+                 idn.indexOf('pemohon')!==-1 || idn.indexOf('prioritas')!==-1;
   if(jelasLok) return /pm19/.test(idn)?'pm19':'umum';
   if(bukanLok) return null;
   d=daftarOpsi22(sel);
@@ -33228,11 +33338,12 @@ var SIBUK22=false;
 function sikat22(){
   if(SIBUK22) return;
   SIBUK22=true;
-  var a=false,b=false,c=0;
+  var a=false,b=false,c=0,k=false;
+  try{ k=pulihkanKebutuhan22(); }catch(e){ log22('kebutuhan: '+(e&&e.message||e)); }
   try{ a=pasangFormLok22(); }catch(e){ log22('form: '+(e&&e.message||e)); }
   try{ b=pasangFilterLok22(); }catch(e){ log22('filter: '+(e&&e.message||e)); }
   try{ c=sikatUmum22(); }catch(e){ log22('umum: '+(e&&e.message||e)); }
-  if(a||b||c) toast22();
+  if(a||b||c||k) toast22();
   SIBUK22=false;
 }
 var JADWAL22=null;
@@ -33244,6 +33355,25 @@ try{
   var mo22=new MutationObserver(antre22);
   mo22.observe(document.documentElement,{ childList:true, subtree:true });
 }catch(e){}
+/* penjaga khusus #stockLocation: perubahan apa pun langsung diperiksa */
+(function jagaKebutuhan22(){
+  var target=null, obs=null;
+  function coba(){
+    var sel=null;
+    try{ sel=document.getElementById('stockLocation'); }catch(e){}
+    if(sel && sel!==target){
+      if(obs){ try{ obs.disconnect(); }catch(e){} }
+      target=sel;
+      try{
+        obs=new MutationObserver(function(){ antre22(); });
+        obs.observe(sel,{ childList:true });
+      }catch(e){}
+    }
+    setTimeout(coba,1500);
+  }
+  coba();
+})();
+try{ pulihkanKebutuhan22(); }catch(e){}
 try{ sikat22(); }catch(e){}
 if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', sikat22); }
 try{ window.addEventListener('load', sikat22); }catch(e){}
@@ -33261,7 +33391,7 @@ function toast22(){
       'border-radius:14px;padding:11px 14px;font:600 12.5px/1.45 Arial,Helvetica,sans-serif;'+
       'box-shadow:0 8px 24px rgba(15,23,42,.35);opacity:0;transform:translateY(8px);'+
       'transition:opacity .25s,transform .25s;pointer-events:none';
-    el.innerHTML='<b style="color:#d4af37">PM22 v2 aktif</b> \u2022 Lokasi = <b>dropdown 10 lantai</b> di semua menu PM (Buat Rencana PM, Jadwal PM, Preventive Maintenance)';
+    el.innerHTML='<b style="color:#d4af37">PM22 v3 aktif</b> \u2022 Lokasi = <b>dropdown 10 lantai</b> di semua menu PM \u2022 dropdown <b>Kebutuhan Untuk</b> (Stock Request) <b>dilindungi</b>';
     document.body.appendChild(el);
     TOAST22=el;
     setTimeout(function(){
@@ -33292,6 +33422,15 @@ try{
         umum.push({ id:semua[j].id||'(tanpa id)', jumlah:semua[j].options.length });
       }
     }catch(e){}
+    var kb='tidak ada (form Stock Request belum dibuka)';
+    try{
+      var ks=document.getElementById('stockLocation');
+      if(ks){
+        var kt=[];
+        for(var k2=0;k2<ks.options.length;k2++) kt.push(ks.options[k2].value);
+        kb={ opsi:kt, aman:kt.join(' | ')===KEBUTUHAN_OPSI.join(' | ') ? 'ya' : 'cukup (cek daftar opsi)' };
+      }
+    }catch(e){}
     return {
       versi:window.__PM22_VERSI,
       form:f ? (f.tagName==='SELECT' ? 'select' : 'input (menunggu konversi)') : 'tidak ada (menu PM belum dibuka)',
@@ -33299,11 +33438,12 @@ try{
       formBenar:!!(f && f.tagName==='SELECT' && opsi.indexOf('Lt. 1 & 8')>=0),
       filter:s ? (lantaiSudahAda22(s) ? 'ok (pilihan lantai terpasang)' : 'menunggu isi ulang dari data') : 'tidak ada',
       umum:umum,
+      kebutuhanUntuk:kb,
       lantai:LANTAI
     };
   };
 }catch(e){}
-log22('v2 aktif - Lokasi = dropdown 10 lantai di SEMUA menu; cek __PM22_CEK()');
+log22('v3 aktif - Lokasi = dropdown 10 lantai di SEMUA menu PM; Kebutuhan Untuk (Stock Request) dilindungi & dipulihkan; cek __PM22_CEK()');
 })();
 </script>
 <!-- =====================================================================
@@ -35482,883 +35622,1483 @@ window.__PM25_SEGAR=function(){ return muatAlat25(true); };
 
 </script>
 <!-- ============ AKHIR PM25 v2 ============ -->
-<!-- ==================================================================
-  PM28 — PANEL SERVER v4   (pengganti PM27 v3 yang error 401)
-  Midpoint Square Building — Preventive Maintenance
+<!-- ================================================================
+     PM29 v8 — KELOLA DATA SERVER SUPABASE (Midpoint Square)
+     Baca & hapus data tabel pm_jadwal: per baris / per kategori /
+     rentang tanggal / SEMUA. Tempel blok ini TEPAT SEBELUM </body>.
+     ================================================================ -->
+<script>
+/* ================================================================
+   PM29 v8 — KELOLA DATA SERVER SUPABASE (Midpoint Square)
+   Fitur: baca tabel server (default: pm_jadwal), hapus per baris /
+   per kategori / rentang tanggal / SEMUA, konfirmasi ketik HAPUS,
+   pembersih data lokal ponsel, bantuan RLS.
+   ================================================================ */
+(function () {
+  'use strict';
+  if (window.__PM29_V8__) { return; }
+  window.__PM29_V8__ = true;
 
-  PERBAIKAN UTAMA:
-  Setiap permintaan ke Supabase sekarang SELALU membawa kunci API
-  (header "apikey" + juga parameter URL "?apikey="), jadi server tidak
-  lagi menjawab 401 "No API key found in request".
-  Koneksi (URL + tabel + kunci) otomatis DISALIN dari Matriks PM21 yang
-  sudah bekerja, jadi tidak perlu mengetik apa pun.
+  /* ---------------- KONFIGURASI ---------------- */
+  var SB_URL = 'https://ooxprzrjexvicusamgvw.supabase.co';
+  var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9veHByenJqZXh2aWN1c2FtZ3Z3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0OTM4NzQsImV4cCI6MjA5ODA2OTg3NH0.cXiytYOTLQZY2rDXhW3T5JhO9Zj2JAIjwgMa1kYWEhw';
+  var TABEL_DEFAULT = 'pm_jadwal';
+  var DAFTAR_TABEL = ['pm_jadwal', 'preventive_schedules', 'pm_milik', 'assets', 'activity_logs', 'daily_reports', 'stock_items', 'technician_tasks', 'handover_docs', 'notifications'];
+  var MAX_TAMPIL = 400;
 
-  FITUR:
-  1. Daftar tugas 100% dari SERVER Supabase (bukan localStorage HP).
-  2. Keterangan warna + jumlah per kategori BISA DIKLIK -> buka daftar
-     tugas kategori itu, tiap baris ada tombol Edit & Hapus.
-  3. Riwayat Peralatan (peralatan + tanggal), tiap baris Edit & Hapus.
-  4. Tombol MERAH "HAPUS SEMUA TUGAS" (global & per kategori) dengan
-     konfirmasi ketik HAPUS. Setelah sukses: pm16lokal dibersihkan,
-     matriks + legenda + daftar otomatis di-refresh.
+  var S = { tabel: TABEL_DEFAULT, rows: [], kol: {}, gcol: null, filter: null };
+  var sb = null;
+  var TERKAIT = null; /* info hapus terakhir: {desc, before} */
+  var CB = null;      /* callback dialog konfirmasi */
 
-  CARA PASANG:
-  1. Buka index.html -> HAPUS seluruh blok lama PM27 v3
-     (dari komentar pembuka blok itu sampai tag penutup script
-     milik blok itu).
-  2. Paste SELURUH isi file ini tepat sebelum </body>.
-  3. Simpan -> buka halaman -> klik tombol Refresh/Segar sekali.
-  4. Panel PM28 muncul di bawah matriks. Kalau bermasalah,
-     jalankan pemeriksaan: javascript:__PM28_CEK()
-=================================================================== -->
+  function getClient() {
+    if (sb) return sb;
+    try {
+      if (window.sb && typeof window.sb.from === 'function') { sb = window.sb; }
+      else if (window.supabase && typeof window.supabase.createClient === 'function') {
+        sb = window.supabase.createClient(SB_URL, SB_KEY);
+      }
+    } catch (e) { console.error('[PM29v8] client:', e); }
+    return sb;
+  }
+  function $id(x) { return document.getElementById(x); }
+  function esct(s) {
+    return String(s === null || s === undefined ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function log(m) {
+    var el = $id('pm29log');
+    if (el) el.textContent = m + '\n' + el.textContent;
+  }
+  function stat(html, cls) {
+    var el = $id('pm29stat');
+    if (!el) return;
+    el.innerHTML = html;
+    el.style.background = cls === 'err' ? '#fde8e8' : (cls === 'ok' ? '#e6f7ed' : '#fff7e0');
+    el.style.color = cls === 'err' ? '#b00020' : (cls === 'ok' ? '#0a7d43' : '#8a6d00');
+  }
+
+  /* ---------------- CSS ---------------- */
+  var CSS = [
+    '#pm29wadah,#pm29wadah *{box-sizing:border-box;font-family:-apple-system,\'Segoe UI\',Roboto,Arial,sans-serif;-webkit-tap-highlight-color:transparent}',
+    '#pm29f{position:fixed;right:14px;bottom:88px;z-index:2147483000;background:linear-gradient(135deg,#c62828,#7f0000);color:#fff;border:none;border-radius:26px;padding:11px 18px;font-size:14px;font-weight:800;box-shadow:0 4px 16px rgba(0,0,0,.4);cursor:pointer}',
+    '#pm29ov{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:2147483001;display:none}',
+    '#pm29d{position:fixed;top:0;right:0;height:100%;width:min(94vw,380px);background:#111827;color:#e5e7eb;z-index:2147483002;transform:translateX(105%);transition:transform .25s ease;display:flex;flex-direction:column;box-shadow:-6px 0 24px rgba(0,0,0,.45)}',
+    '#pm29d.buka{transform:translateX(0)}',
+    '#pm29hd{display:flex;align-items:center;gap:6px;padding:12px 14px;background:#1f2937;flex:0 0 auto}',
+    '#pm29hd b{font-size:15px}',
+    '#pm29hd span{font-weight:400;font-size:11.5px;color:#9ca3af}',
+    '#pm29x{margin-left:auto;background:none;border:none;color:#e5e7eb;font-size:18px;cursor:pointer;padding:2px 6px}',
+    '#pm29stat{margin:10px 12px 0;padding:9px 10px;border-radius:8px;font-size:12.5px;line-height:1.45;background:#fff7e0;color:#8a6d00;flex:0 0 auto}',
+    '.pm29row{display:flex;align-items:center;gap:8px;margin:10px 12px 0;flex-wrap:wrap;flex:0 0 auto}',
+    '.pm29row label{font-size:12px;color:#9ca3af;flex:0 0 auto}',
+    '.pm29row select,.pm29row input{flex:1;min-width:80px;padding:8px;border-radius:8px;border:1px solid #374151;background:#1f2937;color:#e5e7eb;font-size:13px}',
+    '.pm29btn{border:none;border-radius:8px;padding:10px 12px;font-size:13px;font-weight:700;cursor:pointer;color:#fff}',
+    '.pm29btn.merah{background:#c62828}',
+    '.pm29btn.oranye{background:#d97706}',
+    '.pm29btn.hitam{background:#111827;border:1.5px solid #ef4444;color:#fca5a5}',
+    '.pm29btn.abu{background:#374151;color:#e5e7eb;font-weight:600}',
+    '#pm29sum{margin:10px 12px 0;flex:0 0 auto}',
+    '.pm29total{font-size:12.5px;color:#9ca3af;margin-bottom:6px;line-height:1.45}',
+    '.pm29chips{display:flex;flex-wrap:wrap;gap:6px}',
+    '.pm29chip{background:#1f2937;color:#e5e7eb;border:1px solid #4b5563;border-radius:14px;padding:5px 11px;font-size:12px;cursor:pointer}',
+    '.pm29chip.aktif{background:#2563eb;border-color:#2563eb;color:#fff}',
+    '#pm29listwrap{flex:1 1 auto;overflow:auto;margin:10px 12px;border:1px solid #374151;border-radius:8px;background:#0b1220;min-height:110px}',
+    '#pm29list{padding:2px 4px}',
+    '.pm29baris{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 6px;border-bottom:1px solid #1f2937;font-size:12.5px}',
+    '.pm29isi{word-break:break-word;color:#d1d5db}',
+    '.pm29h1{background:#7f1d1d;border:none;color:#fecaca;border-radius:6px;padding:5px 9px;font-size:13px;cursor:pointer;flex:0 0 auto}',
+    '.pm29finfo{padding:7px 6px;font-size:12px;color:#93c5fd}',
+    '#pm29clearf{background:none;border:none;color:#60a5fa;text-decoration:underline;cursor:pointer;font-size:12px;padding:0}',
+    '.pm29kosong{padding:14px;color:#6b7280;font-size:12.5px;text-align:center}',
+    'details.pm29danger{margin:10px 12px 0;border:1px solid #7f1d1d;border-radius:8px;background:#1a0f0f;flex:0 0 auto}',
+    'details.pm29danger summary{padding:10px 12px;font-size:13px;font-weight:800;color:#fca5a5;cursor:pointer}',
+    'details.pm29danger .pm29row{margin:0 12px 9px}',
+    'details.pm29danger .pm29btn{width:100%}',
+    'details#pm29helpdet{margin:8px 12px;border:1px solid #374151;border-radius:8px;background:#1f2937;flex:0 0 auto}',
+    'details#pm29helpdet summary{padding:9px 12px;color:#93c5fd;cursor:pointer;font-size:12.5px;font-weight:700}',
+    '.pm29helpisi{padding:0 12px 8px;color:#d1d5db;font-size:12px;line-height:1.55}',
+    '#pm29sql{width:calc(100% - 24px);margin:0 12px 12px;height:112px;background:#0b1220;color:#a7f3d0;border:1px solid #374151;border-radius:6px;font-size:11px;padding:8px;resize:vertical}',
+    '#pm29log{margin:8px 12px 14px;padding:8px;background:#0b1220;border:1px solid #374151;border-radius:8px;font-size:11px;color:#9ca3af;max-height:92px;overflow:auto;white-space:pre-wrap;flex:0 0 auto}',
+    '#pm29cov{position:fixed;left:0;top:0;right:0;bottom:0;z-index:2147483003;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6)}',
+    '#pm29card{background:#fff;color:#111;width:min(92vw,340px);border-radius:14px;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.5)}',
+    '#pm29cjudul{font-size:16px;font-weight:800;margin-bottom:8px;color:#b91c1c}',
+    '#pm29cdetail{font-size:13px;line-height:1.55;margin-bottom:12px}',
+    '#pm29cisian{font-size:13px;margin-bottom:12px}',
+    '#pm29in{width:100%;padding:10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;margin-top:6px}',
+    '#pm29cbtn{display:flex;gap:10px;justify-content:flex-end}',
+    '#pm29cbtn button{border:none;border-radius:8px;padding:10px 15px;font-size:13px;font-weight:700;cursor:pointer}',
+    '#pm29batal{background:#e5e7eb;color:#111}',
+    '#pm29ok{background:#c62828;color:#fff}',
+    '#pm29ok:disabled{background:#f3f4f6;color:#9ca3af;cursor:not-allowed}'
+  ].join('');
+  var stEl = document.createElement('style');
+  stEl.textContent = CSS;
+  document.head.appendChild(stEl);
+
+  /* ---------------- KERANGKA UI ---------------- */
+  var WADAH = document.createElement('div');
+  WADAH.id = 'pm29wadah';
+  WADAH.innerHTML = [
+    '<button id="pm29f" title="PM29 v8 - Kelola data server Supabase">🧹 PM29</button>',
+    '<div id="pm29ov"></div>',
+    '<aside id="pm29d">',
+    '<div id="pm29hd"><b>🧹 PM29 v8</b><span>Kelola Data Server Supabase</span><button id="pm29x">✕</button></div>',
+    '<div id="pm29stat">Pilih tabel lalu tekan 🔄 Muat.</div>',
+    '<div class="pm29row"><label>Tabel server:</label><select id="pm29tabel"></select><button id="pm29muat" class="pm29btn abu">🔄 Muat</button></div>',
+    '<div class="pm29row" id="pm29gcolrow" style="display:none"><label>Kelompokkan per:</label><select id="pm29gcol"></select></div>',
+    '<div id="pm29sum"></div>',
+    '<div id="pm29listwrap"><div id="pm29list"></div></div>',
+    '<details class="pm29danger">',
+    '<summary>⛔ Zona hapus data server</summary>',
+    '<div class="pm29row"><label>Kategori:</label><select id="pm29grp"></select></div>',
+    '<div class="pm29row"><button id="pm29hkat" class="pm29btn merah">🗑 Hapus kategori terpilih</button></div>',
+    '<div class="pm29row"><label>Dari:</label><input type="date" id="pm29d1"><label>Sampai:</label><input type="date" id="pm29d2"></div>',
+    '<div class="pm29row"><button id="pm29htgl" class="pm29btn oranye">🗑 Hapus rentang tanggal itu</button></div>',
+    '<div class="pm29row"><button id="pm29hsemua" class="pm29btn hitam">💣 HAPUS SEMUA BARIS DI TABEL INI</button></div>',
+    '</details>',
+    '<div class="pm29row"><button id="pm29lokal" class="pm29btn abu" style="flex:1">🧹 Bersihkan data LOKAL ponsel</button></div>',
+    '<details id="pm29helpdet">',
+    '<summary>❓ Kalau hapus gagal / tidak ada yang terhapus (RLS)</summary>',
+    '<div class="pm29helpisi">Row Level Security (RLS) di Supabase bisa memblokir penghapusan dari kunci anon. Buka <b>Supabase → SQL Editor</b>, jalankan SQL di bawah ini (ganti nama tabel bila perlu), lalu coba hapus lagi.</div>',
+    '<textarea readonly id="pm29sql">alter table public.pm_jadwal enable row level security;\ncreate policy "pm29_all_anon"\n  on public.pm_jadwal\n  for all to anon\n  using (true) with check (true);</textarea>',
+    '</details>',
+    '<pre id="pm29log"></pre>',
+    '</aside>',
+    '<div id="pm29cov">',
+    '<div id="pm29card">',
+    '<div id="pm29cjudul"></div>',
+    '<div id="pm29cdetail"></div>',
+    '<div id="pm29cisian">Ketik <b>HAPUS</b> untuk melanjutkan:<input id="pm29in" autocomplete="off" placeholder="HAPUS"></div>',
+    '<div id="pm29cbtn"><button id="pm29batal">Batal</button><button id="pm29ok" disabled>🗑 Hapus</button></div>',
+    '</div>',
+    '</div>'
+  ].join('');
+  document.body.appendChild(WADAH);
+
+  /* ---------------- DATA ---------------- */
+  function isiOpsiTabel() {
+    var sel = $id('pm29tabel');
+    sel.innerHTML = '';
+    DAFTAR_TABEL.forEach(function (t) {
+      var o = document.createElement('option');
+      o.value = t; o.textContent = t;
+      if (t === S.tabel) o.selected = true;
+      sel.appendChild(o);
+    });
+  }
+
+  function deteksiKolom(baris) {
+    var k = Object.keys(baris || {});
+    S.kol.id = k.indexOf('id') >= 0 ? 'id' : null;
+    var kandidat = ['kategori', 'peralatan', 'nama_peralatan', 'jenis', 'room', 'lokasi', 'kode', 'shift', 'dibuat_oleh', 'status'];
+    S.kol.grup = kandidat.filter(function (c) { return k.indexOf(c) >= 0; });
+    var t = ['tanggal', 'tgl', 'date', 'created_at', 't'].filter(function (c) { return k.indexOf(c) >= 0; });
+    S.kol.tgl = t.length ? t[0] : null;
+    if (S.kol.grup.indexOf('kategori') >= 0) S.gcol = 'kategori';
+    else if (S.kol.grup.indexOf('peralatan') >= 0) S.gcol = 'peralatan';
+    else S.gcol = S.kol.grup[0] || null;
+    var gs = $id('pm29gcol');
+    gs.innerHTML = '';
+    S.kol.grup.forEach(function (c) {
+      var o = document.createElement('option');
+      o.value = c; o.textContent = c;
+      if (c === S.gcol) o.selected = true;
+      gs.appendChild(o);
+    });
+    $id('pm29gcolrow').style.display = S.kol.grup.length ? 'flex' : 'none';
+  }
+
+  function urutkan() {
+    var kt = S.kol.tgl;
+    S.rows.sort(function (a, b) {
+      var va = kt ? String(a[kt] || '') : '';
+      var vb = kt ? String(b[kt] || '') : '';
+      if (va !== vb) return va < vb ? -1 : 1;
+      return ((a.id || 0) - (b.id || 0)) || 0;
+    });
+  }
+
+  function nilaiGrup(r) {
+    var v = S.gcol ? r[S.gcol] : null;
+    return (v === null || v === undefined || v === '') ? '(kosong)' : String(v);
+  }
+  function barisTersaring() {
+    if (!S.filter) return S.rows;
+    return S.rows.filter(function (r) { return nilaiGrup(r) === S.filter; });
+  }
+
+  function muat() {
+    var client = getClient();
+    if (!client) {
+      stat('❌ Client Supabase belum siap. Cek koneksi internet, dan pastikan blok/koneksi Supabase (var sb = ...) masih ada di halaman.', 'err');
+      return;
+    }
+    S.tabel = $id('pm29tabel').value;
+    S.filter = null;
+    stat('⏳ Membaca tabel <b>' + esct(S.tabel) + '</b> dari server Supabase...');
+    client.from(S.tabel).select('*').limit(2000).then(function (res) {
+      if (res.error) {
+        stat('❌ Gagal baca tabel <b>' + esct(S.tabel) + '</b>: ' + esct(res.error.message), 'err');
+        log('[BACA GAGAL] ' + S.tabel + ' — ' + res.error.message);
+        return;
+      }
+      S.rows = res.data || [];
+      if (S.rows.length >= 2000) log('⚠️ Data dimuat maksimal 2000 baris pertama.');
+      if (!S.rows.length) {
+        if (TERKAIT) {
+          stat('✅ ' + esct(TERKAIT.desc) + ': ' + TERKAIT.before + ' → 0 baris (terhapus <b>' + TERKAIT.before + '</b>).', 'ok');
+          log('[OK] ' + TERKAIT.desc + ' — terhapus ' + TERKAIT.before + ' (' + TERKAIT.before + ' → 0)');
+          TERKAIT = null;
+        } else {
+          stat('⚠️ 0 baris terbaca dari <b>' + esct(S.tabel) + '</b>. Kalau di Table Editor Supabase data masih terlihat, berarti RLS memblokir pembacaan (tekan ❓ di bawah).', 'err');
+        }
+        $id('pm29sum').innerHTML = '';
+        $id('pm29list').innerHTML = '<div class="pm29kosong">Tidak ada baris.</div>';
+        renderGrpSel();
+        return;
+      }
+      deteksiKolom(S.rows[0]);
+      urutkan();
+      renderSemua();
+      if (TERKAIT) {
+        var d = TERKAIT.before - S.rows.length;
+        if (d > 0) {
+          stat('✅ ' + esct(TERKAIT.desc) + ': ' + TERKAIT.before + ' → ' + S.rows.length + ' baris (terhapus <b>' + d + '</b>).', 'ok');
+          log('[OK] ' + TERKAIT.desc + ' — terhapus ' + d + ' (' + TERKAIT.before + ' → ' + S.rows.length + ')');
+        } else {
+          stat('⚠️ Tidak ada baris yang terhapus (jumlah tetap ' + S.rows.length + '). Kemungkinan RLS memblokir DELETE — tekan tombol ❓ di bawah untuk solusinya.', 'err');
+          log('[BLOK?] ' + TERKAIT.desc + ' — jumlah tetap ' + S.rows.length);
+        }
+        TERKAIT = null;
+        return;
+      }
+      stat('✅ Terhubung. <b>' + S.rows.length + '</b> baris terbaca dari <b>' + esct(S.tabel) + '</b>.', 'ok');
+    }).catch(function (e) {
+      stat('❌ Error koneksi: ' + esct(e && e.message ? e.message : e), 'err');
+    });
+  }
+
+  /* ---------------- RENDER ---------------- */
+  function renderSum() {
+    var el = $id('pm29sum');
+    if (!S.gcol) {
+      el.innerHTML = '<div class="pm29total">Total: <b>' + S.rows.length + '</b> baris</div>';
+      return;
+    }
+    var c = {};
+    S.rows.forEach(function (r) { var k = nilaiGrup(r); c[k] = (c[k] || 0) + 1; });
+    var chips = '<div class="pm29total">Total: <b>' + S.rows.length + '</b> baris di <b>' + esct(S.tabel) + '</b> — tekan kelompok untuk menyaring daftar:</div><div class="pm29chips">';
+    Object.keys(c).sort(function (a, b) { return c[b] - c[a]; }).forEach(function (k) {
+      chips += '<button class="pm29chip' + (S.filter === k ? ' aktif' : '') + '" data-g="' + esct(k) + '">' + esct(k) + ' · ' + c[k] + '</button>';
+    });
+    el.innerHTML = chips + '</div>';
+  }
+
+  function renderGrpSel() {
+    var sel = $id('pm29grp');
+    if (!sel) return;
+    sel.innerHTML = '';
+    if (!S.gcol || !S.rows.length) {
+      var o = document.createElement('option');
+      o.value = '';
+      o.textContent = S.gcol ? '(belum ada data)' : '(kolom kategori tidak ada)';
+      sel.appendChild(o);
+      return;
+    }
+    var c = {};
+    S.rows.forEach(function (r) { var k = nilaiGrup(r); c[k] = (c[k] || 0) + 1; });
+    Object.keys(c).sort(function (a, b) { return c[b] - c[a]; }).forEach(function (k) {
+      var o = document.createElement('option');
+      o.value = k; o.textContent = k + ' (' + c[k] + ' baris)';
+      sel.appendChild(o);
+    });
+  }
+
+  function renderList() {
+    var el = $id('pm29list');
+    var rows = barisTersaring();
+    var head = '';
+    if (S.filter) {
+      head += '<div class="pm29finfo">Kelompok <b>' + esct(S.filter) + '</b> — ' + rows.length + ' baris. <button id="pm29clearf">tampilkan semua</button></div>';
+    }
+    if (rows.length > MAX_TAMPIL) {
+      head += '<div class="pm29finfo">Menampilkan ' + MAX_TAMPIL + ' dari ' + rows.length + ' baris pertama (pakai saringan kategori untuk melihat lainnya).</div>';
+    }
+    if (!rows.length) {
+      el.innerHTML = head + '<div class="pm29kosong">Tidak ada baris.</div>';
+      return;
+    }
+    var h = head;
+    rows.slice(0, MAX_TAMPIL).forEach(function (r) {
+      var utama = (r.peralatan !== undefined && r.peralatan !== null) ? r.peralatan
+        : (r.nama !== undefined && r.nama !== null) ? r.nama
+        : (S.gcol ? r[S.gcol] : '');
+      var extra = '';
+      if (r.room) extra += ' · ' + r.room;
+      if (S.kol.tgl && r[S.kol.tgl]) extra += ' · ' + String(r[S.kol.tgl]).slice(0, 10);
+      if (r.shift) extra += ' · ' + r.shift;
+      h += '<div class="pm29baris"><span class="pm29isi">#' + esct(r.id) + ' · <b>' + esct(utama) + '</b>' + esct(extra) + '</span>' +
+        '<button class="pm29h1" data-id="' + esct(r.id) + '" title="Hapus baris ini">🗑</button></div>';
+    });
+    el.innerHTML = h;
+  }
+
+  function renderSemua() { renderSum(); renderGrpSel(); renderList(); }
+
+  /* ---------------- DIALOG KONFIRMASI ---------------- */
+  function konfirm(judul, detailHtml, cb) {
+    CB = cb;
+    $id('pm29cjudul').textContent = judul;
+    $id('pm29cdetail').innerHTML = detailHtml;
+    $id('pm29in').value = '';
+    $id('pm29ok').disabled = true;
+    $id('pm29cov').style.display = 'flex';
+    setTimeout(function () { $id('pm29in').focus(); }, 60);
+  }
+
+  /* ---------------- AKSI HAPUS ---------------- */
+  function gagalHapus(konteks, err) {
+    TERKAIT = null;
+    stat('❌ Hapus GAGAL: ' + esct(err.message || err), 'err');
+    log('[HAPUS GAGAL] ' + konteks + ' — ' + (err.message || err));
+  }
+
+  function aksiHapusSatu(id) {
+    var r = null;
+    for (var i = 0; i < S.rows.length; i++) { if (String(S.rows[i].id) === String(id)) { r = S.rows[i]; break; } }
+    var info = r ? (esct(r.peralatan || r.nama || (S.gcol ? r[S.gcol] : '')) + ' · ' + String(r[S.kol.tgl] || '').slice(0, 10)) : ('baris #' + id);
+    konfirm('Hapus 1 baris ini?',
+      'Tabel <b>' + esct(S.tabel) + '</b><br>Baris <b>#' + esct(id) + '</b> — ' + info + '<br>Tindakan ini tidak bisa dibatalkan.',
+      function () {
+        TERKAIT = { desc: 'Hapus baris #' + id, before: S.rows.length };
+        getClient().from(S.tabel).delete().eq('id', id).then(function (res) {
+          if (res.error) gagalHapus('baris #' + id, res.error); else muat();
+        }).catch(function (e) { gagalHapus('baris #' + id, e); });
+      });
+  }
+
+  function aksiHapusKategori() {
+    if (!S.gcol) { alert('Tabel ini tidak punya kolom kategori/peralatan.'); return; }
+    var val = $id('pm29grp').value;
+    if (!val) { alert('Pilih kategori dulu di dropdown "Kategori".'); return; }
+    var col = S.gcol;
+    var kosong = (val === '(kosong)');
+    var n = 0;
+    S.rows.forEach(function (r) { if (nilaiGrup(r) === val) n++; });
+    if (!n) { alert('Tidak ada baris pada kategori itu.'); return; }
+    konfirm('Hapus kategori "' + val + '"?',
+      'Tabel <b>' + esct(S.tabel) + '</b><br>Akan menghapus <b>' + n + '</b> baris dengan <b>' + esct(col) + ' = ' + esct(val) + '</b>.<br>Tindakan ini TIDAK bisa dibatalkan.',
+      function () {
+        TERKAIT = { desc: 'Hapus kategori ' + val, before: S.rows.length };
+        var client = getClient();
+        client.from(S.tabel).delete().eq(col, kosong ? '' : val).then(function (res) {
+          if (res.error) { gagalHapus('kategori ' + val, res.error); return; }
+          if (kosong) {
+            client.from(S.tabel).delete().is(col, null).then(function () { muat(); }).catch(function () { muat(); });
+          } else muat();
+        }).catch(function (e) { gagalHapus('kategori ' + val, e); });
+      });
+  }
+
+  function aksiHapusRentang() {
+    var col = S.kol.tgl;
+    if (!col) { alert('Tabel ini tidak punya kolom tanggal.'); return; }
+    var d1 = $id('pm29d1').value, d2 = $id('pm29d2').value;
+    if (!d1 || !d2) { alert('Isi dulu tanggal "Dari" dan "Sampai".'); return; }
+    if (d1 > d2) { alert('Tanggal "Dari" lebih besar dari "Sampai".'); return; }
+    var n = 0;
+    S.rows.forEach(function (r) {
+      var v = String(r[col] || '').slice(0, 10);
+      if (v >= d1 && v <= d2) n++;
+    });
+    if (!n) { alert('Tidak ada baris dalam rentang ' + d1 + ' s/d ' + d2 + ' (dari data yang termuat).'); return; }
+    konfirm('Hapus rentang tanggal?',
+      'Tabel <b>' + esct(S.tabel) + '</b><br>Akan menghapus <b>' + n + '</b> baris dengan tanggal <b>' + esct(d1) + '</b> s/d <b>' + esct(d2) + '</b> (semua kategori).<br>Tindakan ini TIDAK bisa dibatalkan.',
+      function () {
+        TERKAIT = { desc: 'Hapus tanggal ' + d1 + ' s/d ' + d2, before: S.rows.length };
+        getClient().from(S.tabel).delete().gte(col, d1).lte(col, d2).then(function (res) {
+          if (res.error) gagalHapus('rentang ' + d1 + ' s/d ' + d2, res.error); else muat();
+        }).catch(function (e) { gagalHapus('rentang ' + d1 + ' s/d ' + d2, e); });
+      });
+  }
+
+  function aksiHapusSemua() {
+    if (!S.kol.id) { alert('Tabel ini tidak punya kolom id. Gunakan hapus kategori atau rentang tanggal.'); return; }
+    if (!S.rows.length) { alert('Tidak ada data untuk dihapus.'); return; }
+    konfirm('HAPUS SEMUA baris?',
+      'Tabel <b>' + esct(S.tabel) + '</b><br>SEMUA <b>' + S.rows.length + '</b> baris akan dihapus permanen dari server.<br>Tindakan ini TIDAK bisa dibatalkan.',
+      function () {
+        TERKAIT = { desc: 'HAPUS SEMUA', before: S.rows.length };
+        getClient().from(S.tabel).delete().neq('id', 0).then(function (res) {
+          if (res.error) gagalHapus('SEMUA', res.error); else muat();
+        }).catch(function (e) { gagalHapus('SEMUA', e); });
+      });
+  }
+
+  function bersihLokal() {
+    var cocok = /(^|[^a-z0-9])(pm16lokal|pm|jadwal|matriks|riwayat|siklus|kalendar|midpoint)/i;
+    var keys = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (cocok.test(k)) keys.push(k);
+    }
+    if (!keys.length) { alert('Tidak ada kunci data lokal yang cocok di ponsel ini.'); return; }
+    konfirm('Bersihkan data LOKAL ponsel?',
+      'Kunci localStorage yang akan dihapus:<br><b>' + keys.map(esct).join('<br>') + '</b><br>Setelah ini muat ulang halaman agar matriks membaca ulang dari server.',
+      function () {
+        keys.forEach(function (k) { try { localStorage.removeItem(k); } catch (e) {} });
+        log('[LOKAL] Dihapus: ' + keys.join(', '));
+        stat('✅ ' + keys.length + ' kunci lokal sudah dihapus. Sekarang muat ulang halaman (refresh) lalu cek matriks.', 'ok');
+      });
+  }
+
+  /* ---------------- BUKA / TUTUP / EVENT ---------------- */
+  function buka() {
+    $id('pm29d').classList.add('buka');
+    $id('pm29ov').style.display = 'block';
+    if (!S.rows.length) muat();
+  }
+  function tutup() {
+    $id('pm29d').classList.remove('buka');
+    $id('pm29ov').style.display = 'none';
+  }
+
+  $id('pm29f').onclick = buka;
+  $id('pm29x').onclick = tutup;
+  $id('pm29ov').onclick = tutup;
+  $id('pm29muat').onclick = function () { muat(); };
+  $id('pm29tabel').onchange = function () { S.tabel = this.value; muat(); };
+  $id('pm29gcol').onchange = function () { S.gcol = this.value; S.filter = null; renderSemua(); };
+
+  $id('pm29sum').addEventListener('click', function (ev) {
+    var b = ev.target && ev.target.closest ? ev.target.closest('.pm29chip') : null;
+    if (!b) return;
+    var g = b.getAttribute('data-g');
+    S.filter = (S.filter === g) ? null : g;
+    renderSum(); renderList(); renderGrpSel();
+  });
+
+  $id('pm29list').addEventListener('click', function (ev) {
+    if (ev.target && ev.target.id === 'pm29clearf') {
+      S.filter = null; renderSum(); renderList(); renderGrpSel();
+      return;
+    }
+    var b = ev.target && ev.target.closest ? ev.target.closest('.pm29h1') : null;
+    if (!b) return;
+    aksiHapusSatu(b.getAttribute('data-id'));
+  });
+
+  $id('pm29hkat').onclick = aksiHapusKategori;
+  $id('pm29htgl').onclick = aksiHapusRentang;
+  $id('pm29hsemua').onclick = aksiHapusSemua;
+  $id('pm29lokal').onclick = bersihLokal;
+
+  $id('pm29in').addEventListener('input', function () {
+    $id('pm29ok').disabled = (this.value !== 'HAPUS');
+  });
+  $id('pm29batal').onclick = function () {
+    $id('pm29cov').style.display = 'none';
+    CB = null;
+  };
+  $id('pm29ok').onclick = function () {
+    if ($id('pm29in').value !== 'HAPUS') return;
+    $id('pm29cov').style.display = 'none';
+    var cb = CB; CB = null;
+    if (cb) cb();
+  };
+
+  isiOpsiTabel();
+  log('PM29 v8 aktif. Tabel default: ' + TABEL_DEFAULT);
+})();
+
+</script>
+<!-- ================================================================
+  [SR13] v7 - PDF STOCK REQUEST: TATA LETAK FORM PROFESIONAL - 12 Nov 2026
+  ---------------------------------------------------------------------
+  PERMINTAAN (Head, lanjutan v6 - melihat SS PDF terbaru):
+  1. Baris Tanggal s/d Tujuan diberi JARAK dari header atas (sebelumnya
+     terlalu mepet dengan band navy).
+  2. TOTAL ESTIMASI BIAYA salah kolom: angkanya nyasar ke kolom Catatan
+     -> sekarang angka total ada di kolom Jumlah.
+  3. Tulisan FOTO BARANG terlalu dekat dengan tabel -> diberi jarak.
+  4. Foto barang: mulai dari KIRI, keterangan bukan "Foto 1/Foto 2"
+     tapi NAMA BARANG sesuai kolom tabel, dan jumlah kotak foto
+     mengikuti jumlah barang (mis. 12 barang + input gambar = 12 foto,
+     tidak dibatasi 8 lagi).
+  5. TTD Direktur + tanggal DIKECILKAN (ukuran form profesional) dan
+     posisinya TETAP di bawah halaman terakhir (anchor bawah) - tidak
+     berubah-ubah walaupun jumlah barang/foto berbeda.
+  6. TOTAL ESTIMASI BIAYA rata TENGAH dalam kolomnya.
+  7. Warna tulisan Tanggal, Pemohon, Kebutuhan, Jabatan, Kategori,
+     Divisi, Lantai/Area, Prioritas, Status, Tujuan = HITAM agar jelas.
+  8. Tujuan diberi GARIS BAWAH 2 BARIS dengan panjang pas (sampai
+     margin kanan, sejajar tabel) - terlihat seperti form yang rapi.
+  Dari v6 (tetap): judul "FORM PENGAJUAN STOCK REQUEST", header
+  "MIDPOINT SQUARE BUILDING" tanpa titik, tema navy-gold, No. Form
+  diawali SR/, nama file SR_, status kotak centang Approve/Not
+  Approve/Revisi, Pemohon/Jabatan/Divisi, kolom Estimasi Biaya selalu
+  ada + kepala kolom center, foto kotak persegi cover-crop, footer,
+  CSS baris tombol mandiri (Edit aman), PDF dirakit per BYTE
+  (Uint8Array + DCTDecode).
+
+  CATATAN PASANG:
+  - HAPUS blok SR13 v6 lama (komentar "[SR13] v6" sampai
+    "AKHIR [SR13] v6"), lalu tempel blok v7 ini PALING BAWAH
+    index.html sebelum penutup BODY.
+  - Bila v6 lupa dihapus, v7 tetap aman: tombol Unduh PDF buatan v6
+    diadopsi (klik diarahkan ke v7) dan strip TTD unduhan gambar
+    tidak digandakan. Tapi sebaiknya v6 tetap dihapus.
+  - BLOK SR13 v3 BOLEH DIHAPUS (CSS-nya sudah dipindah ke v6/v7).
+  TANPA SQL. Cek console: __SR13_CEK() (versi 'v7')
+================================================================= -->
 <script>
 (function(){
 'use strict';
-if(window.__PM28_AKTIF){console.warn('[PM28] Blok PM28 terpasang dua kali — hapus salah satunya.');return;}
-window.__PM28_AKTIF=true;
+if(window.__SR13_V7){ try{ console.log('[SR13] v7 sudah aktif - lewati'); }catch(e){} return; }
+window.__SR13_V7 = { versi: 'v7' };
+window.__SR13_AKTIF = true;
 
-var VERSI='PM28 v4';
-var DATA=[];
-var FILTER='*', CARI='', DAFTAR_TAMPIL=150, EXPAND_TAMPIL=100;
-var KAT_TERBUKA=null, RIWAYAT_BUKA={};
-var SEDANG_MUAT=false, TABEL_TERKUNCI=false;
-var KOLOM={id:null,tanggal:null,shift:null,kategori:null,peralatan:null,uraian:null,lokasi:null,status:null};
-var CURINGAN={url:null,kunci:null,tabel:null,sumber:null};
-var KANDIDAT_TABEL=['matriks','jadwal','jadwal_pm','pm_jadwal','jadwal_maintenance','jadwalpm','preventive','preventif','pm_schedule','schedule','schedules','tugas','tasks','pm_tugas'];
+/* ================= KONFIGURASI (boleh diubah) ================= */
+var K0 = window.SR13_KONFIG || {};
+var KOTA          = K0.kota   || 'Pontianak';
+var NAMA_DIREKTUR = K0.namaDirektur || '';  /* kosongkan = garis titik-titik */
+var JABATAN       = K0.jabatan || 'Direktur';
+var TGL_UNDUH     = !!K0.tanggalDariDownload; /* true = tanggal saat unduh; false = tanggal pengajuan */
+var STATUS_OPSI   = K0.statusOpsi || ['Approve', 'Not Approve', 'Revisi'];
+var MAKS_FOTO     = K0.maksFoto || 999;     /* jumlah maks kotak foto (default: SEMUA foto) */
+/* =============================================================== */
 
-/* ================= 1. UTIL ================= */
-function $(id){return document.getElementById(id);}
-function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-function uri(v){return encodeURIComponent(String(v==null?'':v));}
-function potong(s,n){s=String(s==null?'':s);n=n||160;return s.length>n?s.slice(0,n)+'…':s;}
-function status(t){var el=$('pm28-status');if(el)el.textContent=t;try{console.log('[PM28]',t);}catch(e){}}
-function toast(t){
-  var el=document.createElement('div');
-  el.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#0f172a;color:#fff;padding:10px 16px;border-radius:999px;font-size:13px;z-index:100000;box-shadow:0 6px 18px rgba(0,0,0,.3);max-width:86vw;text-align:center;';
-  el.textContent=t;document.body.appendChild(el);
-  setTimeout(function(){if(el&&el.remove)el.remove();},3000);
+var TAG = '[SR13]';
+function log13(){ try{ console.log.apply(console, [TAG].concat([].slice.call(arguments))); }catch(e){} }
+
+/* ---------- helper umum ---------- */
+function rapi13(v){
+  var s = String(v == null ? '' : v);
+  s = s.replace(/domini(?:on|o)[\s.,;:_\-]*lounge/ig, 'Dominion Lounge');
+  return s.trim();
 }
-function tglIndo(s){
-  if(!s)return '-';
-  var d=String(s).slice(0,10).split('-');
-  return d.length===3?d[2]+'/'+d[1]+'/'+d[0]:String(s);
+var BULAN13 = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+var BULAN13P = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+function keTanggal13(v){
+  if(!v) return null;
+  try{
+    var d = new Date(String(v).length <= 10 ? String(v) + 'T00:00:00' : v);
+    if(!isNaN(d.getTime())) return d;
+  }catch(e){}
+  return null;
 }
-function jumlahLokal(){
-  try{var s=localStorage.getItem('pm16lokal');if(!s)return 0;var a=JSON.parse(s);return Array.isArray(a)?a.length:0;}catch(e){return 0;}
+function tglPanjang13(v){
+  var d = keTanggal13(v);
+  return d ? (d.getDate() + ' ' + BULAN13[d.getMonth()] + ' ' + d.getFullYear()) : String(v == null ? '' : v);
+}
+function tglPendek13(v){
+  var d = keTanggal13(v);
+  return d ? (d.getDate() + ' ' + BULAN13P[d.getMonth()] + ' ' + d.getFullYear()) : String(v == null ? '' : v);
+}
+function tanggalTTD13(rec){
+  if(TGL_UNDUH) return tglPanjang13(new Date());
+  if(rec){
+    var k = [rec.request_date, rec.tanggal, rec.created_at];
+    for(var i = 0; i < k.length; i++){ if(k[i]) return tglPanjang13(k[i]); }
+  }
+  return tglPanjang13(new Date());
+}
+function tanggalInfo13(rec){
+  if(TGL_UNDUH) return tglPendek13(new Date());
+  if(rec){
+    var k = [rec.request_date, rec.tanggal, rec.created_at];
+    for(var i = 0; i < k.length; i++){ if(k[i]) return tglPendek13(k[i]); }
+  }
+  return tglPendek13(new Date());
+}
+function angka13(v){
+  var n = parseFloat(String(v == null ? '' : v).replace(/[^\d.\-]/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+function harga13(v){
+  if(v == null) return 0;
+  if(typeof v === 'number') return v > 0 ? v : 0;
+  var d = String(v).replace(/[^\d]/g, '');
+  return d ? parseInt(d, 10) : 0;
+}
+function rp13(n){
+  n = Math.round(Number(n) || 0);
+  var t = String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return (n < 0 ? '-' : '') + t;
+}
+function hitungEst13(items){
+  var total = 0, ada = false;
+  (Array.isArray(items) ? items : []).forEach(function(it){
+    var h = harga13(it && it.harga), q = angka13(it && it.qty);
+    if(h > 0){ ada = true; total += h * q; }
+  });
+  return { total: total, ada: ada };
+}
+function sb13(){
+  try{ if(typeof sb !== 'undefined' && sb && typeof sb.from === 'function') return sb; }catch(e){}
+  return (window.sb && typeof window.sb.from === 'function') ? window.sb : null;
+}
+function toast13(pesan, jenis){
+  try{
+    if(typeof window.showToast === 'function'){ window.showToast(pesan, jenis || 'success'); return; }
+  }catch(e){}
+  try{
+    var el = document.createElement('div');
+    el.setAttribute('data-sr13', '1');
+    el.style.cssText = 'position:fixed;left:12px;right:12px;bottom:18px;z-index:2147483000;background:#1F2937;color:#fff;'+
+      'border:1px solid #D4AF37;border-radius:12px;padding:11px 14px;font:600 12.5px Arial,sans-serif;text-align:center;'+
+      'box-shadow:0 8px 24px rgba(15,23,42,.35)';
+    el.textContent = pesan;
+    document.body.appendChild(el);
+    setTimeout(function(){ try{ if(el.parentNode) el.parentNode.removeChild(el); }catch(e){} }, 4200);
+  }catch(e){}
 }
 
-/* ================= 2. PENCURI KONEKSI =================
-   Mencatat setiap permintaan supabase yang dilakukan halaman ini
-   (termasuk Matriks PM21 yang sudah bekerja) supaya URL + tabel +
-   kunci yang dipakai PM28 PERSIS sama dengan matriks. */
-function ambilTabelDariUrl(u){
-  var m=String(u).match(/\/rest\/v1\/([A-Za-z0-9_\-]+)/);
-  if(!m)return null;
-  var t=m[1];
-  if(t==='rpc'||t==='openapi')return null;
+/* ==================================================================
+   BAGIAN 1 - UNDUH GAMBAR + STRIP TTD DIREKTUR
+   (menyelimuti downloadStockImage yang sudah ada - layout lama utuh)
+   ================================================================== */
+function namaDots13(ctx, lebarMaks){
+  var n = 46, t;
+  do { t = '( ' + new Array(n + 1).join('.') + ' )'; n--; }
+  while(n > 8 && ctx.measureText(t).width > lebarMaks);
   return t;
 }
-function normHeader(h){
-  if(!h)return null;
-  try{
-    if(typeof Headers!=='undefined'&&h instanceof Headers){var o={};h.forEach(function(v,k){o[k]=v;});return o;}
-    if(Array.isArray(h)){var o2={};h.forEach(function(p){if(p&&p[0])o2[p[0]]=p[1];});return o2;}
-    return h;
-  }catch(e){return h;}
+function namaTtd13(ctx, lebarMaks){
+  var teks = NAMA_DIREKTUR ? '( ' + NAMA_DIREKTUR + ' )' : namaDots13(ctx, lebarMaks);
+  var sz = 11;
+  ctx.font = '700 ' + sz + 'px Arial, sans-serif';
+  while(sz > 8 && ctx.measureText(teks).width > lebarMaks){
+    sz -= 0.5; ctx.font = '700 ' + sz + 'px Arial, sans-serif';
+  }
+  return teks;
 }
-function kunciDari(u,hdr){
+function stempel13(cv, namaFile, rec, id){
   try{
-    var h=normHeader(hdr);
-    if(h){
-      if(h.apikey)return h.apikey;
-      if(h.Authorization||h.authorization){var a=String(h.Authorization||h.authorization).match(/^Bearer\s+(.+)$/i);if(a)return a[1];}
-    }
-    var q=new URL(String(u),location.href);
-    return q.searchParams.get('apikey')||null;
-  }catch(e){return null;}
+    var strip = 178;
+    var baru = document.createElement('canvas');
+    baru.width = cv.width;
+    baru.height = cv.height + strip * 2;
+    var c = baru.getContext('2d');
+    c.fillStyle = '#FFFFFF';
+    c.fillRect(0, 0, baru.width, baru.height);
+    c.drawImage(cv, 0, 0);
+    c.scale(2, 2);
+    var Wl = cv.width / 2, y0 = cv.height / 2;
+    c.strokeStyle = '#E5E7EB'; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(14, y0 + 0.5); c.lineTo(Wl - 14, y0 + 0.5); c.stroke();
+    var kanan = Wl - 24;
+    c.textAlign = 'right'; c.textBaseline = 'alphabetic';
+    c.fillStyle = '#111827'; c.font = '700 11px Arial, sans-serif';
+    c.fillText(KOTA + ', ' + tanggalTTD13(rec), kanan, y0 + 26);
+    c.fillStyle = '#374151'; c.font = '400 10.5px Arial, sans-serif';
+    c.fillText('Disetujui oleh,', kanan, y0 + 45);
+    c.fillStyle = '#111827';
+    c.font = '700 11px Arial, sans-serif';
+    c.fillText(namaTtd13(c, 210), kanan, y0 + 126);
+    c.font = '400 10.5px Arial, sans-serif';
+    c.fillText(JABATAN, kanan, y0 + 144);
+    var link = document.createElement('a');
+    link.download = namaFileSR13(rec, 'png');
+    link.href = baru.toDataURL('image/png');
+    link.click();
+    log13('gambar + TTD Direktur terunduh:', link.download);
+  }catch(e){ log13('stempel gagal (aman):', e && e.message || e); }
 }
-function catatKoneksi(u,hdr){
-  try{
-    if(!u||String(u).indexOf('supabase.co')<0)return;
-    var m=String(u).match(/https:\/\/[a-z0-9\-]+\.supabase\.co/i);
-    if(!m)return;
-    var baru=false;
-    if(!CURINGAN.url){CURINGAN.url=m[0]+'/rest/v1';baru=true;}
-    if(!CURINGAN.kunci){var k=kunciDari(u,hdr);if(k){CURINGAN.kunci=k;baru=true;}}
-    if(!TABEL_TERKUNCI){var t=ambilTabelDariUrl(u);if(t&&CURINGAN.tabel!==t){CURINGAN.tabel=t;baru=true;}}
-    if(CURINGAN.url&&CURINGAN.kunci){
-      CURINGAN.sumber=CURINGAN.sumber||'curingan-matriks';
-      simpanKoneksi();
-      if(baru&&window.__PM28_SIAP){pilihTabel(function(ok){if(ok)muatSemua();});}
-    }
-  }catch(e){}
-}
-(function pasangPencuri(){
-  if(window.__PM28_PENCIURI)return;
-  window.__PM28_PENCIURI=true;
-  try{
-    var _f=window.fetch;
-    window.fetch=function(input,init){
-      try{
-        var u=(typeof input==='string')?input:(input&&input.url)||'';
-        var h=(init&&init.headers)||(input&&input.headers)||null;
-        catatKoneksi(u,h);
-      }catch(e){}
-      return _f.apply(this,arguments);
+if(window.__SR13_IMG_WRAP){
+  log13('downloadStockImage sudah dibungkus blok lain - tidak digandakan');
+} else if(typeof window.downloadStockImage === 'function'){
+  window.__SR13_IMG_WRAP = true;
+  var asliImg13 = window.downloadStockImage;
+  var sedang13 = false;
+  window.downloadStockImage = function(id){
+    if(sedang13) return asliImg13.apply(this, arguments);
+    sedang13 = true;
+    var args = arguments, diri = this;
+    window.__SR13_ID_TERAKHIR = id;
+    var kanvas = null, namaAsli = null, diproses = false, tahan13 = null;
+    var TDU = HTMLCanvasElement.prototype.toDataURL;
+    var KLIK = HTMLAnchorElement.prototype.click;
+    HTMLCanvasElement.prototype.toDataURL = function(){
+      try{ if(this && this.width >= 600) kanvas = this; }catch(e){}
+      return TDU.apply(this, arguments);
     };
-  }catch(e){}
-  try{
-    var _o=XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open=function(met,u){
-      try{this.__pm28u=u;catatKoneksi(u,null);}catch(e){}
-      return _o.apply(this,arguments);
-    };
-    var _h=XMLHttpRequest.prototype.setRequestHeader;
-    XMLHttpRequest.prototype.setRequestHeader=function(k,v){
+    HTMLAnchorElement.prototype.click = function(){
       try{
-        if(/^apikey$|^authorization$/i.test(k)&&this.__pm28u){
-          var o={};o[k]=v;catatKoneksi(this.__pm28u,o);
+        if(kanvas && this.download && /^(Form[_-]|SR_)/i.test(this.download) && /^data:image\/png/i.test(String(this.href || ''))){
+          if(!namaAsli) namaAsli = this.download;
+          tahan13 = this;
+          return;
         }
       }catch(e){}
-      return _h.apply(this,arguments);
+      return KLIK.apply(this, arguments);
     };
+    function lepas13(){
+      if(tahan13){ var a = tahan13; tahan13 = null; try{ KLIK.call(a); }catch(e){} }
+    }
+    function pulihkan(){
+      HTMLCanvasElement.prototype.toDataURL = TDU;
+      HTMLAnchorElement.prototype.click = KLIK;
+    }
+    async function proses(){
+      if(diproses) return;
+      diproses = true;
+      pulihkan();
+      sedang13 = false;
+      try{
+        if(!kanvas){
+          log13('kanvas asli tidak tertangkap - unduhan asli diteruskan tanpa strip TTD');
+          lepas13();
+          return;
+        }
+        var rec = null;
+        if(!TGL_UNDUH){
+          try{
+            var sbObj = sb13();
+            if(sbObj && id != null){
+              var res = await sbObj.from('stock_requests').select('*').eq('id', id).single();
+              if(res && res.data) rec = res.data;
+            }
+          }catch(e){ log13('ambil tanggal pengajuan gagal, pakai tanggal hari ini'); }
+        }
+        stempel13(kanvas, namaAsli, rec, id);
+      }catch(e){
+        pulihkan(); sedang13 = false; lepas13();
+        log13('proses stempel gagal:', e && e.message || e);
+      }
+    }
+    var hasil;
+    try{ hasil = asliImg13.apply(diri, args); }
+    catch(e){ pulihkan(); sedang13 = false; lepas13(); throw e; }
+    try{ Promise.resolve(hasil).then(function(){ setTimeout(proses, 120); }, function(){ setTimeout(proses, 120); }); }
+    catch(e){ setTimeout(proses, 600); }
+    setTimeout(proses, 12000);
+    return hasil;
+  };
+  log13('downloadStockImage dibungkus: gambar + strip TTD Direktur');
+} else {
+  log13('downloadStockImage belum ada - tombol Unduh PDF tetap tersedia');
+}
+
+/* ==================================================================
+   BAGIAN 2 - FOTO: KUMPUL DARI DATA, MUAT, KOTAK PERSEGI (COVER)
+   ================================================================== */
+function urlFoto13(p){
+  if(!p) return '';
+  if(typeof p === 'string') return p;
+  if(typeof p === 'object'){
+    var k = ['url','publicUrl','public_url','photo_url','photoUrl','src','image','imageUrl','image_url','path'];
+    for(var i = 0; i < k.length; i++){
+      var v = p[k[i]];
+      if(typeof v === 'string' && v) return v;
+    }
+    for(var key in p){
+      var v2 = p[key];
+      if(typeof v2 === 'string' && (v2.indexOf('http') === 0 || v2.indexOf('data:image') === 0)) return v2;
+    }
+  }
+  return '';
+}
+function fotoItem13(it){
+  if(!it) return '';
+  var ph = it.photos;
+  if(typeof ph === 'string'){ try{ ph = JSON.parse(ph); }catch(e){ ph = null; } }
+  if(Array.isArray(ph)){
+    for(var i = 0; i < ph.length; i++){
+      var u = urlFoto13(ph[i]);
+      if(u) return u;
+    }
+  }
+  var k = ['foto','image','imageUrl','image_url','url','photo','photoUrl','photo_url','gambar'];
+  for(var j = 0; j < k.length; j++){
+    var v = it[k[j]];
+    if(typeof v === 'string' && (v.indexOf('http') === 0 || v.indexOf('data:image') === 0)) return v;
+  }
+  return '';
+}
+/* SEMUA foto form jadi SATU daftar berurutan + keterangan NAMA BARANG:
+   - foto barang per item -> keterangan = nama barang di kolom tabel
+     (bukan "Foto 1, Foto 2"); bila 1 barang punya >1 foto, foto kedua
+     dst diberi akhiran " (2)", " (3)".
+   - foto lampiran (image_urls) -> keterangan "Lampiran 1, 2, ..."
+   - tanpa duplikat, TANPA batas 8 foto (mengikuti jumlah barang). */
+function kumpulUrlFoto13(rec, items){
+  var out = [], seen = {};
+  function tambah(u, ket){
+    u = String(u == null ? '' : u);
+    if(!u || seen[u]) return;
+    if(u.indexOf('http') !== 0 && u.indexOf('data:image') !== 0) return;
+    seen[u] = 1; out.push({ u: u, ket: ket });
+  }
+  (Array.isArray(items) ? items : []).forEach(function(it){
+    var nm = rapi13(it && it.nama) || 'Barang';
+    var ph = it ? it.photos : null;
+    try{ if(typeof ph === 'string') ph = JSON.parse(ph); }catch(e){ ph = null; }
+    var n = 0;
+    if(Array.isArray(ph)){
+      ph.forEach(function(p){
+        var u = urlFoto13(p);
+        if(u){ n++; tambah(u, n > 1 ? nm + ' (' + n + ')' : nm); }
+      });
+    }
+    if(!n){
+      var u1 = fotoItem13(it);
+      if(u1) tambah(u1, nm);
+    }
+  });
+  var lamp = 0;
+  if(rec && Array.isArray(rec.image_urls)) rec.image_urls.forEach(function(u){ lamp++; tambah(u, 'Lampiran ' + lamp); });
+  if(!out.length && rec && rec.image_url) tambah(rec.image_url, 'Lampiran');
+  return out.slice(0, MAKS_FOTO);
+}
+function muatImg13(url, ms){
+  return new Promise(function(resolve){
+    var selesai = false;
+    function done(v){ if(!selesai){ selesai = true; resolve(v); } }
+    try{
+      var img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = function(){ done(img); };
+      img.onerror = function(){ done(null); };
+      setTimeout(function(){ done(null); }, ms || 8000);
+      img.src = url;
+    }catch(e){ done(null); }
+  });
+}
+/* kotak persegi + crop tengah penuh (cover) - seperti kotak foto di
+   tombol "Download Gambar" SR10 yang dirujuk Head. */
+function kanvasFoto13(img, maksSisi){
+  try{
+    var iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    if(!iw || !ih) return null;
+    var cw = maksSisi, ch = maksSisi;
+    var cv = document.createElement('canvas');
+    cv.width = cw; cv.height = ch;
+    var c = cv.getContext('2d');
+    c.fillStyle = '#F3F4F6'; c.fillRect(0, 0, cw, ch);
+    var sc = Math.max(cw / iw, ch / ih);
+    var sw = cw / sc, sh = ch / sc;
+    c.drawImage(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, 0, 0, cw, ch);
+    var durl = cv.toDataURL('image/jpeg', 0.82);
+    var b64 = String(durl).split(',')[1] || '';
+    if(!b64) return null;
+    var bin = atob(b64), u8 = new Uint8Array(bin.length);
+    for(var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    return { u8: u8, w: cw, h: ch };
+  }catch(e){ return null; }
+}
+async function siapkanFoto13(rec, items){
+  var urls = kumpulUrlFoto13(rec, items), out = [];
+  for(var i = 0; i < urls.length; i++){
+    var im = await muatImg13(urls[i].u);
+    var f = im ? kanvasFoto13(im, 300) : null;
+    if(f) out.push({ u8: f.u8, w: f.w, h: f.h, ket: urls[i].ket });
+  }
+  return out;
+}
+
+/* ==================================================================
+   BAGIAN 3 - PDF RESMI A4 (murni JavaScript, TANPA CDN, aman gambar)
+   ================================================================== */
+var W_REG = [278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584];
+var W_BLD = [278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,611,611,389,556,333,611,556,778,556,556,500,389,280,389,584];
+function lebar13(teks, bold, sz){
+  var t = String(teks == null ? '' : teks), total = 0, w = bold ? W_BLD : W_REG;
+  for(var i = 0; i < t.length; i++){
+    var k = t.charCodeAt(i);
+    total += (k >= 32 && k <= 126) ? w[k - 32] : 556;
+  }
+  return total * sz / 1000;
+}
+function wrapPDF(teks, maxW, bold, sz, maksBaris){
+  var s = String(teks == null ? '' : teks).replace(/\s+/g, ' ').trim();
+  if(!s) return [];
+  var baris = [], cur = '', kata = s.split(' ');
+  for(var i = 0; i < kata.length; i++){
+    var uji = cur ? cur + ' ' + kata[i] : kata[i];
+    if(cur && lebar13(uji, bold, sz) > maxW){ baris.push(cur); cur = kata[i]; }
+    else cur = uji;
+  }
+  if(cur) baris.push(cur);
+  if(baris.length > maksBaris){
+    baris = baris.slice(0, maksBaris);
+    var akhir = baris[maksBaris - 1];
+    while(akhir.length > 1 && lebar13(akhir + '...', bold, sz) > maxW) akhir = akhir.slice(0, -1);
+    baris[maksBaris - 1] = akhir + '...';
+  }
+  return baris;
+}
+function esc13(t){
+  return String(t == null ? '' : t)
+    .replace(/[\\()]/g, '\\$&')
+    .replace(/[^\x20-\x7E]/g, '?');
+}
+function amanFile13(s){
+  return String(s == null ? '' : s).replace(/[\/\\?#%*|:"<>]/g, '-');
+}
+/* Nama file unduhan SELALU diawali "SR_" (prefix lokasi ALL/DL dibuang).
+   Contoh: form "DL/20261101/M5LP" -> file "SR_20261101-M5LP.pdf". */
+function namaFileSR13(rec, ext){
+  var no = String(rec && rec.form_number ? rec.form_number : '');
+  var inti = no.replace(/^[A-Za-z]{1,8}\s*[-\/]\s*/, '');
+  inti = amanFile13(inti).replace(/^[-_\s]+|[-_\s]+$/g, '');
+  if(!inti && rec && rec.id != null) inti = String(rec.id);
+  if(!inti) inti = tglPendek13(rec && (rec.request_date || rec.tanggal || rec.created_at)).replace(/\s+/g, '');
+  if(!inti) inti = '0001';
+  return 'SR_' + inti + '.' + ext;
+}
+/* No. Form yang TAMPIL di PDF diawali "SR/" - prefix lokasi (DL/, ALL/,
+   dll) diganti "SR/". Data di database TIDAK diubah (hanya tampilan). */
+function noFormTampil13(rec){
+  var no = String(rec && rec.form_number ? rec.form_number : '').trim();
+  if(!no) return '-';
+  return no.replace(/^[A-Za-z]{1,8}\s*[-\/]\s*/, 'SR/');
+}
+/* Pemohon (nama) + Jabatan + Divisi.
+   Jabatan: kolom requester_jabatan/jabatan di record -> profil aplikasi
+   (currentUser, dicocokkan dgn nama pemohon) -> peta role umum.
+   Divisi: jabatan tanpa gelar "Head ..." (Head Teknisi -> Teknisi). */
+function infoPemohon13(s){
+  var nama = rapi13(s.requester_name) || '-';
+  var jab = '';
+  try{ jab = String(s.requester_jabatan || s.requester_role || s.jabatan || s.role || '').trim(); }catch(e){}
+  if(!jab){
+    try{
+      var u = null;
+      try{ if(typeof currentUser !== 'undefined' && currentUser) u = currentUser; }catch(e0){}
+      if(!u) u = window.currentUser || null;
+      if(u){
+        var un = String(u.nama || u.name || '').trim().toLowerCase();
+        var pn = nama.toLowerCase();
+        if(nama !== '-' && un && (un === pn || un.indexOf(pn) === 0 || pn.indexOf(un) === 0)){
+          jab = String(u.jabatan || '').trim();
+          if(!jab){
+            var r = String(u.role || '').toLowerCase();
+            var PETA = { 'head':'Head Teknisi', 'head teknisi':'Head Teknisi', 'head_teknisi':'Head Teknisi',
+                         'teknisi':'Teknisi', 'spv':'Supervisor', 'supervisor':'Supervisor',
+                         'admin':'Admin', 'staff':'Staff', 'housekeeping':'Housekeeping',
+                         'security':'Security', 'guest':'Guest' };
+            jab = PETA[r] || '';
+          }
+        }
+      }
+    }catch(e){}
+  }
+  var div = '';
+  if(jab){
+    div = jab.replace(/^head\s+/i, '').trim();
+    if(!div) div = jab;
+  }
+  return { nama: nama, jabatan: jab || '-', divisi: div || '-' };
+}
+
+function bangunPDF13(s, fotoAll){
+  var W = 595.28, H = 841.89, M = 40, CW = W - M * 2;
+  var NAVY  = '0.12 0.15 0.22',      /* #1F2937 - band & kepala tabel */
+      HITAM = '0.07 0.09 0.15',
+      ABU   = '0.42 0.46 0.50',
+      ABUT  = '0.78 0.81 0.85',      /* teks sekunder di band navy */
+      GARIS = '0.90 0.91 0.93',
+      PUTIH = '1 1 1',
+      GOLD  = '0.83 0.69 0.22',      /* #D4AF37 - aksen emas */
+      MUDA  = '0.95 0.96 0.97',
+      ZEBRA = '0.955 0.962 0.972',
+      GFORM = '0.45 0.50 0.56';      /* garis isian form (Tujuan) */
+  var hal = [], ops = '', y = 0;
+  var NO_FORM = noFormTampil13(s);
+  var items = Array.isArray(s && s.items) ? s.items : [];
+  var est = hitungEst13(items);
+  var fotoPDF = Array.isArray(fotoAll) ? fotoAll : [];
+
+  /* ESTIMASI BIAYA WAJIB ADA: kolom harga SELALU tampil (nilai kosong
+     = "-"). Grup kepala "ESTIMASI BIAYA (Rp)" di atas Harga Satuan+Jumlah. */
+  var kH = 4, kJ = 5;
+  var KOL = [20, 112, 88, 34, 82, 82, 97.28];
+  var JUD = ['No', 'Nama Barang', 'Spesifikasi', 'Qty', 'Harga Satuan', 'Jumlah', 'Catatan'];
+  var kx = [M], i;
+  for(i = 0; i < KOL.length; i++) kx.push(kx[i] + KOL[i]);
+
+  function f2(n){ return (Math.round(n * 100) / 100).toString(); }
+  function T13(sz, x, yTop, teks, align, warna, bold){
+    var t = esc13(teks);
+    if(!t) return;
+    var lw = lebar13(teks, !!bold, sz);
+    var xx = align === 'right' ? x - lw : (align === 'center' ? x - lw / 2 : x);
+    ops += (warna || HITAM) + ' rg\nBT /' + (bold ? 'F2' : 'F1') + ' ' + f2(sz) + ' Tf ' +
+      f2(xx) + ' ' + f2(H - yTop) + ' Td (' + t + ') Tj ET\n';
+  }
+  function garis13(x1, y1, x2, y2, tebal, warna){
+    ops += f2(tebal || 0.8) + ' w ' + (warna || GARIS) + ' RG ' +
+      f2(x1) + ' ' + f2(H - y1) + ' m ' + f2(x2) + ' ' + f2(H - y2) + ' l S\n';
+  }
+  function kotak13(x, yTop, w, h, warna){
+    ops += warna + ' rg ' + f2(x) + ' ' + f2(H - yTop - h) + ' ' + f2(w) + ' ' + f2(h) + ' re f\n';
+  }
+  function kotakKosong13(x, yTop, w, h, tebal, warna){
+    ops += (warna || HITAM) + ' RG ' + f2(tebal || 0.9) + ' w ' +
+      f2(x) + ' ' + f2(H - yTop - h) + ' ' + f2(w) + ' ' + f2(h) + ' re S\n';
+  }
+  function gambar13(imKe, x, yTop, w, h){
+    ops += 'q ' + f2(w) + ' 0 0 ' + f2(h) + ' ' + f2(x) + ' ' + f2(H - yTop - h) + ' cm /Im' + imKe + ' Do Q\n';
+  }
+  var batasBawah = 0, segTop13 = null, perluKepala = false, dalamTabel = false;
+  function halBaru(){
+    /* garis kolom tabel hanya ditutup saat kita masih DI DALAM tabel -
+       dulu ini yang membuat garis liar menembus area foto (bug v5/v6) */
+    if(dalamTabel && segTop13 != null && batasBawah > segTop13) vertikal(segTop13, batasBawah);
+    hal.push(ops); ops = ''; y = 54;
+    T13(8, W - M, y - 8, 'Form ' + NO_FORM + ' (lanjutan)', 'right', ABU, false);
+    y += 8;
+    batasBawah = y;
+    if(dalamTabel){ segTop13 = y; perluKepala = true; }
+    else { segTop13 = null; perluKepala = false; }
+  }
+  function pasti(need){ if(y + need > H - 76) halBaru(); }
+
+  /* --- band kepala navy + judul gold (TANPA titik di belakang BUILDING) --- */
+  kotak13(0, 0, W, 88, NAVY);
+  kotak13(0, 88, W, 3.2, GOLD);
+  T13(15, M, 30, 'MIDPOINT SQUARE BUILDING', 'left', GOLD, true);
+  T13(12, M, 48, 'FORM PENGAJUAN STOCK REQUEST', 'left', PUTIH, true);
+  T13(7.5, M, 62, 'Pengajuan barang & bahan maintenance gedung', 'left', ABUT, false);
+  T13(7.5, W - M, 24, 'No. Form', 'right', ABUT, false);
+  T13(11, W - M, 40, NO_FORM, 'right', PUTIH, true);
+  /* JARAK dari header: baris info mulai lebih rendah (dulu y=104,
+     mepet dengan band -> sekarang 128) - permintaan no.1 */
+  y = 128;
+
+  /* --- info form (SEMUA HITAM agar jelas dibaca - permintaan no.7):
+         Pemohon -> Jabatan -> Divisi (bertingkat, kanan) --- */
+  var pem = infoPemohon13(s);
+  var lantai = [s.floor, s.room].filter(function(x){ return x; }).map(rapi13).join(' / ');
+  function infoBaris(l1, v1, l2, v2){
+    T13(8, M, y, l1, 'left', HITAM, false);
+    T13(10.5, M + 52, y, v1, 'left', HITAM, true);
+    if(l2 !== undefined){
+      T13(8, M + 258, y, l2, 'left', HITAM, false);
+      if(v2 !== undefined) T13(10.5, M + 258 + 58, y, v2, 'left', HITAM, true);
+    }
+    y += 18;
+  }
+  infoBaris('Tanggal', tanggalInfo13(s), 'Pemohon', pem.nama);
+  infoBaris('Kebutuhan', rapi13(s.location_needed) || '-', 'Jabatan', pem.jabatan);
+  infoBaris('Kategori', rapi13(s.category) || '-', 'Divisi', pem.divisi);
+  infoBaris('Lantai / Area', lantai || '-', 'Prioritas', rapi13(s.priority) || '-');
+
+  /* --- Status: PILIHAN KOTAK KECIL (dicentang tangan saat dicetak) --- */
+  T13(8, M, y, 'Status', 'left', HITAM, false);
+  var xs = M + 52;
+  for(i = 0; i < STATUS_OPSI.length; i++){
+    kotakKosong13(xs, y - 7.5, 8.5, 8.5, 0.9, '0.20 0.24 0.30');
+    T13(9.5, xs + 12.5, y, STATUS_OPSI[i], 'left', HITAM, false);
+    xs += 12.5 + lebar13(STATUS_OPSI[i], false, 9.5) + 14;
+  }
+  y += 18;
+
+  /* --- Tujuan: SELALU tampil dengan GARIS BAWAH 2 BARIS penuh
+         (sampai margin kanan, sejajar tepi tabel) - permintaan no.8.
+         Nilai ditulis di atas garis; bila panjang, menyambung ke
+         baris kedua. Bila kosong, garis tetap ada (form siap tulis). --- */
+  (function(){
+    var tv = rapi13(s.purpose);
+    var pj = tv ? wrapPDF(tv, CW - 56, false, 10, 2) : [];
+    pasti(36);
+    T13(8, M, y + 1, 'Tujuan', 'left', HITAM, false);
+    var xg1 = M + 52, xg2 = W - M;
+    if(pj[0]) T13(10, xg1, y + 1, pj[0], 'left', HITAM, false);
+    garis13(xg1, y + 5, xg2, y + 5, 0.8, GFORM);
+    if(pj[1]) T13(10, xg1, y + 13.5, pj[1], 'left', HITAM, false);
+    garis13(xg1, y + 17.5, xg2, y + 17.5, 0.8, GFORM);
+    y += 30;
+  })();
+  y += 10;
+
+  /* --- kepala tabel (navy, SEMUA judul kolom CENTER tengah;
+         kolom harga digroup "ESTIMASI BIAYA (Rp)" emas) --- */
+  function gambarKepala(){
+    var kh = 30;
+    pasti(kh + 30);
+    var tTop = y;
+    kotak13(M, tTop, CW, kh, NAVY);
+    var k, b;
+    for(k = 0; k < JUD.length; k++){
+      if(k === kH || k === kJ) continue;              /* digroup di bawah */
+      var lines = wrapPDF(JUD[k], KOL[k] - 6, true, 8.5, 2);
+      var cy0 = tTop + kh / 2 + 3.2 - (lines.length - 1) * 5.25;
+      for(b = 0; b < lines.length; b++){
+        T13(8.5, kx[k] + KOL[k] / 2, cy0 + b * 10.5, lines[b], 'center', PUTIH, true);
+      }
+    }
+    var gx1 = kx[kH], gx2 = kx[kJ] + KOL[kJ];
+    T13(8.5, (gx1 + gx2) / 2, tTop + 9, 'ESTIMASI BIAYA (Rp)', 'center', GOLD, true);
+    garis13(gx1, tTop + 13.5, gx2, tTop + 13.5, 0.7, '0.45 0.50 0.58');
+    T13(8, kx[kH] + KOL[kH] / 2, tTop + 24.5, 'Harga Satuan', 'center', PUTIH, false);
+    T13(8, kx[kJ] + KOL[kJ] / 2, tTop + 24.5, 'Jumlah', 'center', PUTIH, false);
+    for(k = 1; k < KOL.length; k++){
+      if(k === kJ) garis13(kx[k], tTop + 13.5, kx[k], tTop + kh, 0.7, '0.36 0.42 0.50');
+      else garis13(kx[k], tTop, kx[k], tTop + kh, 0.7, '0.36 0.42 0.50');
+    }
+    y = tTop + kh;
+  }
+  gambarKepala();
+
+  /* --- baris barang (zebra) --- */
+  dalamTabel = true; batasBawah = y; segTop13 = y;
+  function barisBarang(no, it){
+    it = it || {};
+    var namaL = wrapPDF(it.nama, KOL[1] - 6, false, 9.5, 2);
+    var specL = wrapPDF(it.spec, KOL[2] - 6, false, 9.5, 2);
+    var catL = wrapPDF(it.catatan || '-', KOL[KOL.length - 1] - 6, false, 9.5, 2);
+    var ln = Math.max(1, namaL.length, specL.length, catL.length);
+    var rh = Math.max(18, 7 + ln * 11.5);
+    pasti(rh + 2);
+    if(perluKepala){ perluKepala = false; gambarKepala(); }
+    if(no % 2 === 1) kotak13(M, y, CW, rh, ZEBRA);
+    var cy = y + rh / 2 + 3.2;
+    var harga = harga13(it.harga);
+    var jml = harga > 0 ? harga * angka13(it.qty) : 0;
+    T13(9.5, kx[0] + KOL[0] / 2, cy, String(no + 1), 'center', HITAM, false);
+    for(var a = 0; a < namaL.length; a++) T13(9.5, kx[1] + 3, y + (rh - namaL.length * 11.5) / 2 + 7.5 + a * 11.5, namaL[a], 'left', HITAM, false);
+    for(var b = 0; b < specL.length; b++) T13(9.5, kx[2] + 3, y + (rh - specL.length * 11.5) / 2 + 7.5 + b * 11.5, specL[b], 'left', '0.24 0.27 0.31', false);
+    var qtyTeks = String(it.qty != null ? it.qty : '-') + (it.satuan ? ' ' + it.satuan : '');
+    var szQ = 9.5;
+    while(szQ > 6.5 && lebar13(qtyTeks, false, szQ) > KOL[3] - 4) szQ -= 0.25;
+    T13(szQ, kx[3] + KOL[3] / 2, cy, qtyTeks, 'center', HITAM, false);
+    var hTeks = harga > 0 ? 'Rp ' + rp13(harga) : '-';
+    var jTeks = jml > 0 ? 'Rp ' + rp13(jml) : '-';
+    var szH = 9;
+    while(szH > 6.5 && lebar13(hTeks, false, szH) > KOL[kH] - 5) szH -= 0.25;
+    T13(szH, kx[kH] + KOL[kH] - 3, cy, hTeks, 'right', HITAM, false);
+    var szJ = 9;
+    while(szJ > 6.5 && lebar13(jTeks, true, szJ) > KOL[kJ] - 5) szJ -= 0.25;
+    T13(szJ, kx[kJ] + KOL[kJ] - 3, cy, jTeks, 'right', HITAM, true);
+    for(var c = 0; c < catL.length; c++) T13(9.5, kx[KOL.length - 1] + 3, y + (rh - catL.length * 11.5) / 2 + 7.5 + c * 11.5, catL[c], 'left', '0.24 0.27 0.31', false);
+    y += rh;
+    batasBawah = y;
+    garis13(M, y, W - M, y, 0.7, GARIS);
+  }
+  if(items.length){
+    items.forEach(function(it, idx){ barisBarang(idx, it || {}); });
+  } else {
+    pasti(24);
+    if(perluKepala){ perluKepala = false; gambarKepala(); }
+    T13(9.5, M + CW / 2, y + 12, 'Tidak ada barang', 'center', ABU, false);
+    y += 24; batasBawah = y;
+  }
+  /* --- baris TOTAL (permintaan no.2 & no.6):
+         label "TOTAL ESTIMASI BIAYA" rata TENGAH di dalam sel
+         gabungan (No s/d Harga Satuan), angka total di kolom JUMLAH
+         (dulu nyasar ke kolom Catatan), rata tengah dalam kolomnya. --- */
+  pasti(22);
+  kotak13(M, y, CW, 20, MUDA);
+  var tTot = 'TOTAL ESTIMASI BIAYA';
+  var lebarSel = kx[kJ] - M;                       /* lebar sel gabungan = 336 */
+  var szT = 9.5;
+  while(szT > 7 && lebar13(tTot, true, szT) > lebarSel - 10) szT -= 0.25;
+  T13(szT, M + lebarSel / 2, y + 13, tTot, 'center', HITAM, true);
+  var vTot = est.total > 0 ? 'Rp ' + rp13(est.total) : '-';
+  var szV = 9.5;
+  while(szV > 7 && lebar13(vTot, true, szV) > KOL[kJ] - 6) szV -= 0.25;
+  T13(szV, kx[kJ] + KOL[kJ] / 2, y + 13, vTot, 'center', HITAM, true);
+  y += 20; batasBawah = y;
+  garis13(M, y, W - M, y, 0.7, GARIS);
+
+  /* garis vertikal tabel DITUTUP tepat di sini - TIDAK BOLEH menembus
+     area FOTO BARANG di bawahnya. */
+  function vertikal(top, bottom){
+    for(var v = 0; v < kx.length; v++) garis13(kx[v], top, kx[v], bottom, 0.7, GARIS);
+  }
+  if(segTop13 != null && batasBawah > segTop13) vertikal(segTop13, batasBawah);
+  dalamTabel = false; segTop13 = null;
+
+  /* --- FOTO BARANG (permintaan no.3 & no.4):
+         - jarak cukup dari tabel (dulu mepet);
+         - grid MULAI DARI KIRI (sejajar tepi kiri tabel), kotak
+           persegi seragam memenuhi lebar halaman;
+         - keterangan = NAMA BARANG (bukan Foto 1/Foto 2);
+         - jumlah kotak = jumlah foto/barang (tanpa batas 8). --- */
+  if(fotoPDF.length){
+    var perF = 4;
+    var Tmaks = Math.floor((CW - (perF - 1) * 10) / perF);   /* 121pt */
+    var nBarisF = Math.ceil(fotoPDF.length / perF);
+    /* kecilkan kotak sedikit bila perlu agar SEMUA foto + TTD tetap
+       muat 1 halaman; bila tetap tak muat, pakai kotak normal dan
+       biarkan mengalir ke halaman berikut (TTD tetap di bawah). */
+    var TTD_ZONA = 154;
+    var sisaGrid = (H - 64) - y - TTD_ZONA;
+    function butuhGrid(t){ return nBarisF * (t + 19); }
+    var TF = Tmaks;
+    while(TF > 60 && butuhGrid(TF) > sisaGrid) TF -= 1;
+    if(butuhGrid(TF) > sisaGrid) TF = Tmaks;
+    var gapF = 10;   /* jarak antarkotak TETAP - grid rata kiri, tidak meregang */
+    pasti(24);
+    y += 20;
+    T13(9.5, M, y, 'FOTO BARANG', 'left', NAVY, true);
+    garis13(M, y + 4, M + 62, y + 4, 1.6, GOLD);
+    y += 15;
+    for(var F = 0; F < fotoPDF.length; F++){
+      var kolF = F % perF;
+      if(kolF === 0){
+        pasti(TF + 20);
+      }
+      var bxF = M + kolF * (TF + gapF);
+      kotak13(bxF, y, TF, TF, '0.955 0.958 0.965');
+      gambar13(F + 1, bxF, y, TF, TF);
+      garis13(bxF, y, bxF + TF, y, 0.7, GARIS);
+      garis13(bxF + TF, y, bxF + TF, y + TF, 0.7, GARIS);
+      garis13(bxF, y + TF, bxF + TF, y + TF, 0.7, GARIS);
+      garis13(bxF, y, bxF, y + TF, 0.7, GARIS);
+      var ketF = wrapPDF(fotoPDF[F] && fotoPDF[F].ket ? fotoPDF[F].ket : '', TF, false, 8, 1);
+      T13(8, bxF + TF / 2, y + TF + 10, ketF[0] || '', 'center', '0.13 0.16 0.20', false);
+      if(kolF === perF - 1 || F === fotoPDF.length - 1) y += TF + 19;
+    }
+  }
+
+  /* --- blok tanda tangan Direktur (permintaan no.5):
+         UKURAN KECIL (form profesional) + posisi TETAP di bawah
+         halaman terakhir (anchor bawah) - tidak berubah-ubah.
+         Bila sisa ruang tidak cukup, pindah halaman baru. --- */
+  (function(){
+    var TTD_ZONA = 154;
+    if(y + 4 > H - TTD_ZONA) halBaru();
+    var cx = W - M - 85;
+    T13(9.5, cx, H - 137, KOTA + ', ' + tanggalTTD13(s), 'center', HITAM, false);
+    T13(9, cx, H - 122, 'Disetujui oleh,', 'center', '0.24 0.27 0.31', false);
+    var nm = NAMA_DIREKTUR ? '( ' + NAMA_DIREKTUR + ' )' : '';
+    if(!nm){
+      var n = 48;
+      do { nm = '( ' + new Array(n + 1).join('.') + ' )'; n--; }
+      while(n > 8 && lebar13(nm, true, 10) > 180);
+    }
+    var szN = 10;
+    while(szN > 7.5 && lebar13(nm, true, szN) > 180) szN -= 0.25;
+    T13(szN, cx, H - 66, nm, 'center', HITAM, true);
+    T13(9.5, cx, H - 50, JABATAN, 'center', HITAM, false);
+  })();
+
+  hal.push(ops);
+
+  /* --- footer tiap halaman + rakit objek PDF (aman byte utk JPEG) --- */
+  var kaki = 'Dibuat dari aplikasi Maintenance - Midpoint Square Building - ' + tglPendek13(new Date());
+  for(i = 0; i < hal.length; i++){
+    hal[i] += '0.55 0.58 0.62 rg\nBT /F1 7.5 Tf ' + f2(W / 2 - lebar13(kaki, false, 7.5) / 2) + ' 30 Td (' + esc13(kaki) + ') Tj ET\n';
+  }
+  var NIMG = fotoPDF.length;
+  var BASIS = 5 + NIMG;
+  var total = hal.length;
+  var kids = [];
+  for(i = 0; i < total; i++) kids.push((BASIS + 1 + i * 2) + ' 0 R');
+  var xobj = '';
+  for(i = 0; i < NIMG; i++) xobj += '/Im' + (i + 1) + ' ' + (5 + i) + ' 0 R ';
+
+  var bagian = [], panjangByte = 0, offs = [];
+  function tulisS(t){ bagian.push(t); panjangByte += t.length; }
+  function tulisB(u){ bagian.push(u); panjangByte += u.length; }
+  function objS(no, isiObj){ offs[no] = panjangByte; tulisS(no + ' 0 obj\n' + isiObj + '\nendobj\n'); }
+  function objImg(no, f){
+    offs[no] = panjangByte;
+    tulisS(no + ' 0 obj\n<< /Type /XObject /Subtype /Image /Width ' + f.w + ' /Height ' + f.h +
+      ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + f.u8.length +
+      ' >>\nstream\n');
+    tulisB(f.u8);
+    tulisS('\nendstream\nendobj\n');
+  }
+  tulisS('%PDF-1.4\n');
+  objS(1, '<< /Type /Catalog /Pages 2 0 R >>');
+  objS(2, '<< /Type /Pages /Kids [' + kids.join(' ') + '] /Count ' + total + ' >>');
+  objS(3, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+  objS(4, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+  for(i = 0; i < NIMG; i++) objImg(5 + i, fotoPDF[i]);
+  for(i = 0; i < total; i++){
+    var st = hal[i];
+    objS(BASIS + i * 2, '<< /Length ' + st.length + ' >>\nstream\n' + st + 'endstream');
+    objS(BASIS + 1 + i * 2, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /XObject << ' + xobj + '>> >> /Contents ' + (BASIS + i * 2) + ' 0 R >>');
+  }
+  var SIZE = BASIS + 1 + (total - 1) * 2;
+  var xref = panjangByte;
+  tulisS('xref\n0 ' + (SIZE + 1) + '\n0000000000 65535 f \n');
+  for(i = 1; i <= SIZE; i++){
+    var o = String(offs[i] == null ? 0 : offs[i]);
+    while(o.length < 10) o = '0' + o;
+    tulisS(o + ' 00000 n \n');
+  }
+  tulisS('trailer\n<< /Size ' + (SIZE + 1) + ' /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF');
+
+  var hasil13 = new Uint8Array(panjangByte), p13 = 0;
+  for(i = 0; i < bagian.length; i++){
+    var bgi = bagian[i];
+    if(typeof bgi === 'string'){
+      for(var k = 0; k < bgi.length; k++) hasil13[p13++] = bgi.charCodeAt(k) & 0xFF;
+    } else {
+      hasil13.set(bgi, p13); p13 += bgi.length;
+    }
+  }
+  return { data: hasil13, nama: namaFileSR13(s, 'pdf') };
+}
+
+async function unduhPDF13(){
+  try{
+    toast13('Membuat PDF...');
+    var id = ambilId13();
+    if(id == null){ toast13('Buka dulu detail salah satu Stock Request', 'error'); return; }
+    var sbObj = sb13();
+    if(!sbObj){ toast13('Koneksi database belum siap', 'error'); return; }
+    var res = await sbObj.from('stock_requests').select('*').eq('id', id).single();
+    if(!res || !res.data){ toast13('Data tidak ditemukan', 'error'); return; }
+    var rec = res.data;
+    var fotoAll = [];
+    try{
+      fotoAll = await siapkanFoto13(rec, Array.isArray(rec.items) ? rec.items : []);
+    }catch(e){
+      log13('foto gagal dimuat (aman, PDF tetap jadi):', e && e.message || e);
+      fotoAll = [];
+    }
+    var pdf = bangunPDF13(rec, fotoAll);
+    var blob = new Blob([pdf.data], { type: 'application/pdf' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = pdf.nama;
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ try{ document.body.removeChild(a); URL.revokeObjectURL(url); }catch(e){} }, 4000);
+    toast13('PDF berhasil diunduh');
+    log13('PDF terunduh:', pdf.nama, '(foto: ' + fotoAll.length + ')');
+  }catch(e){
+    log13('PDF gagal:', e);
+    toast13('Gagal membuat PDF: ' + (e && e.message || e), 'error');
+  }
+}
+function ambilId13(){
+  var a = window.__SR13_ARG_DETAIL;
+  try{
+    if(a && typeof a === 'object' && a.id != null) return a.id;
+    if(typeof a === 'number' || (typeof a === 'string' && a)) return a;
   }catch(e){}
+  return window.__SR13_ID_TERAKHIR;
+}
+
+/* ==================================================================
+   BAGIAN 4 - TOMBOL "Unduh PDF" DI POPUP DETAIL (baris sendiri,
+   CSS mandiri - tidak bergantung blok v3, tombol Edit aman)
+   ================================================================== */
+(function bungkusDetail13(){
+  var asli = window.openStockDetail;
+  if(typeof asli === 'function' && !asli.__sr13){
+    var BRU = function(){
+      try{ window.__SR13_ARG_DETAIL = arguments[0]; }catch(e){}
+      return asli.apply(this, arguments);
+    };
+    BRU.__sr13 = true;
+    window.openStockDetail = BRU;
+    log13('openStockDetail dibungkus (id detail dicatat utk Unduh PDF)');
+  }
 })();
 
-/* ================= 3. KREDENSIAL DARI PENYIMPANAN ================= */
-function pindaiPenyimpanan(){
-  var url=null,kunci=null;
-  function cek(v){
-    if(!v||typeof v!=='string')return;
-    if(!url){var m=v.match(/https:\/\/[a-z0-9\-]+\.supabase\.co/i);if(m)url=m[0]+'/rest/v1';}
-    if(!kunci){
-      if(/^eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+$/.test(v))kunci=v;
-      else if(/^sb_[A-Za-z0-9_]{30,}$/.test(v))kunci=v;
-    }
-    if(v.charAt(0)==='{'){
-      try{
-        var o=JSON.parse(v);
-        if(o&&typeof o==='object'){
-          var u2=o.url||o.server||o.supabaseUrl||o.SUPABASE_URL||o.pm20url||o.pm20_server;
-          if(u2&&!url){var m2=String(u2).match(/https:\/\/[a-z0-9\-]+\.supabase\.co/i);if(m2)url=m2[0]+'/rest/v1';}
-          var k2=o.kunci||o.key||o.apikey||o.anonKey||o.anon||o.KUNCI||o.pm20kunci||o.pm20_key;
-          if(k2&&!kunci&&String(k2).length>=30)kunci=String(k2);
-        }
-      }catch(e){}
-    }
+/* CSS baris tombol (dulunya milik patch SR13 v3 - kini dibawa blok):
+   baris asli boleh wrap, tombol Unduh PDF jadi baris sendiri penuh,
+   jadi tombol Edit / Download Gambar / Tutup / Hapus tidak tergeser. */
+var CSS13V7 =
+  '#stockDetailActions{flex-wrap:wrap !important;row-gap:10px !important;' +
+  'height:auto !important;max-height:none !important;overflow:visible !important;}' +
+  '#stockDetailActions [data-sr13pdf]{display:block !important;flex:0 0 100% !important;' +
+  'order:99 !important;width:100% !important;max-width:100% !important;' +
+  'padding:12px 14px !important;font-size:15px !important;line-height:1.4 !important;' +
+  'text-align:center !important;white-space:nowrap !important;}';
+function pasangCSS13V7(){
+  if(document.getElementById('sr13v7style')) return;
+  var st = document.createElement('style');
+  st.id = 'sr13v7style';
+  st.setAttribute('data-sr13v7', '1');
+  st.textContent = CSS13V7;
+  (document.head || document.documentElement).appendChild(st);
+}
+function pasangTombol13(){
+  pasangCSS13V7();
+  var act = null;
+  try{ act = document.getElementById('stockDetailActions'); }catch(e){ return; }
+  if(!act || !act.isConnected) return;
+  try{ if(act.offsetParent === null) return; }catch(e){}
+  var b = act.querySelector('[data-sr13pdf]');
+  if(b && !b.__sr13v7){
+    /* tombol buatan SR13 v6 (atau lebih lama) masih ada: adopsi - node
+       diganti agar listener lama hilang, lalu klik diarahkan ke v7 */
+    var nb = b.cloneNode(true);
+    nb.__sr13v7 = true;
+    nb.__sr13v6 = true;   /* kamuflase: supaya blok v6 (bila lupa dihapus)
+                             tidak mengadopsi balik tombol ini tiap 500ms */
+    nb.setAttribute('data-sr13v7', '1');
+    try{ act.replaceChild(nb, b); }catch(e){ nb = b; }
+    b = nb;
+    b.addEventListener('click', unduhPDF13);
+    log13('tombol Unduh PDF lama diadopsi v7');
+  } else if(!b){
+    b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('data-sr13pdf', '1');
+    b.setAttribute('data-sr13v7', '1');
+    b.__sr13v7 = true;
+    b.__sr13v6 = true;
+    b.textContent = 'Unduh PDF';
+    b.addEventListener('click', unduhPDF13);
+    log13('tombol Unduh PDF dipasang di popup detail (baris sendiri)');
   }
-  try{for(var i=0;i<localStorage.length;i++){cek(localStorage.getItem(localStorage.key(i)));if(url&&kunci)break;}}catch(e){}
-  if(!(url&&kunci)){try{for(var j=0;j<sessionStorage.length;j++){cek(sessionStorage.getItem(sessionStorage.key(j)));if(url&&kunci)break;}}catch(e){}}
-  if(url&&kunci&&!CURINGAN.url){CURINGAN.url=url;CURINGAN.kunci=kunci;CURINGAN.sumber='penyimpanan-HP';return true;}
-  return !!(CURINGAN.url&&CURINGAN.kunci);
+  var gaya = 'background:#047857;color:#FFFFFF;border:none;border-radius:12px;' +
+    'font-weight:700;cursor:pointer;padding:12px 14px;font-size:15px;' +
+    'width:100%;text-align:center;white-space:nowrap;';
+  if(b.getAttribute('style') !== gaya) b.setAttribute('style', gaya);
+  if(b !== act.lastElementChild) act.appendChild(b);
 }
-function simpanKoneksi(){
-  try{localStorage.setItem('pm28koneksi',JSON.stringify({url:CURINGAN.url,kunci:CURINGAN.kunci,tabel:CURINGAN.tabel,sumber:CURINGAN.sumber}));}catch(e){}
-}
-function koneksiTersimpan(){
-  try{
-    var s=localStorage.getItem('pm28koneksi');
-    if(!s)return false;
-    var o=JSON.parse(s);
-    if(o&&o.url&&o.kunci){
-      CURINGAN.url=o.url;CURINGAN.kunci=o.kunci;CURINGAN.tabel=o.tabel||null;CURINGAN.sumber=o.sumber||'tersimpan';
-      if(CURINGAN.tabel)TABEL_TERKUNCI=true;
-      return true;
-    }
-  }catch(e){}
-  return false;
-}
-function siapkanKoneksi(){
-  if(koneksiTersimpan())return true;
-  if(pindaiPenyimpanan())return true;
-  return !!(CURINGAN.url&&CURINGAN.kunci);
-}
+try{ pasangTombol13(); }catch(e){}
+setInterval(pasangTombol13, 500);
 
-/* ================= 4. HTTP — SELALU BAWA KUNCI ================= */
-function req(met,u,body,cb,cbErr){
-  if(!CURINGAN.url||!CURINGAN.kunci){if(cbErr)cbErr('Koneksi belum lengkap (URL/kunci kosong).');return;}
-  var u2=u;
-  try{
-    var q=new URL(u,location.href);
-    if(!q.searchParams.get('apikey'))q.searchParams.set('apikey',CURINGAN.kunci);
-    u2=q.toString();
-  }catch(e){u2=u+(u.indexOf('?')<0?'?':'&')+'apikey='+uri(CURINGAN.kunci);}
-  var h={'apikey':CURINGAN.kunci,'Authorization':'Bearer '+CURINGAN.kunci,'Accept':'application/json'};
-  if(body)h['Content-Type']='application/json';
-  var opt={method:met,headers:h};
-  if(body)opt.body=JSON.stringify(body);
-  fetch(u2,opt).then(function(r){
-    return r.text().then(function(t){cb(r.status,t);});
-  }).catch(function(e){if(cbErr)cbErr((e&&e.message)||String(e));});
-}
-
-/* ================= 5. CARI TABEL ================= */
-function ujiTabel(t,cb){
-  req('GET',CURINGAN.url+'/'+t+'?select=*&limit=1',null,function(st,tx){
-    var ok=false;
-    if(st===200){try{var a=JSON.parse(tx);ok=Array.isArray(a);}catch(e){}}
-    if(ok){CURINGAN.tabel=t;TABEL_TERKUNCI=true;CURINGAN.sumber=CURINGAN.sumber||'ditemukan';simpanKoneksi();status('Tabel ketemu: '+t);}
-    cb(ok);
-  },function(){cb(false);});
-}
-function pilihTabel(cb){
-  if(CURINGAN.tabel&&TABEL_TERKUNCI)return cb(true);
-  if(CURINGAN.tabel){
-    ujiTabel(CURINGAN.tabel,function(ok){
-      if(ok)return cb(true);
-      CURINGAN.tabel=null;cariTabel(cb);
-    });
-    return;
-  }
-  cariTabel(cb);
-}
-function cariTabel(cb){
-  req('GET',CURINGAN.url+'/',null,function(st,tx){
-    var nama=[];
-    if(st===200){
-      try{
-        var sp=JSON.parse(tx);
-        var d=(sp&&sp.definitions)||(sp&&sp.components&&sp.components.schemas)||{};
-        nama=Object.keys(d);
-      }catch(e){}
-    }
-    if(nama.length){
-      var pri=nama.filter(function(n){return /matrik|jadwal|schedul|tugas|task|preventi|pm_/i.test(n);});
-      var lain=nama.filter(function(n){return pri.indexOf(n)<0;});
-      var urut=pri.concat(lain),i=0;
-      (function coba(){
-        if(i>=urut.length)return cobaKandidat(cb);
-        ujiTabel(urut[i++],function(ok){if(ok)cb(true);else coba();});
-      })();
-    }else cobaKandidat(cb);
-  },function(){cobaKandidat(cb);});
-}
-function cobaKandidat(cb){
-  var i=0;
-  (function coba(){
-    if(i>=KANDIDAT_TABEL.length)return cb(false);
-    ujiTabel(KANDIDAT_TABEL[i++],function(ok){if(ok)cb(true);else coba();});
-  })();
-}
-
-/* ================= 6. MUAT DATA (paginasi, urut tanggal+shift) ================= */
-function deteksiKolom(b){
-  var keys=Object.keys(b);
-  function c(p){for(var i=0;i<keys.length;i++){if(p.test(keys[i]))return keys[i];}return null;}
-  KOLOM.id=KOLOM.id||c(/^(id|uuid|_id)$/i)||((keys.indexOf('id')>-1)?'id':null);
-  KOLOM.tanggal=KOLOM.tanggal||c(/tanggal|^tgl$|^tgl_|date|mulai/i);
-  KOLOM.shift=KOLOM.shift||c(/shift|sesi/i);
-  KOLOM.kategori=KOLOM.kategori||c(/kategori|category|jenis|kelompok|^tipe|type/i);
-  KOLOM.peralatan=KOLOM.peralatan||c(/peralatan|equipment|nama_alat|namaalat|^alat$|alat_|unit|aset|device/i);
-  KOLOM.uraian=KOLOM.uraian||c(/uraian|deskripsi|pekerjaan|aktivitas|^item$|keterangan|desc/i);
-  KOLOM.lokasi=KOLOM.lokasi||c(/lokasi|location|^area$|ruang|lantai|zona/i);
-  KOLOM.status=KOLOM.status||c(/status|kondisi|progres/i);
-}
-function nilaiShift(v){
-  var s=String(v||'').toLowerCase();
-  if(s.indexOf('pagi')>-1)return 1;
-  if(s.indexOf('siang')>-1)return 2;
-  if(s.indexOf('sore')>-1)return 2.5;
-  if(s.indexOf('malam')>-1)return 3;
-  var n=parseFloat(s);
-  return isNaN(n)?9:n;
-}
-function urutkan(){
-  if(!KOLOM.tanggal)return;
-  DATA.sort(function(a,b){
-    var d=String(a[KOLOM.tanggal]||'').localeCompare(String(b[KOLOM.tanggal]||''));
-    if(d!==0)return d;
-    return nilaiShift(a[KOLOM.shift])-nilaiShift(b[KOLOM.shift]);
-  });
-}
-function muatSemua(cb){
-  if(!CURINGAN.url||!CURINGAN.kunci){status('Belum terhubung — klik tombol "Sambung dari Matriks".');return;}
-  if(SEDANG_MUAT)return;
-  SEDANG_MUAT=true;
-  status('Mengambil data dari server…');
-  pilihTabel(function(ok){
-    if(!ok){SEDANG_MUAT=false;status('Tabel data belum ketemu — klik "Sambung dari Matriks" lalu klik Segar di Matriks.');return;}
-    var limit=1000,off=0,semua=[];
-    (function hal(){
-      var u=CURINGAN.url+'/'+CURINGAN.tabel+'?select=*&limit='+limit+'&offset='+off;
-      req('GET',u,null,function(st,tx){
-        if(st!==200){SEDANG_MUAT=false;status('Server menjawab HTTP '+st+' — '+potong(tx));return;}
-        var a;try{a=JSON.parse(tx);}catch(e){a=null;}
-        if(!Array.isArray(a)){SEDANG_MUAT=false;status('Balasan server tidak bisa dibaca — '+potong(tx));return;}
-        semua=semua.concat(a);
-        if(a.length===limit){off+=limit;hal();return;}
-        DATA=semua;window.__PM28_DATA=DATA;
-        if(DATA[0])deteksiKolom(DATA[0]);
-        urutkan();
-        window.__PM28_SIAP_DATA=true;SEDANG_MUAT=false;
-        gambarSemua();
-        status('Terhubung — '+DATA.length+' tugas dari server (tabel "'+CURINGAN.tabel+'").');
-        if(cb)cb(DATA);
-      },function(e){SEDANG_MUAT=false;status('Gagal mengambil data: '+e);});
-    })();
-  });
-}
-
-/* ================= 7. KATEGORI & PERALATAN ================= */
-function namaKat(r){
-  var v=KOLOM.kategori?r[KOLOM.kategori]:null;
-  var s=String(v==null?'':v).trim();
-  return s||'(tanpa kategori)';
-}
-function daftarKategori(){
-  var m=Object.create(null);
-  DATA.forEach(function(r){var k=namaKat(r);m[k]=(m[k]||0)+1;});
-  return Object.keys(m).sort().map(function(k){return{nama:k,jml:m[k]};});
-}
-function hitungKat(kat){var n=0;DATA.forEach(function(r){if(namaKat(r)===kat)n++;});return n;}
-function namaPeralatan(r){
-  var v=KOLOM.peralatan?r[KOLOM.peralatan]:(KOLOM.uraian?r[KOLOM.uraian]:null);
-  var s=String(v==null?'':v).trim();
-  return s||'(tanpa nama peralatan)';
-}
-var WARNA_KAT=Object.create(null);
-function warnaKat(k){
-  if(WARNA_KAT[k])return WARNA_KAT[k];
-  try{
-    var els=document.querySelectorAll('span,i,div,b,button');
-    for(var i=0;i<els.length&&i<1800;i++){
-      var el=els[i];
-      if(el.id&&String(el.id).indexOf('pm28')===0)continue;
-      var t=(el.textContent||'').trim();
-      if(t===k){
-        var cs=getComputedStyle(el);
-        if(cs.backgroundColor&&cs.backgroundColor!=='rgba(0, 0, 0, 0)'){WARNA_KAT[k]=cs.backgroundColor;return cs.backgroundColor;}
-      }
-    }
-  }catch(e){}
-  var PAL=['#e53935','#fb8c00','#fdd835','#43a047','#1e88e5','#8e24aa','#00acc1','#6d4c41','#546e7a','#d81b60','#7cb342','#f4511e'];
-  var h=0;k=String(k);for(var j=0;j<k.length;j++)h=(h*31+k.charCodeAt(j))>>>0;
-  WARNA_KAT[k]=PAL[h%PAL.length];
-  return WARNA_KAT[k];
-}
-
-/* ================= 8. PANEL UI ================= */
-function pasangCss(){
-  if($('pm28-style'))return;
-  var st=document.createElement('style');
-  st.id='pm28-style';
-  st.textContent='#pm28-panel{font-family:inherit;}'
-    +'#pm28-panel .pm28-judul{font-weight:800;font-size:13px;margin:16px 0 8px;color:#0f172a;border-left:4px solid #1e88e5;padding-left:8px;}'
-    +'#pm28-panel .pm28-hint{font-weight:400;font-size:11px;color:#64748b;}'
-    +'#pm28-panel .pm28-chip{display:inline-flex;align-items:center;gap:6px;margin:0 8px 8px 0;padding:6px 10px;border:1px solid #e2e8f0;border-radius:999px;background:#f8fafc;font-size:12px;cursor:pointer;}'
-    +'#pm28-panel .pm28-dot{width:10px;height:10px;border-radius:50%;display:inline-block;flex:0 0 auto;}'
-    +'#pm28-panel .pm28-baris{display:flex;align-items:center;gap:8px;padding:7px 8px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:6px;background:#fff;flex-wrap:wrap;}'
-    +'#pm28-panel .pm28-tgl{font-weight:700;font-size:12px;color:#0f172a;}'
-    +'#pm28-panel .pm28-tag{font-size:11px;padding:2px 8px;border-radius:999px;color:#fff;white-space:nowrap;}'
-    +'#pm28-panel .pm28-alat{font-size:12px;color:#334155;font-weight:600;}'
-    +'#pm28-panel .pm28-lok{font-size:11px;color:#64748b;}'
-    +'#pm28-panel .pm28-btn{border:0;border-radius:6px;padding:5px 9px;font-size:12px;cursor:pointer;font-weight:600;flex:0 0 auto;}'
-    +'#pm28-panel .pm28-edit{background:#1e88e5;color:#fff;}'
-    +'#pm28-panel .pm28-hapus{background:#ef4444;color:#fff;}'
-    +'#pm28-panel .pm28-grp{display:block;width:100%;text-align:left;border:1px solid #cbd5e1;background:#f1f5f9;border-radius:8px;padding:8px 10px;font-weight:700;font-size:12px;cursor:pointer;margin-bottom:6px;}'
-    +'#pm28-panel .pm28-isigrp{padding:2px 4px 8px;}'
-    +'#pm28-panel .pm28-merah{background:#dc2626;color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:800;cursor:pointer;}';
-  document.head.appendChild(st);
-}
-function bangunPanel(){
-  if($('pm28-panel'))return;
-  pasangCss();
-  var panel=document.createElement('section');
-  panel.id='pm28-panel';
-  panel.innerHTML=
-    '<div id="pm28-kepala" style="cursor:pointer;background:#0f172a;color:#fff;padding:10px 14px;border-radius:10px 10px 0 0;font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px;">'
-    +'<span>🛠️ PANEL SERVER PM28 v4 — data langsung dari Supabase</span>'
-    +'<span style="font-weight:400;font-size:11px;opacity:.8">klik untuk buka/tutup</span></div>'
-    +'<div id="pm28-isi" style="background:#fff;border:1px solid #cbd5e1;border-top:0;border-radius:0 0 10px 10px;padding:12px;">'
-    +'<div id="pm28-status" style="font-size:13px;color:#334155;margin-bottom:10px;">Menyiapkan…</div>'
-    +'<div id="pm28-tombol" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px;">'
-    +'<button id="pm28-sambung" style="background:#1e88e5;color:#fff;border:0;border-radius:8px;padding:8px 12px;font-weight:700;font-size:12px;cursor:pointer;">🔌 Sambung dari Matriks</button>'
-    +'<button id="pm28-segar" style="background:#334155;color:#fff;border:0;border-radius:8px;padding:8px 12px;font-weight:700;font-size:12px;cursor:pointer;">↻ Segar</button>'
-    +'<button id="pm28-cek" style="background:#0f766e;color:#fff;border:0;border-radius:8px;padding:8px 12px;font-weight:700;font-size:12px;cursor:pointer;">🧪 CEK</button>'
-    +'<button id="pm28-hapussemua" style="background:#dc2626;color:#fff;border:0;border-radius:8px;padding:8px 12px;font-weight:800;font-size:12px;cursor:pointer;">🗑️ HAPUS SEMUA TUGAS</button>'
-    +'</div>'
-    +'<div class="pm28-judul">🎨 KETERANGAN WARNA & JUMLAH <span class="pm28-hint">— klik satu warna untuk buka daftar + tombol hapus</span></div>'
-    +'<div id="pm28-legend"></div>'
-    +'<div id="pm28-expand" style="display:none"></div>'
-    +'<div class="pm28-judul">🕘 RIWAYAT PERALATAN <span class="pm28-hint">— klik nama alat untuk buka/tutup</span></div>'
-    +'<div id="pm28-riwayat"></div>'
-    +'<div class="pm28-judul">📋 DAFTAR TUGAS SERVER <span class="pm28-hint">— sumber: Supabase (bukan HP)</span></div>'
-    +'<div id="pm28-filterbar" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;">'
-    +'<select id="pm28-filter" style="padding:7px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;"></select>'
-    +'<input id="pm28-cari" type="text" placeholder="Cari alamat / kategori…" style="flex:1;min-width:140px;padding:7px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;">'
-    +'</div>'
-    +'<div id="pm28-daftar"></div>'
-    +'</div>';
-  document.body.appendChild(panel);
-
-  $('pm28-kepala').addEventListener('click',function(){
-    var isi=$('pm28-isi');
-    isi.style.display=(isi.style.display==='none')?'block':'none';
-  });
-  $('pm28-sambung').addEventListener('click',function(){
-    TABEL_TERKUNCI=false;
-    if(!CURINGAN.url||!CURINGAN.kunci){CURINGAN.tabel=null;pindaiPenyimpanan();}
-    if(CURINGAN.url&&CURINGAN.kunci){
-      status('Memastikan tabel… Kalau tidak jalan, klik ↻ Segar di Matriks — koneksi direkam otomatis.');
-      pilihTabel(function(ok){
-        if(ok)muatSemua();
-        else status('Tabel belum ketemu — sekarang klik tombol ↻ Segar pada Matriks, tunggu angka tugas muncul lagi.');
-      });
-      setTimeout(function(){if(!window.__PM28_SIAP_DATA)segarkanMatriks();},3000);
-    }else{
-      status('Koneksi belum terekam. Sekarang klik tombol ↻ Segar pada Matriks — URL/tabel/kunci akan direkam otomatis…');
-      setTimeout(function(){if(!window.__PM28_SIAP_DATA)segarkanMatriks();},1200);
-    }
-  });
-  $('pm28-segar').addEventListener('click',function(){muatSemua();});
-  $('pm28-cek').addEventListener('click',function(){__PM28_CEK();});
-  $('pm28-hapussemua').addEventListener('click',function(){konfirmasiHapusSemua(null);});
-  $('pm28-filter').addEventListener('change',function(){FILTER=this.value;DAFTAR_TAMPIL=150;gambarDaftar();});
-  $('pm28-cari').addEventListener('input',function(){CARI=this.value;DAFTAR_TAMPIL=150;gambarDaftar();});
-
-  $('pm28-isi').addEventListener('click',function(ev){
-    var el=ev.target&&ev.target.closest?ev.target.closest('[data-kat],[data-hapuskat],[data-grp],[data-aksi],[data-more]'):null;
-    if(!el)return;
-    if(el.hasAttribute('data-kat')){
-      KAT_TERBUKA=el.getAttribute('data-kat');EXPAND_TAMPIL=100;
-      gambarExpand();
-      $('pm28-expand').style.display='block';
-      try{$('pm28-expand').scrollIntoView({behavior:'smooth',block:'nearest'});}catch(e){}
-      return;
-    }
-    if(el.hasAttribute('data-hapuskat')){konfirmasiHapusSemua(el.getAttribute('data-hapuskat'));return;}
-    if(el.hasAttribute('data-grp')){
-      var g=el.getAttribute('data-grp');
-      RIWAYAT_BUKA[g]=!RIWAYAT_BUKA[g];
-      gambarRiwayat();
-      return;
-    }
-    if(el.hasAttribute('data-aksi')){
-      var i=parseInt(el.getAttribute('data-i'),10);
-      if(el.getAttribute('data-aksi')==='edit')bukaEditor(i);
-      else konfirmasiHapusBaris(i);
-      return;
-    }
-    if(el.hasAttribute('data-more')){EXPAND_TAMPIL+=100;gambarExpand();return;}
-  });
-
-  var fab=document.createElement('button');
-  fab.id='pm28-fab';
-  fab.textContent='🛠️ PM28';
-  fab.style.cssText='position:fixed;right:14px;bottom:14px;z-index:99998;background:#0f172a;color:#fff;border:0;border-radius:999px;padding:10px 14px;font-size:13px;font-weight:700;box-shadow:0 6px 16px rgba(0,0,0,.35);cursor:pointer;';
-  fab.addEventListener('click',function(){
-    var isi=$('pm28-isi');
-    if(!isi)return;
-    isi.style.display='block';
-    try{$('pm28-panel').scrollIntoView({behavior:'smooth'});}catch(e){}
-  });
-  document.body.appendChild(fab);
-}
-
-/* ================= 9. GAMBAR ISI PANEL ================= */
-function chipTugas(b){
-  var html='';
-  html+='<span class="pm28-tgl">'+esc(tglIndo(b[KOLOM.tanggal]))+'</span>';
-  if(b[KOLOM.shift]!=null&&b[KOLOM.shift]!=='')html+='<span class="pm28-tag" style="background:#475569;">'+esc(b[KOLOM.shift])+'</span>';
-  html+='<span class="pm28-tag" style="background:'+warnaKat(namaKat(b))+';">'+esc(namaKat(b))+'</span>';
-  html+='<span class="pm28-alat">'+esc(namaPeralatan(b))+'</span>';
-  if(b[KOLOM.lokasi]!=null&&b[KOLOM.lokasi]!=='')html+='<span class="pm28-lok">'+esc(b[KOLOM.lokasi])+'</span>';
-  if(b[KOLOM.status]!=null&&b[KOLOM.status]!=='')html+='<span class="pm28-lok">• '+esc(b[KOLOM.status])+'</span>';
-  return html;
-}
-function tombolBaris(i){
-  return '<span style="flex:0 0 auto;display:flex;gap:6px;">'
-    +'<button class="pm28-btn pm28-edit" data-aksi="edit" data-i="'+i+'">✏️ Edit</button>'
-    +'<button class="pm28-btn pm28-hapus" data-aksi="hapus" data-i="'+i+'">🗑️ Hapus</button>'
-    +'</span>';
-}
-function gambarLegend(){
-  var el=$('pm28-legend');
-  if(!el)return;
-  var kats=daftarKategori();
-  if(!kats.length){el.innerHTML='<div style="font-size:12px;color:#64748b;">Belum ada data dari server.</div>';return;}
-  var html='';
-  kats.forEach(function(k){
-    var c=warnaKat(k.nama);
-    html+='<button class="pm28-chip" data-kat="'+esc(k.nama)+'" style="border-color:'+c+';">'
-      +'<span class="pm28-dot" style="background:'+c+';"></span>'
-      +'<b>'+esc(k.nama)+'</b> — '+k.jml+' tugas</button>';
-  });
-  el.innerHTML=html;
-}
-function gambarExpand(){
-  var el=$('pm28-expand');
-  if(!el)return;
-  if(!KAT_TERBUKA){el.style.display='none';el.innerHTML='';return;}
-  var idxs=[];
-  DATA.forEach(function(r,i){if(namaKat(r)===KAT_TERBUKA)idxs.push(i);});
-  var html='<div style="border:2px solid '+warnaKat(KAT_TERBUKA)+';border-radius:10px;padding:10px;background:#f8fafc;">'
-    +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">'
-    +'<b style="font-size:13px;">📂 '+esc(KAT_TERBUKA)+' — '+idxs.length+' tugas</b>'
-    +'<button class="pm28-merah" data-hapuskat="'+esc(KAT_TERBUKA)+'">🗑️ Hapus semua kategori ini ('+idxs.length+')</button>'
-    +'</div>';
-  if(!idxs.length)html+='<div style="font-size:12px;color:#64748b;">Tidak ada tugas.</div>';
-  idxs.slice(0,EXPAND_TAMPIL).forEach(function(i){
-    html+='<div class="pm28-baris">'+chipTugas(DATA[i])+tombolBaris(i)+'</div>';
-  });
-  if(idxs.length>EXPAND_TAMPIL){
-    html+='<button class="pm28-grp" data-more="1" style="text-align:center;">Tampilkan lebih banyak (sisa '+(idxs.length-EXPAND_TAMPIL)+')</button>';
-  }
-  html+='</div>';
-  el.innerHTML=html;
-}
-function gambarRiwayat(){
-  var el=$('pm28-riwayat');
-  if(!el)return;
-  if(!DATA.length){el.innerHTML='<div style="font-size:12px;color:#64748b;">Belum ada data dari server.</div>';return;}
-  var kel=Object.create(null);
-  DATA.forEach(function(r,i){
-    var nm=namaPeralatan(r);
-    if(!kel[nm])kel[nm]=[];
-    kel[nm].push(i);
-  });
-  var nama=Object.keys(kel).sort();
-  var html='';
-  nama.forEach(function(nm){
-    var idxs=kel[nm];
-    var terakhir='';
-    if(KOLOM.tanggal){
-      var maks='';
-      idxs.forEach(function(i){var v=String(DATA[i][KOLOM.tanggal]||'');if(v>maks)maks=v;});
-      terakhir=tglIndo(maks);
-    }
-    html+='<button class="pm28-grp" data-grp="'+esc(nm)+'">🔌 '+esc(nm)+' — '+idxs.length+' tugas'+(terakhir?' • terakhir '+terakhir:'')+' '+(RIWAYAT_BUKA[nm]?'▲':'▼')+'</button>';
-    if(RIWAYAT_BUKA[nm]){
-      html+='<div class="pm28-isigrp">';
-      idxs.slice(0,50).forEach(function(i){
-        html+='<div class="pm28-baris">'+chipTugas(DATA[i])+tombolBaris(i)+'</div>';
-      });
-      if(idxs.length>50)html+='<div style="font-size:11px;color:#64748b;padding:2px 4px 6px;">Menampilkan 50 dari '+idxs.length+'.</div>';
-      html+='</div>';
-    }
-  });
-  if(!KOLOM.peralatan)html+='<div style="font-size:11px;color:#b45309;margin-top:6px;">Catatan: kolom peralatan tidak dikenali di tabel server — memakai kolom uraian sebagai nama alat.</div>';
-  el.innerHTML=html;
-}
-function gambarDaftar(){
-  var el=$('pm28-daftar'),sel=$('pm28-filter');
-  if(!el)return;
-  var kats=daftarKategori();
-  var opt='<option value="*">Semua kategori</option>';
-  kats.forEach(function(k){
-    opt+='<option value="'+esc(k.nama)+'"'+(FILTER===k.nama?' selected':'')+'>'+esc(k.nama)+' ('+k.jml+')</option>';
-  });
-  sel.innerHTML=opt;
-  var idxs=[];
-  var q=CARI.toLowerCase();
-  DATA.forEach(function(r,i){
-    if(FILTER!=='*'&&namaKat(r)!==FILTER)return;
-    if(q){
-      var teks='';
-      Object.keys(r).forEach(function(k){teks+=String(r[k]==null?'':r[k])+' ';});
-      if(teks.toLowerCase().indexOf(q)<0)return;
-    }
-    idxs.push(i);
-  });
-  var html='';
-  if(!idxs.length){
-    html='<div style="font-size:12px;color:#64748b;">Tidak ada tugas yang cocok.</div>';
-  }else{
-    idxs.slice(0,DAFTAR_TAMPIL).forEach(function(i){
-      html+='<div class="pm28-baris">'+chipTugas(DATA[i])+tombolBaris(i)+'</div>';
-    });
-    if(idxs.length>DAFTAR_TAMPIL){
-      html+='<div style="font-size:12px;color:#475569;padding:6px;">Menampilkan '+DAFTAR_TAMPIL+' dari '+idxs.length+' — ketik di pencarian / pilih kategori untuk memperkecil.</div>';
-    }
-  }
-  el.innerHTML=html;
-}
-function gambarSemua(){
-  gambarLegend();
-  if(KAT_TERBUKA)gambarExpand();else{var el=$('pm28-expand');if(el){el.style.display='none';el.innerHTML='';}}
-  gambarRiwayat();
-  gambarDaftar();
-}
-
-/* ================= 10. EDIT & HAPUS ================= */
-function kunciFilter(b){
-  if(KOLOM.id&&b[KOLOM.id]!=null)return '?'+uri(KOLOM.id)+'=eq.'+uri(b[KOLOM.id]);
-  var parts=[];
-  Object.keys(b).forEach(function(k){
-    var v=b[k];
-    if(v===null||v===undefined)parts.push(uri(k)+'=is.null');
-    else parts.push(uri(k)+'=eq.'+uri(v));
-  });
-  return parts.length?'?'+parts.join('&'):'';
-}
-function bukaEditor(i){
-  var b=DATA[i];
-  if(!b){toast('Baris tidak ditemukan.');return;}
-  var fields=[['tanggal',KOLOM.tanggal],['shift',KOLOM.shift],['kategori',KOLOM.kategori],['peralatan',KOLOM.peralatan],['lokasi',KOLOM.lokasi],['status',KOLOM.status],['uraian',KOLOM.uraian]];
-  var dlKat=daftarKategori().map(function(k){return '<option value="'+esc(k.nama)+'">';}).join('');
-  var alat=Object.create(null);
-  DATA.forEach(function(r){var s=namaPeralatan(r);if(s&&s.charAt(0)!=='(')alat[s]=1;});
-  var dlAlat=Object.keys(alat).sort().slice(0,500).map(function(s){return '<option value="'+esc(s)+'">';}).join('');
-  var st=Object.create(null);
-  DATA.forEach(function(r){if(KOLOM.status&&r[KOLOM.status]!=null)st[String(r[KOLOM.status])]=1;});
-  var dlSt=Object.keys(st).sort().slice(0,100).map(function(s){return '<option value="'+esc(s)+'">';}).join('');
-
-  var ov=document.createElement('div');
-  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:100001;display:flex;align-items:center;justify-content:center;padding:16px;';
-  var html='<div style="background:#fff;border-radius:14px;padding:16px;width:100%;max-width:430px;max-height:86vh;overflow:auto;">'
-    +'<div style="font-weight:800;font-size:15px;margin-bottom:4px;">✏️ Edit Tugas</div>'
-    +'<div style="font-size:11px;color:#64748b;margin-bottom:8px;">Perubahan langsung disimpan ke server Supabase.</div>';
-  var n=0;
-  fields.forEach(function(f,fi){
-    if(!f[1])return;
-    var val=b[f[1]];
-    if(f[0]==='tanggal'&&val)val=String(val).slice(0,10);
-    var dl='';
-    if(f[0]==='kategori')dl=' list="pm28-dl-kat"';
-    if(f[0]==='peralatan')dl=' list="pm28-dl-alat"';
-    if(f[0]==='status')dl=' list="pm28-dl-st"';
-    html+='<label style="display:block;font-size:12px;color:#475569;margin:8px 0 3px;font-weight:600;">'+esc(f[0])+'</label>'
-      +'<input id="pm28-ed-'+fi+'" data-kol="'+esc(f[1])+'" type="'+(f[0]==='tanggal'?'date':'text')+'"'+dl+' value="'+esc(val)+'" '
-      +'style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;">';
-    n++;
-  });
-  html+='<datalist id="pm28-dl-kat">'+dlKat+'</datalist>'
-    +'<datalist id="pm28-dl-alat">'+dlAlat+'</datalist>'
-    +'<datalist id="pm28-dl-st">'+dlSt+'</datalist>'
-    +'<div style="display:flex;gap:8px;margin-top:14px;">'
-    +'<button id="pm28-ed-batal" style="flex:1;background:#e2e8f0;color:#0f172a;border:0;border-radius:8px;padding:10px;font-weight:700;cursor:pointer;">BATAL</button>'
-    +'<button id="pm28-ed-simpan" style="flex:1;background:#1e88e5;color:#fff;border:0;border-radius:8px;padding:10px;font-weight:800;cursor:pointer;">SIMPAN KE SERVER</button>'
-    +'</div></div>';
-  ov.innerHTML=html;
-  document.body.appendChild(ov);
-  $('pm28-ed-batal').addEventListener('click',function(){ov.remove();});
-  $('pm28-ed-simpan').addEventListener('click',function(){
-    var body={},ubah=0;
-    fields.forEach(function(f,fi){
-      if(!f[1])return;
-      var inp=$('pm28-ed-'+fi);
-      if(!inp)return;
-      var v=inp.value;
-      var asli=b[f[1]];
-      if(f[0]==='tanggal')asli=String(asli==null?'':asli).slice(0,10);
-      if(String(asli==null?'':asli)!==v){body[f[1]]=v;ubah++;}
-    });
-    if(!ubah){toast('Tidak ada perubahan.');ov.remove();return;}
-    var target=DATA[i];
-    var kf=kunciFilter(target);
-    status('Menyimpan ke server…');
-    req('PATCH',CURINGAN.url+'/'+CURINGAN.tabel+kf,body,function(st2,tx){
-      if(st2>=200&&st2<300){
-        Object.keys(body).forEach(function(k){target[k]=body[k];});
-        urutkan();gambarSemua();segarkanMatriks();
-        toast('Tersimpan di server ✔');
-        ov.remove();status('Perubahan tersimpan di server.');
-      }else{
-        status('Simpan gagal HTTP '+st2+' — '+potong(tx));
-        toast('Simpan gagal: '+potong(tx,120));
-      }
-    },function(e){toast('Simpan gagal: '+e);});
-  });
-}
-function konfirmasiHapusBaris(i){
-  var b=DATA[i];
-  if(!b)return;
-  var pesan='Hapus tugas ini dari server?\n'+tglIndo(b[KOLOM.tanggal])+' • '+namaKat(b)+' • '+namaPeralatan(b);
-  if(!window.confirm(pesan))return;
-  var kf=kunciFilter(b);
-  status('Menghapus 1 tugas di server…');
-  req('DELETE',CURINGAN.url+'/'+CURINGAN.tabel+kf,null,function(st,tx){
-    if(st>=200&&st<300){
-      DATA.splice(i,1);window.__PM28_DATA=DATA;
-      gambarSemua();
-      toast('Tugas dihapus dari server ✔');
-      status('Tugas dihapus (sisa '+DATA.length+').');
-    }else{
-      status('Hapus gagal HTTP '+st+' — '+potong(tx));
-      toast('Hapus gagal: '+potong(tx,120));
-    }
-  },function(e){toast('Hapus gagal: '+e);});
-}
-function konfirmasiHapusSemua(kat){
-  var total=kat?hitungKat(kat):DATA.length;
-  if(!total){toast('Tidak ada tugas untuk dihapus.');return;}
-  var label=kat?('kategori "'+kat+'" — '+total+' tugas'):('SEMUA kategori — '+total+' tugas');
-  var ov=document.createElement('div');
-  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.65);z-index:100002;display:flex;align-items:center;justify-content:center;padding:16px;';
-  ov.innerHTML='<div style="background:#fff;border:3px solid #dc2626;border-radius:14px;padding:18px;width:100%;max-width:430px;">'
-    +'<div style="font-weight:900;font-size:16px;color:#dc2626;margin-bottom:8px;">⚠️ HAPUS PERMANEN</div>'
-    +'<div style="font-size:13px;color:#334155;margin-bottom:10px;">Tindakan ini menghapus <b>'+esc(label)+'</b> langsung dari SERVER Supabase dan tidak bisa dikembalikan.</div>'
-    +'<label style="display:block;font-size:12px;color:#475569;margin-bottom:4px;font-weight:600;">Ketik HAPUS untuk melanjutkan:</label>'
-    +'<input id="pm28-hs-input" type="text" autocomplete="off" style="width:100%;box-sizing:border-box;padding:9px;border:2px solid #cbd5e1;border-radius:8px;font-size:15px;font-weight:700;">'
-    +'<div style="font-size:11px;color:#64748b;margin-top:8px;">Setelah sukses: penyimpanan lokal pm16lokal dibersihkan, matriks + legenda + daftar di-refresh otomatis. Kalau server menolak (HTTP 401/403), berarti kunci ini tidak punya izin hapus — jalankan ulang blok PM20 dengan kunci yang punya izin tulis.</div>'
-    +'<div style="display:flex;gap:8px;margin-top:14px;">'
-    +'<button id="pm28-hs-batal" style="flex:1;background:#e2e8f0;color:#0f172a;border:0;border-radius:8px;padding:10px;font-weight:700;cursor:pointer;">BATAL</button>'
-    +'<button id="pm28-hs-ya" disabled style="flex:1;background:#dc2626;color:#fff;border:0;border-radius:8px;padding:10px;font-weight:900;cursor:pointer;opacity:.5;">HAPUS PERMANEN</button>'
-    +'</div></div>';
-  document.body.appendChild(ov);
-  var inp=$('pm28-hs-input'),btn=$('pm28-hs-ya');
-  inp.addEventListener('input',function(){
-    var ok=(inp.value==='HAPUS');
-    btn.disabled=!ok;
-    btn.style.opacity=ok?'1':'.5';
-  });
-  $('pm28-hs-batal').addEventListener('click',function(){ov.remove();});
-  btn.addEventListener('click',function(){
-    if(inp.value!=='HAPUS')return;
-    ov.remove();
-    jalankanHapusSemua(kat);
-  });
-}
-function hapusByIds(ids,selesai){
-  var i=0,pot=50;
-  (function nxt(){
-    if(i>=ids.length)return selesai(true);
-    var bag=ids.slice(i,i+pot);
-    i+=pot;
-    var u=CURINGAN.url+'/'+CURINGAN.tabel+'?'+uri(KOLOM.id)+'=in.('+bag.map(uri).join(',')+')';
-    req('DELETE',u,null,function(st){
-      if(st<200||st>=300){status('Hapus gagal HTTP '+st);return selesai(false);}
-      nxt();
-    },function(){selesai(false);});
-  })();
-}
-function jalankanHapusSemua(kat){
-  status('Menghapus di server…');
-  toast('Menghapus '+(kat?hitungKat(kat)+' tugas kategori '+kat:DATA.length+' tugas')+' di server…');
-  var selesaiOK=function(){
-    try{localStorage.removeItem('pm16lokal');}catch(e){}
-    if(kat){
-      DATA=DATA.filter(function(r){return namaKat(r)!==kat;});
-      if(KAT_TERBUKA===kat)KAT_TERBUKA=null;
-    }else{
-      DATA=[];
-    }
-    window.__PM28_DATA=DATA;
-    gambarSemua();
-    var klik=segarkanMatriks();
-    toast('Selesai ✔ server dibersihkan & pm16lokal dihapus. Matriks di-refresh'+(klik?'':' (klik manual ↻ Segar di Matriks)')+'.');
-    status('Hapus selesai. Sisa data server: '+DATA.length+' tugas.');
+/* ============ DIAGNOSTIK ============ */
+try{
+  window.__SR13_CEK = function(){
+    return {
+      versi: 'v7',
+      kota: KOTA,
+      namaDirektur: NAMA_DIREKTUR || '(garis titik-titik)',
+      jabatan: JABATAN,
+      tanggal: TGL_UNDUH ? 'saat unduh' : 'tanggal pengajuan (request_date)',
+      noFormPrefix: 'SR/',
+      statusOpsi: STATUS_OPSI,
+      seksiFoto: 'FOTO BARANG (rata kiri, keterangan nama barang, semua foto)',
+      ttdPosisi: 'kanan-bawah tetap (anchor bawah halaman terakhir)',
+      totalDiKolom: 'Jumlah (label center dalam sel gabungan)',
+      warnaInfo: 'hitam',
+      tujuanGaris: '2 garis bawah penuh',
+      cssBarisTombol: !!document.getElementById('sr13v7style'),
+      tombolPdfTampak: !!document.querySelector('[data-sr13pdf]'),
+      tombolV7: !!document.querySelector('[data-sr13v7]'),
+      fotoPadaPDF: true,
+      estimasiSelaluAda: true,
+      namaFilePDF: 'SR_<nomor-form>.pdf',
+      idDetailTerakhir: ambilId13()
+    };
   };
-  if(kat&&KOLOM.kategori){
-    var u=CURINGAN.url+'/'+CURINGAN.tabel+'?'+uri(KOLOM.kategori)+'=eq.'+uri(kat);
-    req('DELETE',u,null,function(st,tx){
-      if(st>=200&&st<300)return selesaiOK();
-      status('Hapus gagal HTTP '+st+' — '+potong(tx));
-      toast('Hapus gagal: '+potong(tx,140));
-    },function(e){toast('Hapus gagal: '+e);});
-    return;
-  }
-  if(kat&&!KOLOM.kategori){
-    if(!KOLOM.id){toast('Tidak bisa hapus per kategori (kolom kategori/id tidak dikenali).');return;}
-    var ids=[];
-    DATA.forEach(function(r){if(namaKat(r)===kat&&r[KOLOM.id]!=null)ids.push(r[KOLOM.id]);});
-    hapusByIds(ids,function(ok){if(ok)selesaiOK();else toast('Hapus gagal — cek pesan status.');});
-    return;
-  }
-  req('DELETE',CURINGAN.url+'/'+CURINGAN.tabel,null,function(st,tx){
-    if(st>=200&&st<300)return selesaiOK();
-    status('Hapus gagal HTTP '+st+' — '+potong(tx));
-    toast('Hapus gagal: '+potong(tx,140));
-  },function(e){toast('Hapus gagal: '+e);});
-}
-function segarkanMatriks(){
-  try{
-    var bs=document.querySelectorAll('button,[role="button"]');
-    for(var i=0;i<bs.length;i++){
-      var b=bs[i];
-      var p=$('pm28-panel');
-      if(p&&p.contains(b))continue;
-      if(b.id&&String(b.id).indexOf('pm28')===0)continue;
-      var t=(b.textContent||'').toLowerCase();
-      if(/segar|muat ulang|refresh|tarik ulang|perbarui/.test(t)){b.click();return true;}
-    }
-  }catch(e){}
-  return false;
-}
+}catch(e){}
 
-/* ================= 11. DIAGNOSTIK ================= */
-function tampilCek(teks){
-  var ov=document.createElement('div');
-  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.65);z-index:100003;display:flex;align-items:center;justify-content:center;padding:16px;';
-  ov.innerHTML='<div style="background:#fff;border-radius:14px;padding:16px;width:100%;max-width:480px;max-height:86vh;display:flex;flex-direction:column;">'
-    +'<div style="font-weight:800;margin-bottom:8px;">🧪 Hasil CEK '+VERSI+'</div>'
-    +'<pre id="pm28-cek-teks" style="white-space:pre-wrap;font-size:12px;background:#0f172a;color:#e2e8f0;border-radius:8px;padding:10px;overflow:auto;flex:1;">'+esc(teks)+'</pre>'
-    +'<div style="display:flex;gap:8px;margin-top:10px;">'
-    +'<button id="pm28-cek-salin" style="flex:1;background:#1e88e5;color:#fff;border:0;border-radius:8px;padding:10px;font-weight:700;cursor:pointer;">SALIN</button>'
-    +'<button id="pm28-cek-tutup" style="flex:1;background:#e2e8f0;color:#0f172a;border:0;border-radius:8px;padding:10px;font-weight:700;cursor:pointer;">TUTUP</button>'
-    +'</div></div>';
-  document.body.appendChild(ov);
-  $('pm28-cek-tutup').addEventListener('click',function(){ov.remove();});
-  $('pm28-cek-salin').addEventListener('click',function(){
-    try{
-      navigator.clipboard.writeText(teks).then(function(){toast('Hasil CEK disalin ✔ kirim ke asisten.');},function(){toast('Tidak bisa menyalin — screenshot saja.');});
-    }catch(e){toast('Tidak bisa menyalin — screenshot saja.');}
-  });
-}
-function __PM28_CEK(){
-  var garis=[];
-  garis.push('Waktu        : '+new Date().toLocaleString());
-  garis.push('Blok         : '+VERSI);
-  garis.push('Halaman      : '+location.protocol+'//'+(location.host||'(file lokal)'));
-  garis.push('Server       : '+(CURINGAN.url||'-'));
-  garis.push('Kunci API    : '+(CURINGAN.kunci?'ada (rahasia, tidak dicetak)':'TIDAK ADA'));
-  garis.push('Sumber       : '+(CURINGAN.sumber||'-'));
-  garis.push('Tabel        : '+(CURINGAN.tabel||'-')+(TABEL_TERKUNCI?' • terkunci':''));
-  garis.push('Kolom        : tanggal='+(KOLOM.tanggal||'-')+' shift='+(KOLOM.shift||'-')+' kategori='+(KOLOM.kategori||'-')+' peralatan='+(KOLOM.peralatan||'-'));
-  garis.push('Data server  : '+DATA.length+' tugas');
-  garis.push('pm16lokal    : '+jumlahLokal());
-  garis.push('Panel        : '+($('pm28-panel')?'terpasang':'TIDAK ADA')+' • '+(window.__PM28_SIAP_DATA?'data siap':'belum ada data'));
-  garis.push('Menguji ambil 1 baris (apikey dikirim di header + URL)…');
-  var u=(CURINGAN.tabel?CURINGAN.url+'/'+CURINGAN.tabel:CURINGAN.url+'/')+'?select=*&limit=1';
-  var selesai=function(s){
-    garis.push('KESIMPULAN   : '+s);
-    window.__PM28_HASIL_CEK={teks:garis.join('\n'),simpulan:s};
-    try{console.log(garis.join('\n'));}catch(e){}
-    tampilCek(garis.join('\n'));
-    return garis.join('\n');
-  };
-  if(!CURINGAN.url||!CURINGAN.kunci){
-    return selesai('Koneksi belum lengkap — klik "Sambung dari Matriks" lalu klik ↻ Segar di Matriks, lalu CEK lagi.');
+/* ============ TOAST Pemasangan ============ */
+try{
+  if(window.__SR13_V6){
+    log13('PERINGATAN: blok SR13 v6 masih terpasang - hapus blok v6 agar tidak ada dua pembuat PDF');
   }
-  req('GET',u,null,function(st,tx){
-    garis.push('Uji ambil    : HTTP '+st+' • '+potong(tx,140));
-    var s;
-    if(st===200)s='Kunci DITERIMA server ✔ — kalau daftar masih kosong, klik ↻ Segar pada Panel PM28.';
-    else if(st===401&&/no api key/i.test(tx))s='Kunci masih TIDAK TERKIRIM — kemungkinan blok lama masih menimpa. Hapus blok PM27 v3 lama, sisakan PM28 saja, lalu ↻ Segar.';
-    else if(st===401||st===403)s='Server MENOLAK kunci ini — jalankan ulang blok PM20 (SAMBUNG MANUAL), lalu ↻ Segar.';
-    else if(st===404)s='Tabel tidak ketemu — klik "Sambung dari Matriks" lalu klik ↻ Segar di Matriks.';
-    else s='Server menjawab '+st+' — '+potong(tx,120);
-    selesai(s);
-  },function(e){
-    garis.push('Uji ambil    : GAGAL — '+e);
-    var s=(location.protocol==='file:')
-      ?'Halaman dibuka lewat file:// — buka lewat http(s)/server internal supaya data bisa diambil.'
-      :'Jaringan/CORS menolak — pastikan halaman dibuka lewat http(s) dan internet aktif.';
-    selesai(s);
-  });
-  return 'PM28 CEK: menguji… hasil akan tampil di layar.';
-}
+  var el = document.createElement('div');
+  el.setAttribute('data-sr13', '1');
+  el.style.cssText = 'position:fixed;left:12px;right:12px;bottom:18px;z-index:2147483000;'+
+    'background:linear-gradient(135deg,#0f172a,#1e293b);color:#f5c518;border:1px solid #d4af37;'+
+    'border-radius:14px;padding:11px 14px;font:600 12.5px/1.45 Arial,Helvetica,sans-serif;text-align:center;'+
+    'box-shadow:0 8px 24px rgba(15,23,42,.35);opacity:0;transition:opacity .25s;pointer-events:none';
+  el.innerHTML = '<b style="color:#d4af37">SR13 v7 aktif</b> \u2022 PDF: jarak info dari header, <b>TOTAL di kolom Jumlah</b> (center), foto <b>rata kiri + nama barang</b> (semua foto), TTD kecil <b>tetap di bawah</b>, garis Tujuan';
+  document.body.appendChild(el);
+  setTimeout(function(){ try{ el.style.opacity = '1'; }catch(e){} }, 60);
+  setTimeout(function(){ try{ if(el.parentNode) el.parentNode.removeChild(el); }catch(e){} }, 5200);
+}catch(e){}
 
-/* ================= 12. MULAI ================= */
-function init(){
-  bangunPanel();
-  window.__PM28_SIAP=true;
-  var ada=siapkanKoneksi();
-  if(ada&&CURINGAN.kunci){
-    status('Koneksi ditemukan ('+CURINGAN.sumber+'). Mencari tabel data…');
-    pilihTabel(function(ok){
-      if(ok)muatSemua();
-      else status('Kunci ada tapi tabel belum ketemu — klik "Sambung dari Matriks" lalu ↻ Segar di Matriks.');
-    });
-  }else{
-    status('Belum terhubung. Klik tombol 🔌 "Sambung dari Matriks", lalu klik ↻ Segar di Matriks.');
-  }
-}
-window.__PM28_CEK=__PM28_CEK;
-window.__PM28_SEGAR=function(){muatSemua();segarkanMatriks();return 'PM28: menyegarkan…';};
-if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',init);}
-else{setTimeout(init,0);}
+log13('v7 aktif - tata letak form profesional: jarak info, TOTAL di kolom Jumlah center, FOTO BARANG rata kiri + nama barang (semua foto), TTD kecil anchor bawah, info hitam, Tujuan 2 garis; cek __SR13_CEK()');
 })();
 </script>
+<!-- ============ AKHIR [SR13] v7 ============ -->
 </body>
 </html>
